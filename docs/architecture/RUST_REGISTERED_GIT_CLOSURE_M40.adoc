@@ -1,0 +1,64 @@
+= LeanBun Registered Git Closure M40 Phase B
+:toc: left
+:sectnums:
+
+== Result
+
+M40 Phase B 把 Phase A 的单个 local-path dependency 扩展为 registered Git/transitive closure。验收对象仍是本库
+`test/fixtures/mathlib-project` 的隔离副本；没有采用外部项目，也没有访问网络。Bun 是 lock、来源、完整性、传递边、
+final path、并发 fetch、generation publication 和 rollback 的唯一决策者；Lake 只加载 Bun 生成的 `--packages`
+projection 并执行 target，Lean 只编译和核验。
+
+== Registered metadata and exact closure
+
+Controller 同时读取 root `lake-manifest.json`、登记 registry/override pair 和每个 exact package revision 中的
+`lake-manifest.json`。只有以下条件全部成立才接受：
+
+* root package set 与登记 provider package set 完全相等；
+* package URL、scope、revision、config/manifest 路径与登记值一致；
+* 每条传递边的目标仍在同一登记闭包内；
+* exact Git archive 的 download SHA-256、normalized tree SHA-256、config SHA-256 与 manifest SHA-256 可重算；
+* 同名、重复边、未知包、混合 path/Git graph 和输入漂移全部 fail closed。
+
+本次九包真实边为：`mathlib` 指向其余八包，`aesop -> batteries`，`importGraph -> Cli`，其余包无传递边。
+该图来自逐包 manifest，不由 LeanBun 猜测或写死。
+
+== Store, paths, and cache boundary
+
+九个 local-Git archive 在有界 registered-provider profile 下并发进入 M34 immutable store；同一 store 仍执行
+download/tree digest、path traversal、特殊文件、大小、条目数和只读 publication 检查。普通 archive profile 保持
+64 MiB/4096 entries；较大的注册 profile 只对已经由 provider pair 和 exact revision 认证的 Git source 使用。
+
+Git archive 中的 link 不被跟随，注册 profile 只确定性省略零长度 link entry；普通 profile 继续拒绝 link。
+每个 transaction 都重新生成九个 Bun final paths，Lake 的实际 `LEAN_PATH` 必须与该集合完全相等。
+
+已有 `.lake/build` 仅作为派生 cache 以 APFS clone 注入 generation；缺失 cache 不阻止接管，由 Lake 在 generation
+的 `.lake` 内生成。ProofWidgets 的 ignored `widget/package-lock.json.hash` 是 Lake 自身位于 `.lake` 外的已知派生
+trace：LeanBun 对来源和目标逐次做 SHA-256/大小/regular-file 检查后复制，Seatbelt 不授予该 source 路径写权限，
+事后 source verifier 只豁免这一个有界文件。其他 source entry 仍须与 immutable object 逐文件一致。
+
+== Repository fixture acceptance
+
+隔离 Mathlib fixture 已完成以下序列：
+
+----
+leanbun adopt REPO PROJECT LeanBunMathlibFixture --explicit-managed-project
+leanbun build REPO PROJECT
+leanbun update REPO PROJECT                         # rejected: explicit set required
+leanbun update REPO PROJECT --package=mathlib
+leanbun build REPO PROJECT
+leanbun fixture-managed-recovery REPO PROJECT
+leanbun rollback REPO PROJECT
+leanbun build REPO PROJECT
+----
+
+九包 adopt 与 exact-edge rebuild 均报告 `package-count=9`。初始、更新和回滚后的 build 均得到同一项目产物摘要：
+`b00747efa247f3bded023f1d8ce4cec41fbf2f5d9aa670f7a28228578d335e88`。故障注入保留旧 active generation 和
+pending evidence，recover 清除 pending；rollback 恢复前一 generation 后再次离线构建成功。
+
+== Boundary after M40
+
+M40 完成的是本库登记 provider 的 exact Git closure，不是任意网络 package manager。任意远端 metadata discovery、
+新 revision 下载、签名/notarization 和外部项目采用仍关闭。M41 必须另外完成明确授权的小型候选验收，并保存
+采用前后完整证据。M41 Phase A 已只读固定本库候选的采用前证据，但尚未 adopt；因此当前仍是 fixture
+development release。

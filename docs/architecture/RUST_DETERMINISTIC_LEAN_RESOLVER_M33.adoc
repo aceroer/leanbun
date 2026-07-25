@@ -1,0 +1,109 @@
+= LeanBun Rust Deterministic Lean Resolver M33
+:toc: left
+:sectnums:
+
+== Outcome
+
+M33 is complete. The new pure `leanbun-resolver` crate consumes M32 root declarations, optional M31 active-lock pins, an explicit update set, exact toolchain identity and already supplied package metadata. It produces one canonical `LeanResolutionGraphV1` without network, filesystem writer, package materialization, Lake process or active-state publication.
+
+The graph contains:
+
+* the exact package closure and canonical dependency edges;
+* exact Git commit/subdirectory or normalized path source identity for every package;
+* the root package set and Lake-compatible resolution order;
+* explicit winner/shadowed provenance for every compatible collision;
+* the union of old and new dependency impact closures for targeted updates;
+* a canonical SHA-256 identity binding toolchain, root declaration, package candidate identities, edges, traversal order, shadow decisions and impact closure.
+
+== Request and metadata contract
+
+`LeanResolutionRequestV1` binds:
+
+* one `LakeRootDeclarationV1`;
+* an optional `LeanBunLockV1` active lock;
+* `Frozen` or canonical `Update { packages }` mode;
+* exact Lean toolchain, compiler Git revision and Lake version.
+
+Frozen mode requires an active lock. The lock must match the complete toolchain identity and M32 root-declaration identity before resolution starts. Update mode may operate without a lock for a fresh metadata-only graph; with an active lock, every existing package outside the explicit update set remains exact-pinned.
+
+`LeanPackageCandidateV1` is bounded metadata, not fetched content. It binds requested source, exact source, declaration-order dependencies, optional toolchain candidate, download integrity, source/config/manifest digests, selected-source identity and a canonical candidate identity. The registry is canonicalized independently of input order and rejects duplicate identities.
+
+Git branch/tag requests and Reservoir versions must map to exactly one supplied candidate containing a lowercase 40-byte exact commit. A path candidate contains a normalized portable token and a supplied contained-source identity; it cannot carry download integrity. Ambiguous candidates are rejected rather than resolved by metadata order.
+
+== Lake-compatible ordering with stricter conflicts
+
+M33 pins `Lake/Load/Resolve.lean` at SHA-256
+`b1cce0ebebbcd620906750760a1c6b5ff50b26e18caba946888f48b391390516` and verifies these locked source facts:
+
+* dependency recursion is breadth-first;
+* each package's dependency declarations are processed with `foldrM`;
+* root dependencies are reversed before traversal;
+* later requires shadow earlier definitions;
+* root declarations take priority over inherited declarations.
+
+The resolver reproduces that effective order. Unlike Lake's silent already-present reuse, every compatible collision becomes `LeanShadowDecisionV1`. An incompatible later/earlier or root/inherited source produces a typed error carrying `LeanResolutionConflictV1` with winner origin, conflicting origin, package and selected candidate identity.
+
+== Frozen and targeted update rules
+
+Frozen output must equal the complete active lock: source, exact commit/path, download integrity, tree/config/manifest digests, selected-source identity, dependency edges and package set. A missing or extra active package fails closed.
+
+For targeted update:
+
+. packages in the explicit update set resolve from supplied exact metadata;
+. every existing non-target package is filtered to its active-lock pin before candidate selection;
+. newly introduced packages are allowed only when reached from the selected graph;
+. removed active packages must lie inside the old dependency closure of an update target;
+. the reported impact closure is the union of old and new transitive closures;
+. any attempted change outside that closure is rejected by the exact pin/source gate, and any disappearance outside it returns `UpdateEscapesImpactClosure`.
+
+This is stricter than Lake's manifest last-wins behavior and prevents an update to `mathlib` from silently moving an unrelated package.
+
+== Bounds and typed rejection
+
+[cols="2,2",options="header"]
+|===
+|Object |v1 bound
+
+|resolved packages
+|4096
+
+|dependencies per candidate
+|4096
+
+|candidate registry
+|16384
+
+|graph depth
+|128
+
+|text/source token
+|4096 UTF-8 bytes
+|===
+
+Typed failures cover active-lock absence/mismatch, duplicate candidate identity/update target, unknown update target, missing transitive metadata, ambiguous candidate, source-kind/value conflict, toolchain candidate conflict, cycle, excessive depth, frozen drift and update escape.
+
+== Verification snapshot
+
+The M33 targeted suite contains nine tests covering:
+
+* all 120 permutations of a five-candidate registry with one graph identity;
+* Lake's `R, C, B, A, Y, X` reverse breadth-first fixture;
+* complete frozen reuse and incomplete-lock rejection;
+* targeted Mathlib update, new transitive dependency and exact pinning of unrelated/existing packages;
+* root priority, compatible later shadow and incompatible conflict provenance;
+* Reservoir-to-exact-Git and path-to-contained-identity normalization;
+* duplicate/ambiguous metadata, toolchain conflict, missing transitive metadata, source-kind conflict, cycle and depth rejection;
+* exact Lake 4.32 `Resolve.lean` hash and ordering facts.
+
+The completion run passed:
+
+* M33 targeted suite: nine tests;
+* Rust workspace: 157 tests passed, with one environment-dependent provider snapshot test explicitly ignored;
+* `cargo clippy --workspace --all-targets -- -D warnings`;
+* Bun repository suite: 93 tests and 866 assertions.
+
+Runtime resolver source imports no filesystem, network or process API. The designated real Lean project retained identical config/toolchain/manifest SHA-256 values before and after the run, and neither it nor the production dependency root gained LeanBun state.
+
+== M34 gate
+
+M34 may consume an M33 exact graph to implement the narrow Bun Rust `lean_pm` fetch/integrity/immutable-store adapter against local mock HTTP/Git sources. M33 does not download any content, publish a store object, activate a graph or run Lake.

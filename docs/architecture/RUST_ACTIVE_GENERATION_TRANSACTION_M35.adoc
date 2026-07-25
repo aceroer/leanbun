@@ -1,0 +1,105 @@
+= LeanBun Rust Active Generation Transaction M35
+:toc: left
+:sectnums:
+
+== Outcome
+
+M35 is complete. The new `leanbun-generation` crate turns one compatible M31 lock/path-decision set, M32 manifest/runtime projections, M33 exact graph and complete M34 verified-object set into a durable, immutable fixture generation. One canonical `active.record` is the only commit point.
+
+The writer is restricted to descendants of `.leanbun-dev-rust/generation-fixture`. It does not write the designated real project, invoke Lake, compile Lean, delete an old generation or garbage-collect a store object.
+
+== Generation identity and compatibility gate
+
+`LeanBunGenerationV1` binds:
+
+* transaction UUID, canonical project identity and exact generation root;
+* canonical lock bytes SHA-256;
+* M33 graph identity and M31 path-decision-set identity;
+* M32 manifest and runtime projection SHA-256 values;
+* Lean toolchain, compiler Git revision and Lake version;
+* canonical package keys, final generation paths, M34 store-object SHA-256 values and normalized source-tree SHA-256 values.
+
+Construction requires one identical complete package closure across lock, graph, decisions, runtime projection and verified objects. For every package it checks download/tree/config/manifest/source identities, dependency edges, M33 candidate identity, M34 object identity and the M31 generation binding. A final path must be exactly `generation-root/packages/<scope>/<name>`; an arbitrary contained path is not accepted.
+
+The model therefore prevents a valid projection from being paired with another lock, graph, object set or generation location before any writer is opened.
+
+== Fixture boundary and project lock
+
+`LeanGenerationManagerV1::open` canonicalizes the development, state and project roots. State and project must both be inside `.leanbun-dev-rust/generation-fixture`; path components are created one at a time, and a pre-existing symlink or nondirectory is rejected.
+
+Each canonical project gets one SHA-keyed state directory and one exclusive `project.lock`. The lock binds exact transaction and generation identities, is written create-new, file-synced, made read-only, synced again and followed by a parent-directory sync. Another transaction receives `LockBusy`. Recovery removes a lock only when its complete canonical bytes match the expected transaction; unknown ownership is never removed.
+
+== State machine and publication protocol
+
+The durable state machine is:
+
+`Preparing -> Materialized -> Verified -> Published`
+
+Any pre-commit live state may instead transition to `Failed`. `Published` and `Failed` are terminal. Every transition is a canonical record replacement through a unique synced temporary file, atomic rename, parent-directory sync and strict readback.
+
+Normal publication is:
+
+. acquire the exact project lock;
+. durably publish the write-ahead `Preparing` record;
+. create a transaction-named generation directory;
+. write canonical `leanbun.lock`, `lake-manifest.json`, `runtime-packages.json` and `generation.meta`;
+. copy each reverified M34 source tree into its M31-decided final path with create-new files;
+. sync files, then directories, seal the complete generation read-only, and sync again;
+. re-read every identity file and rehash every package tree;
+. publish `active.record` by synced temporary file and atomic rename;
+. transition the transaction to `Published`;
+. append generation-to-store-object edges to `retained.record`;
+. release only the exactly owned project lock.
+
+Package files are copied rather than hard-linked. Consequently a later generation mutation cannot alter the immutable M34 store inode. M36 may introduce an audited copy-on-write optimization, but M35 does not trade isolation for deduplication.
+
+The previous active record remains untouched until step 8. A crash before its rename leaves the old generation active; a crash after it leaves the complete new generation active. Old and failed generation directories remain retained and are not deleted automatically.
+
+== Verification and mixed-state rejection
+
+Generation verification requires an exact five-entry root namespace: metadata, lock, manifest projection, runtime projection and packages. Stable reads bind regular-file type, device, inode, mode, size and change timestamp across the read.
+
+The verifier compares exact lock/projection/metadata bytes and recomputes every normalized package tree SHA through the M34 directory verifier. Extra package namespaces, links, special files, missing entries, changed package bytes or a manifest/runtime projection from another generation fail closed. A mixed projection cannot become or remain a verified active generation.
+
+== Recovery
+
+Recovery accepts exact expected generation evidence; it does not scan by age or infer ownership from a directory name.
+
+* If `active.record` does not name the transaction, any nonterminal pre-commit record becomes `Failed`, and an exactly owned lock is released. The previous active generation is preserved.
+* If `active.record` exactly names the transaction and generation, the complete generation is reverified. A `Verified` record is completed to `Published`, retained references are repaired and the exact lock is released.
+* An active record naming the transaction with different generation evidence, or a `Published` transaction absent from active state, returns `IndeterminatePublication`.
+* Repeating recovery is idempotent. It never converts unknown or unverifiable state to success.
+
+`retained.record` is a canonical sorted graph of generation SHA to store-object SHA edges. M35 records reachability but deliberately exposes no deletion API.
+
+== Failure matrix and verification snapshot
+
+The M35 suite injects crashes after or around sixteen durable boundaries:
+
+* project lock and write-ahead record;
+* generation lock, manifest projection, runtime projection, package materialization and generation metadata;
+* file sync and directory sync;
+* `Materialized` and `Verified` transitions;
+* before and after active rename;
+* `Published` transition, retained record and lock release.
+
+Five scenario tests cover all sixteen points plus:
+
+* two successful generations with atomic active replacement and retained old generation;
+* all pre-commit crashes preserving the old active generation and recovering idempotently to `Failed`;
+* all post-commit crashes recovering to verified `Published` and releasing exact ownership;
+* mixed projection rejection and active re-verification;
+* competing transaction lock exclusion and store-object isolation from generation mutation.
+
+The completion run passed:
+
+* M35 targeted suite: five tests;
+* Rust workspace: 167 tests passed, with one environment-dependent provider snapshot explicitly ignored;
+* isolated `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`;
+* Bun repository suite: 93 tests and 866 assertions.
+
+The full run also exposed an older macOS path-provenance test race: three tests changed their shared `/tmp` parent while another test required its component fingerprint to remain stable. Their fixture observations are now serialized; the fail-closed production observer was not weakened.
+
+== M36 gate
+
+M36 may consume one verified active fixture generation to run a supervised, network-disabled Lake build and publish/reuse a build image. M35 itself never spawns Lake and does not adopt a real project.

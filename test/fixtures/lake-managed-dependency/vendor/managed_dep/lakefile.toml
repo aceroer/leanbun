@@ -1,0 +1,6 @@
+name = "managed_dep"
+version = "0.1.0"
+defaultTargets = ["ManagedDep"]
+
+[[lean_lib]]
+name = "ManagedDep"

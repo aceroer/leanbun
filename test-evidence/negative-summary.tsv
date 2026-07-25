@@ -1,0 +1,9 @@
+schema	leanbun-public-negative-summary-v1
+case	expected_code	outcome
+malformed-manifest	JSON_MALFORMED	rejected
+path-escape	PATH_ESCAPES_ALLOWED_ROOT	rejected
+hash-drift	TREE_DIGEST_MISMATCH	rejected
+cycle	DEPENDENCY_CYCLE	rejected
+missing-package	REGISTERED_CLOSURE_INCOMPLETE	rejected
+positive-records	UNCHANGED	passed
+managed-project-state	NONE	passed

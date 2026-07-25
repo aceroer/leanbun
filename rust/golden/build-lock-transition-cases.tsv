@@ -1,0 +1,6 @@
+publish-new	acquire-absent	acquire	absent	12345678-1234-4123-8123-123456789abc
+busy	acquire-same-owner	acquire	12345678-1234-4123-8123-123456789abc	12345678-1234-4123-8123-123456789abc
+busy	acquire-other-owner	acquire	aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa	12345678-1234-4123-8123-123456789abc
+already-released	release-absent	release	absent	12345678-1234-4123-8123-123456789abc
+remove-owned	release-exact-owner	release	12345678-1234-4123-8123-123456789abc	12345678-1234-4123-8123-123456789abc
+conflict	release-other-owner	release	aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa	12345678-1234-4123-8123-123456789abc

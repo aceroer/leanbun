@@ -1,0 +1,9 @@
+true	text	LeanBunMathlibFixture
+false	repeat-a	0false	text	-bad
+false	text	a..b
+false	hex	62616400746172676574
+false	hex	6261647f746172676574
+true	repeat-a	256
+false	repeat-a	257
+true	repeat-grin	128
+false	repeat-grin	129

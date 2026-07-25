@@ -1,0 +1,82 @@
+= LeanBun-enabled Bun Release Integration M38
+:toc: left
+:sectnums:
+
+== Result
+
+M38 的仓库内工程发布门已完成。锁定 Bun commit
+`892b1dabc69e2a0a973244f772b84967c73ccad5` 的隔离 worktree 在分支
+锁定的 Bun fork 中新增 `src/lean_pm` workspace member，并由 Bun 的 Cargo release profile 产出单一
+`leanbun` Mach-O arm64 二进制。
+
+该二进制直接链接 M31--M37 Rust crates；运行时不需要 TypeScript host、Python、XPC、LaunchDaemon、外部 daemon 或 JSC/C++ Bun 主程序。
+Bun 的同语言优势用于统一 Rust workspace、Cargo lock、release profile 与 adapter dispatch，而没有把无关 FFI/JSC surface 拉入 Lean package adapter。
+Bun workspace 对主程序全局设置的 `disallowed_types/methods/macros` 要求 `bun_core/bun_sys` output/file/spawn API；`lean_pm` 为保持窄、安全、无 JSC/FFI surface，仅在该 package 明确允许这三项风格 lint，继续强制 `unsafe_code=forbid`、warnings deny、`unwrap/expect/todo/unimplemented` deny。
+
+== Fixed provenance
+
+机器可读 manifest 为 xref:config/leanbun-release-m38.json[`config/leanbun-release-m38.json`]，记录：
+
+* Bun upstream commit/tree 和 M38 fork branch；
+* Bun fork `Cargo.lock`、LeanBun `Cargo.lock`、Rust/Cargo/target 与 build flags；
+* Lean 4.32 compiler commit、Lake 5.0.0 版本和四个 Lake source compatibility hashes；
+* release binary SHA-256、Mach-O/CDHash、签名、Team ID、notarization 和 Gatekeeper 状态；
+* Bun 构建所需 `lol-html` 精确 commit/tree。
+
+主仓库当前是 unborn Git worktree，没有可声明的 LeanBun commit。manifest 因而明确写入 `commit=null` 与
+`commitStatus=unavailable-unborn-main-repository`，并以排序后的 1888 项 source-hash list digest 绑定本次 Rust/adapter/Cargo 输入。它不能冒充已提交源码 provenance；正式签名发布前必须先形成可引用 commit，再重建 manifest 与 binary。
+
+当前 binary 是 linker ad-hoc signature，未提交 notarization，`spctl` 拒绝；因此 M38 完成的是本仓库 fixture 的工程发布，不是可公开分发的签名软件包。
+
+== Release-binary replay
+
+最终二进制自身完成以下路径，不经 `cargo test` 间接代跑：
+
+[cols="2,4",options="header"]
+|===
+|Path |Observed result
+
+|`doctor`
+|Bun lock commit/tree、Lake source hashes、Lean toolchain 和 macOS arm64 均通过；变造 Bun lock hash 被明确拒绝。
+
+|`fixture-network-update`
+|本机 loopback HTTP 显式更新；两个并发消费者只发出一个请求，最终指向同一 immutable object，临时 store 完整清理。
+
+|`fixture-accept`
+|M37 pre-active-rename failure、exact recovery、offline Lake path observation、intentional Lake nonzero、两轮 build、image publish/reuse、retained generation rollback 全通过。
+
+|`fixture-install-accept`
+|fresh install、`0.0.0-dev` upgrade、commit 前崩溃恢复、previous binary/config 保留和 install rollback 全通过。
+|===
+
+稳定 M37 identities 未变化：
+
+* baseline generation: `54f8212b637c05caff3739367b017ae7f88c27b7113144c458572c298699a275`；
+* candidate generation: `0ec56a5d7c02abe6f82ef397b813e1050383268bf90808fa1c932fea49460917`；
+* build image: `392600f2a031b060494d54ec0b734c8f7cb553861faa582cb5441353bfd67a08`；
+* project artifact: `ac9cb455a771c8dcd911b3a5feb91d7e1912b176ff967ae3c410524b28f092bb`。
+
+显式 network fixture graph 为 `9d915fe5b3e05203d1a113f08a926aff30f1177561c6319d9089cf76c0c67d43`，verified object 为
+`7677ee5f9367cf73ed48884e84ae686ef72b47c8d9390a52d392682fd50dae90`。
+
+== Installation transaction
+
+安装根仅允许位于当前仓库 `.leanbun-dev-rust/release-fixture` 的子目录。布局为：
+
+----
+<install-root>/
+  versions/<version>/leanbun
+  versions/<version>/config.v1
+  active
+  previous
+  install-transaction
+----
+
+版本目录先在 staging 中写入并同步，再原子 rename；`install-transaction` 先于 active publication；upgrade 在切换前写 `previous`；recover 只从 exact transaction 和完整 version bytes 前进；rollback 交换 active/previous，不删除任一 binary、config、generation 或 dependency store。
+最终开发 package 已安装在 `.leanbun-dev-rust/release-fixture/package-0.1.0-m38`；其中 versioned binary SHA 与 manifest 的
+`d652c50ecc39407ccd6d39f338d10648e2fad714c7a1298edd19614dedae6969` 一致，active record 为 `0.1.0-m38`。
+
+== Boundary
+
+v1 工程结果只声明 macOS arm64、单机、单用户、本仓库登记 fixture。`adopt/update/build` 对任意外部项目仍 fail closed；外部 production adoption 需要另行显式授权。完整操作表见
+xref:doc/LEANBUN_OPERATOR_MANUAL_V1.adoc[LeanBun v1 Operator Manual]。

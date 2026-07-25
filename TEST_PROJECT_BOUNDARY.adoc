@@ -1,0 +1,21 @@
+= LeanBun Public Test Project Boundary
+
+== Normative rule
+
+LeanBun development tests, regressions, fault injection and release replay may use only the registered templates under `test/fixtures/` in this repository. Personal documents, research repositories, production projects and production dependency libraries are outside the test boundary.
+
+External-project adoption is a separate production operation and requires separate authorization and audit. A fixture result never grants that authorization.
+
+== Registered fixtures
+
+* `lake-basic`: minimal dependency-free Lean library and executable.
+* `lake-lean-config`: staged `lakefile.lean` parser probe.
+* `lake-managed-dependency`: one local dependency for path and transaction checks.
+* `mathlib-project`: locked nine-package Mathlib closure and minimal import.
+* `m42-negative`: malformed input, path escape, hash drift, dependency cycle and missing-package cases.
+
+Templates remain read-only. Execution copies and generated state belong only under ignored repository-local `.leanbun-dev/` or `.leanbun-dev-rust/` roots.
+
+== Mandatory gate
+
+Before reading a project, writing state or starting a subprocess, a test must establish that the source is a registered fixture, the execution copy is under an allowed development root, production dependencies remain read-only, and no external project path enters an allowlist or evidence record. Failure is typed and fail closed.

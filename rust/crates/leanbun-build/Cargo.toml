@@ -1,0 +1,23 @@
+[package]
+name = "leanbun-build"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+autobins = false
+
+[dependencies]
+leanbun-core = { path = "../leanbun-core" }
+leanbun-generation = { path = "../leanbun-generation" }
+leanbun-lake-bridge = { path = "../leanbun-lake-bridge" }
+leanbun-package = { path = "../leanbun-package" }
+leanbun-resolver = { path = "../leanbun-resolver" }
+leanbun-store = { path = "../leanbun-store" }
+rustix = { version = "=1.1.4", default-features = false, features = ["std", "process"] }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "leanbun-process-supervisor"
+path = "src/bin/leanbun-process-supervisor.rs"

@@ -1,0 +1,6 @@
+**/target/
+/.leanbun-dev/
+/.leanbun-dev-rust/
+**/.lake/
+*.log
+.DS_Store

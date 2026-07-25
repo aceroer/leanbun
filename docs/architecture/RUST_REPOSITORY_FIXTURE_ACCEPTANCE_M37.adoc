@@ -1,0 +1,64 @@
+= LeanBun Repository-Local Fixture Acceptance M37
+:toc: left
+:sectnums:
+
+== Result
+
+M37 已使用本仓库登记的 `test/fixtures/lake-basic` 完成并连续两次通过。源模板保持只读；每次执行只在固定的
+`.leanbun-dev-rust/generation-fixture/m37-acceptance/lake-basic` 创建隔离副本，结束后清理副本。外部项目和生产 dependency library 均未进入 request、writer allowlist 或 acceptance identity。
+
+该 fixture 无外部 package，因此 M31 lock、M32 projections、M33 graph 和 M35 generation 都是合法的空 dependency closure；这不是跳过依赖路径，而是先验收最小闭环。Mathlib 九包覆盖继续由既有 `mathlib-project` integration tests 提供。
+
+== Enforced boundary
+
+新增 `verify_registered_test_project_v1`，在任何 Lake 进程启动前同时证明：
+
+* template canonical path 精确等于本仓库三个登记 fixture 之一；
+* execution copy canonical path 位于仓库自己的 development state root；
+* 用仓库根或外部路径伪装 template 会返回 `BoundaryViolation`。
+
+此前 GRSC 一次性程序已从 Cargo targets 移除，其历史源码和已回滚证据不参与本验收。
+
+== Transaction
+
+单次 M37 acceptance 依次完成：
+
+. 从 `lake-basic` 只读模板复制隔离项目，并记录模板与六个项目输入的摘要；
+. 构造空闭包 declaration、lock、resolved graph、path decisions、manifest 和 Bun runtime projection；
+. 通过 M35 正式 manager 发布 baseline generation；
+. 在 candidate 的 active rename 前注入故障，验证 baseline active 保持不变，再将失败事务终态化；
+. 发布新的 candidate generation，并通过 M36 active-generation gate 和实际 workspace-path observation；
+. 对故意不存在的 Lake target 验证 `LakeNonzero`，candidate active 保持不变；
+. 两次运行固定、禁网的 `lake build leanbun_lake_fixture`，验证 project artifact identity 相同；
+. 发布 build image，再以同 key 获得 verified reuse；
+. 调用正式 `rollback_active_generation`，原子恢复已发布 baseline，并重新完整验证 active generation；
+. 验证模板、Lean 源文件、manifest、lakefile 和 toolchain 前后完全一致。
+
+`rollback_active_generation` 要求 current 与 retained 是不同的已发布 generation；它在锁前和锁内重验 current active、retained transaction 与 immutable bytes，随后原子替换 active record。candidate generation 不被删除或重写。
+
+== Stable evidence
+
+固定 acceptance 路径连续运行两次得到相同 identity：
+
+[cols="1,2",options="header"]
+|===
+|Evidence |SHA-256
+
+|Baseline generation
+|`54f8212b637c05caff3739367b017ae7f88c27b7113144c458572c298699a275`
+
+|Candidate generation
+|`0ec56a5d7c02abe6f82ef397b813e1050383268bf90808fa1c932fea49460917`
+
+|Build image
+|`392600f2a031b060494d54ec0b734c8f7cb553861faa582cb5441353bfd67a08`
+
+|Project artifact
+|`ac9cb455a771c8dcd911b3a5feb91d7e1912b176ff967ae3c410524b28f092bb`
+|===
+
+验收测试为 `leanbun-build/tests/m37_fixture.rs`。另有 M35 回归直接验证 retained generation rollback 不重写 candidate 或 baseline bytes。
+
+== Boundary after M37
+
+M37 只证明本仓库登记 fixture 的工程闭环可用，不授权任何外部项目 adoption。M38 可开始 release-binary integration，但所有 release replay 仍只能使用本仓库 fixture。

@@ -1,0 +1,5 @@
+schema	leanbun-public-positive-summary-v1
+fixture	status	package_count	explicit_update	fault_recovery	rollback	execution_copy	registered_template
+lake-basic	passed	0	none	passed	passed	cleaned	unchanged
+lake-managed-dependency	passed	1	managed_dep	passed	passed	cleaned	unchanged
+mathlib-project	passed	9	mathlib	passed	passed	cleaned	unchanged

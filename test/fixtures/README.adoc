@@ -1,0 +1,19 @@
+= LeanBun Lean/Lake 测试库
+
+本目录是 LeanBun 开发测试、回归、故障注入和验收的唯一 Lean/Lake 项目来源。完整强制边界见
+xref:../../TEST_PROJECT_BOUNDARY.adoc[LeanBun Test Project Boundary]。不得用任何外部研究仓库或活动项目替代这里的 fixture。
+
+本目录只保存无构件的测试源模板。集成测试将模板复制到 `.leanbun-dev/tmp/`，然后使用隔离的
+Bun、Elan、Lean、Lake 与 Mathlib package override 构建副本。
+
+* `lake-basic/`：无外部依赖；测试 Lean library、Lake executable 与增量复用；
+* `lake-lean-config/`：最小 `lakefile.lean`；只供 M32 `loadWorkspaceRoot` staging probe 验证 Lean 配置加载；
+* `lake-managed-dependency/`：一个 root、一个无传递依赖的 vendored Lake package 与锁定 manifest；验证 M40 store、Bun final path、derived `.lake` cache 和实际编译，并在 M41 Phase A 充当唯一获准的外部采用 dry-run 模拟器；
+* `mathlib-project/`：锁定 Lean/Mathlib `v4.32.0` 正式九包 manifest；测试开发 override 和一个
+  最小 Mathlib import。
+* `m42-negative/`：只供 `fixture-regress --fixture=negative-matrix` 使用的五类登记负输入；分别固定 malformed
+  manifest、local path escape、registered revision drift、resolver cycle 与 provider closure missing package。
+  聚合器只能写独立 negative regression evidence，不得修改正向 regression records/latest。
+
+不得在模板目录执行 `lake update`。Mathlib fixture 的 `lake-manifest.json` 是测试证据，不由测试过程
+改写。

@@ -1,0 +1,54 @@
+= LeanBun Dependency-Bearing Managed Entry M40 Phase A
+:toc: left
+:sectnums:
+
+== Result
+
+M40 Phase A 把 M39 的空依赖 controller 扩展为真实 dependency-bearing managed build。验收只使用本库
+`test/fixtures/lake-managed-dependency` 隔离副本；没有采用外部项目，也没有读取网络。
+
+当前闭环支持 root manifest 中无传递依赖的 local path snapshot。Bun 计算 source tree、构造 M31 lock、运行
+M33 resolver、发布 M34 immutable store object，并按每个 transaction 的 generation root 重新生成 final-path
+decision 与 Lake runtime projection。Lake 仅通过该 projection 执行，实际 `LEAN_PATH` 必须与 Bun decisions
+完全相等。
+
+== Discovered Lake precedence boundary
+
+如果依赖项目没有 `lake-manifest.json`，Lake 会进入 `updateAndMaterialize`，CLI `--packages` overrides 不参与该路径。
+M40 因此把 root manifest 纳入 management-input digest；带依赖 managed build 必须从已锁定 manifest 启动，普通
+build 不允许隐式生成依赖状态。
+
+== Immutable source and derived cache
+
+Generation package source entry保持只读和逐文件摘要重验。Lake 编译依赖时必须写入 package `.lake`，因此
+M40 明确把它定义为非权威 derived cache：
+
+* manager 先重验 active generation，再创建唯一可写的 package `.lake`；
+* Seatbelt 只增加这些精确 `.lake` 路径，不开放 generation 其他区域；
+* 后续 generation 验证忽略 `.lake` 内容，但拒绝任何 source entry 缺失、增加、类型或摘要变化；
+* rollback 保留 candidate generation、derived cache 和 immutable store object。
+
+== Explicit update and acceptance
+
+带依赖 update 必须给出非空、无重复、存在于 closure 的 `--package=NAME` 集合。验收序列为：
+
+----
+leanbun adopt REPO PROJECT leanbun_managed_dependency_fixture --explicit-managed-project
+leanbun build REPO PROJECT
+leanbun update REPO PROJECT                       # rejected
+leanbun update REPO PROJECT --package=managed_dep
+leanbun build REPO PROJECT
+leanbun fixture-managed-recovery REPO PROJECT
+leanbun rollback REPO PROJECT
+leanbun build REPO PROJECT
+----
+
+三次 build 的 project artifact 均为
+`96e38f08293fd0086f059d1836b0a245806163344066feb987ca0d7b9beb9cce`。采用、显式更新和 rollback
+分别指向不同/恢复后的 transaction；package count 始终为一；fixture source 除 root `.lake` 外与 template
+逐文件一致，vendor dependency 没有被写入 `.lake`。
+
+== Phase B continuation
+
+本报告只证明 Phase A；九包 Mathlib Git closure 不以本报告的证据反向宣称完成。后续 Phase B 已另行实现并验收，
+见 xref:RUST_REGISTERED_GIT_CLOSURE_M40.adoc[Registered Git Closure M40 Phase B]。M41 外部小项目采用仍是独立授权动作。

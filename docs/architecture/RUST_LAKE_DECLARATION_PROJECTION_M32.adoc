@@ -1,0 +1,85 @@
+= LeanBun Rust Lake Declaration and Projection Bridge M32
+:toc: left
+:sectnums:
+
+== Outcome
+
+M32 is complete. The new `leanbun-lake-bridge` crate connects the M31 Bun authority model to Lake without giving Lake dependency-selection authority:
+
+* `LakeRootDeclarationV1` normalizes bounded root declarations from `lakefile.toml` and `lakefile.lean`;
+* `LakeManifestProjectionV1` emits the complete locked manifest view;
+* `LakeRuntimePackagesProjectionV1` emits a path-only runtime packages file from the complete `PackagePathDecisionSetV1`;
+* `LakeWorkspacePathObservationV1` compares every observed Lake package path against the unique Bun decision;
+* typed errors reject duplicate/missing/extra packages, source kind/value drift, non-Bun runtime files and workspace path drift.
+
+M32 does not select versions, fetch dependencies, publish store objects, write a real project or execute a target build.
+
+== Root declaration probe
+
+`lean/probes/M32RootDeclarations.lean` calls only exact-toolchain `Lake.loadWorkspaceRoot`. For Lean configuration files the native probe imports the complete Lake DSL and loads the co-located `libLake_shared` plugin so compiled command elaborators and evaluated configuration code come from the same locked Lake installation.
+
+The Rust adapter:
+
+. accepts a source project only below the fixture root;
+. requires a new staging directory below `.leanbun-dev`;
+. copies only the selected Lake config, `lean-toolchain` and probe source into staging;
+. compiles and links the probe with the exact Lean 4.32 toolchain;
+. runs compilation, linking and probing through the network-denying Seatbelt profile with a cleared environment;
+. bounds stdout/stderr, strictly decodes schema v1 JSON and rechecks the source config/toolchain hashes;
+. rejects any probe that creates `lake-manifest.json` or `.lake/packages`.
+
+Both TOML fixtures and a real `lakefile.lean` DSL fixture pass this route. It does not call `Lake.loadWorkspace`, `lake update`, dependency materialization or target construction.
+
+The probe also pins these Lake 4.32 source inputs by SHA-256:
+
+[cols="2,3",options="header"]
+|===
+|Source |SHA-256
+
+|`Lake/Load/Manifest.lean`
+|`8b01bdff19b7e4cba470755f8d308a9d77d7402486c409e8105e26fee524a43e`
+
+|`Lake/Load/Resolve.lean`
+|`b1cce0ebebbcd620906750760a1c6b5ff50b26e18caba946888f48b391390516`
+
+|`Lake/Load/Workspace.lean`
+|`dd23a173478243833d443dae8ffd28695f9a9b0ca00dd03ee88d039d1f6dd129`
+
+|`Lake/CLI/Main.lean`
+|`4b95ab56b87319c0a1e2b55d0d31e3c077977a376020c326579d0802b9399010`
+|===
+
+== Projection authority
+
+Both projections are pure canonical JSON encoders. Package metadata must cover the complete locked closure exactly once and follows M31 canonical package ordering.
+
+The manifest projection carries locked Git revision/subdirectory or locked path source data. Root declarations must agree with the lock on source kind and source value. Missing metadata does not fall back to an existing manifest.
+
+The runtime projection has a narrower contract: every entry is `type = path`, its directory is the Bun-selected absolute final path, and construction requires a complete M31 decision set. A managed invocation is valid only with exactly one packages file and that file must be Bun-generated; duplicate `--packages`, absent projection and external runtime overrides fail closed.
+
+`LakeWorkspacePathObservationV1` sorts the actual closure by package key, rejects duplicate/missing/extra observations and requires field-for-field equality with the decision set before producing an observation digest.
+
+== Exact Lake and Mathlib acceptance
+
+`lean/probes/M32ParseEntries.lean` is the exact Lake oracle. It calls `Lake.Manifest.parseEntries` on both Rust projections and reports the normalized entry fields. The tests establish:
+
+* both projections are accepted by Lake 4.32 and preserve package/source fields;
+* Git subdirectories survive the manifest projection;
+* runtime entries contain only Bun paths;
+* three-layer authority conflicts, duplicate runtime files, source kind drift, missing-manifest fallback and actual-path drift are rejected;
+* the tracked Mathlib manifest and development override fixture form a complete nine-package closure, and all nine runtime paths equal their Bun final-path decisions.
+
+== Verification snapshot
+
+The completion run passed:
+
+* M32 targeted suite: eight tests;
+* Rust workspace: 148 tests passed, with one environment-dependent provider snapshot test explicitly ignored;
+* `cargo clippy --workspace --all-targets -- -D warnings`;
+* Bun repository suite: 93 tests and 866 assertions.
+
+All M32 writes remain inside isolated staging roots under `.leanbun-dev` or Rust build state under `.leanbun-dev-rust`. The production dependency library and designated real Lean project remain read-only.
+
+== M33 gate
+
+M33 may consume M31 locks and M32 declarations to implement a deterministic, pure Lean dependency resolver over already supplied metadata. Network access, package fetch, immutable-store publication, active-generation publication and Lake builds remain closed.

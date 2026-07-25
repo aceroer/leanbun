@@ -1,0 +1,18 @@
+{
+  "version": "1.2.0",
+  "packagesDir": ".lake/packages",
+  "packages": [
+    {
+      "type": "path",
+      "scope": "",
+      "name": "managed_dep",
+      "dir": "vendor/managed_dep",
+      "manifestFile": null,
+      "inherited": false,
+      "configFile": "lakefile.toml"
+    }
+  ],
+  "name": "leanbun_managed_dependency_fixture",
+  "lakeDir": ".lake",
+  "fixedToolchain": false
+}

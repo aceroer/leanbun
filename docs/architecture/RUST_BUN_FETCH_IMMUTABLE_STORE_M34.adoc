@@ -1,0 +1,127 @@
+= LeanBun Rust Bun Fetch and Immutable Store M34
+:toc: left
+:sectnums:
+
+== Outcome
+
+M34 is complete. The new `leanbun-store` crate consumes one package from an M33 exact graph and produces a verified, digest-keyed immutable source object. It is a narrow Rust `lean_pm` boundary intended to compile into the locked Bun Rust fork at M38; npm dependency resolution, peer dependencies, hoisting and lifecycle scripts are not present in its API or implementation.
+
+M34 opens only local fixtures:
+
+* regular local tar archives under an explicit canonical source root;
+* numeric loopback HTTP (`127.0.0.0/8` or `::1`) with no DNS, redirect, chunked transfer or content encoding;
+* local Git repositories under an explicit canonical source root, exact commit verification and hooks disabled;
+* local path snapshots already selected by an M33 exact path candidate.
+
+It does not access the public network, generate an active project state, invoke Lake or compile Lean.
+
+== Bun-derived adapter boundary
+
+The implementation was checked against the locked Bun Rust checkout at commit
+`892b1dabc69e2a0a973244f772b84967c73ccad5` (tree `81a25490c3c5aeb4271a200a96943239b686404b`) and keeps the following narrow source-derived mechanisms:
+
+[cols="2,2,3",options="header"]
+|===
+|Bun source |Locked SHA-256 |LeanBun use
+
+|`src/install/NetworkTask.rs`
+|`3af63b932306db11e375a5eddf8a80744dedb4ce657f7d36f879a3dfa927f459`
+|bounded retry state and retained terminal task result
+
+|`src/install/integrity.rs`
+|`4c50d494a0bbbfeafc1aec279c5d34d32a845bad3c27c1820e57a36adba5e103`
+|bytes-first SHA verification before parsing
+
+|`src/install/extract_tarball.rs`
+|`e1d6e0dc0db7c5414c4ef7667f461b7c196cae0d98aaa366d977f0af8a69f0c5`
+|isolated extraction followed by atomic publication
+
+|`src/install/PackageManagerTask.rs`
+|`b18346fd592bc19b502fff72d29eba80e843c8c3c592e96999f78e4f42880213`
+|same-request in-process task deduplication
+
+|`src/install/PackageManagerDirectories.rs`
+|`2bb36c64cee85f44aa99a14d41f10ecd173dda4c605802d293758b3d2985068a`
+|private slot/object directory separation
+|===
+
+The adapter reuses the architecture, not Bun's npm graph model. It remains standard-library-only and uses the same Rust language/runtime boundary as the Bun fork, so M38 integration does not require XPC, Python or a second package-manager process.
+
+== Public contract
+
+`LeanFetchRequestV1::from_graph` binds the M33 graph identity, package key, exact candidate identity, source description, canonical source root and bounded limits into one request identity. A source-kind mismatch with the exact M33 candidate is rejected before I/O.
+
+The returned evidence is split deliberately:
+
+* `VerifiedDownloadBlobV1` binds the downloaded/archive bytes and byte count;
+* `VerifiedPackageObjectV1` binds package, candidate, normalized tree, store metadata digest, object/tree paths, normalized entries and publication outcome;
+* `LeanStorePublicationV1` distinguishes `Published`, existing-object `Reused` and same-task `Deduplicated` results;
+* `verify_object_for_request` performs offline content and metadata revalidation without the original archive or repository.
+
+The verified object's store SHA and source-tree SHA have been passed directly into `PackagePathDecisionV1::new` in the M34 integration suite. M35 remains responsible for assigning the location-specific generation path and publishing it active.
+
+== Bounded fetch and cancellation
+
+The v1 maxima are 64 MiB downloaded bytes, 256 MiB expanded bytes, 64 MiB per file, 4096 normalized entries, a 32 KiB HTTP header and at most three configured retries. Timeouts are bounded at two seconds for connect, five seconds for HTTP I/O and ten seconds for Git. A caller cancellation token is checked during reads, retry boundaries, Git wait and deduplicated-task wait.
+
+HTTP accepts one `Content-Length` and status 200 only. It rejects transfer encoding, missing or duplicate length, non-loopback numeric addresses and oversized header/body. Retriable transport/status failures are retained after the bounded attempt set.
+
+Local Git first verifies `<revision>^{commit}`, then archives that exact commit or exact `commit:subdir`. The process receives a fixed executable, cleared environment, disabled hooks, `COPYFILE_DISABLE=1`, bounded deadline and kill/wait cleanup. Git's canonical global PAX commit comment is accepted; all other global PAX forms remain rejected.
+
+== Archive and normalized tree rules
+
+The parser accepts only complete uncompressed 512-byte tar streams with verified header checksums and a two-block terminator. Files and directories are normalized; hard links, symbolic links, devices, FIFOs and other special types are rejected. Absolute paths, backslashes, control bytes, empty/dot/parent components, `.git`, `.lake`, duplicate entries and file/directory collisions fail closed.
+
+The tree digest binds, in lexical order:
+
+* normalized relative path;
+* file or directory kind;
+* normalized mode (`0644`/`0755` for source files and `0755` for directories);
+* byte size;
+* SHA-256 for every file.
+
+Expansion accounting occurs before materialization. A local directory walk rejects symlinks and special files and verifies that each observed file size is stable while read.
+
+== Publication and recovery
+
+`LeanImmutableStoreV1::open` permits writes only beneath the canonical `.leanbun-dev-rust/store-fixture` root. Every descendant is created component-by-component and an existing symlink or non-directory fails the boundary check.
+
+Publication is:
+
+. allocate one private unique slot;
+. fetch and verify download integrity;
+. parse/plan the complete normalized tree in memory;
+. compare the tree digest with the M33 candidate;
+. materialize with create-new semantics;
+. write deterministic object metadata;
+. sync every regular file and then every directory;
+. atomically rename to `objects/<source-tree-sha256>`;
+. seal files/directories read-only and sync the object and objects parent;
+. remove the private slot.
+
+An existing digest object is never overwritten. It is walked and rehashed offline; tree or metadata drift returns `TreeDrift`. Same-request workers share one retained terminal result. Different requests racing for the same tree converge at the digest-keyed rename and reverify the winner.
+
+Injected download, extraction, file-sync, directory-sync and rename failures leave no visible object and the slot is removed. If post-rename sealing/sync fails, publication is rolled back; a failed rollback becomes `IndeterminatePublication` rather than success.
+
+== Verification snapshot
+
+The M34 integration suite contains five scenario tests with multiple typed assertions:
+
+* local archive publication, offline revalidation, M31 path-decision construction and same-digest/different-bytes drift rejection;
+* two concurrent loopback HTTP callers, one request and exactly one `Published` result;
+* retained terminal failure plus download/extract/file-sync/directory-sync/rename fault cleanup;
+* local Git exact-commit archive/integrity/publication with hooks disabled;
+* traversal, link, duplicate-entry and expansion-bomb rejection.
+
+All test writes are temporary descendants of `.leanbun-dev-rust/store-fixture`; test teardown removes their objects and slots. The designated real Lean project and production dependency provider are only inspected for nonmutation.
+
+The completion run passed:
+
+* M34 targeted suite: five tests;
+* Rust workspace: 162 tests passed, with one environment-dependent provider snapshot test explicitly ignored;
+* `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` through the isolated offline Rust wrapper;
+* Bun repository suite: 93 tests and 866 assertions.
+
+== M35 gate
+
+M35 may consume M31 lock/decision data, M32 projections, the M33 graph and these verified M34 objects to build a durable fixture-only active-generation transaction. M34 does not itself choose or publish an active generation.

@@ -1,0 +1,4 @@
+schema	leanbun-public-concurrent-history-summary-v1
+pass	workers	positive_records	negative_records	terminal_records	prior_audits	expected_failure	retention	automatic_deletion
+public-run-1	2	6	4	3	0	JSON_MALFORMED	retain-all-v1	disabled
+public-run-2	2	6	6	6	1	JSON_MALFORMED	retain-all-v1	disabled

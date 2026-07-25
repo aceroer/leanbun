@@ -1,0 +1,3 @@
+root	a
+edge	a	b
+edge	b	a

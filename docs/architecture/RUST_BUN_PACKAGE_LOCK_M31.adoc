@@ -1,0 +1,82 @@
+= LeanBun Rust Lock and Final-Path Decision Model M31
+:toc: left
+:sectnums:
+
+== Outcome
+
+M31 is complete. `leanbun-package::lock_v1` now provides the pure, bounded authority model required before any Lake projection or package fetch is allowed:
+
+* `LeanBunLockV1` and `LockedLeanPackageV1` bind the exact toolchain, compiler revision, Lake version, root inputs, complete package closure and every semantic package field;
+* `PackagePathProvenanceV1` models manifest, workspace override and Bun-generated runtime provenance without exposing a constructor for an untrusted runtime claim;
+* `PackagePathDecisionV1` binds one selected source, provenance-set digest, contained final path, immutable store object, source tree and generation;
+* `PackagePathDecisionSetV1` admits a public state only when every locked package has exactly one compatible decision and no extra package exists.
+
+This milestone does not read a project, write `leanbun.lock`, inspect a real path, access the network or start Lean/Lake.
+
+== Canonical lock contract
+
+The v1 text codec is a strict, line-oriented format with lowercase hexadecimal UTF-8 tokens and SHA-256 fields. The decoder requires fixed record order, exact field count, canonical decimal counts, LF line endings, full consumption and a matching recomputed graph digest. A decoded lock is accepted only when re-encoding produces exactly the original bytes.
+
+Canonical package and dependency ordering uses `(scope UTF-8 bytes, name UTF-8 bytes)`. The graph digest binds requested and resolved source, exact Git revision, optional subdirectory, download integrity, source tree, config/manifest digests, selected source identity, dependency edges and provenance digests. The lock identity additionally binds the complete canonical document.
+
+Portable path packages contain only normalized relative tokens. Unix, Windows drive and backslash absolute forms are rejected; machine-specific absolute paths occur only in a generation-bound path decision.
+
+== Bounds and typed rejection
+
+[cols="3,2",options="header"]
+|===
+|Object |v1 bound
+
+|packages per lock
+|4096
+
+|dependencies or provenance digests per package
+|4096
+
+|dependency graph depth
+|128
+
+|path provenance entries
+|12288, three layers per maximum closure
+
+|package scope/name
+|256 UTF-8 bytes each
+
+|URL and portable path token
+|4096 UTF-8 bytes
+
+|Git subdirectory
+|1024 UTF-8 bytes
+|===
+
+`LeanBunLockV1ErrorKind` distinguishes invalid fields, limits, duplicate packages/edges/provenance/decisions, missing or extra packages, cycles/depth, absolute portable paths, incompatible provenance, ambiguous selection, missing decisions, generation-root escape, noncanonical text and digest mismatch.
+
+Requested and resolved source variants are non-exhaustive outside the crate and are created through validated constructors. Git sources require a canonical HTTPS URL, exact lowercase 40-byte commit and download integrity; requested/resolved source kinds and locations must agree.
+
+== Shared Rust/Bun oracle
+
+`test/fixtures/m31-lock/model-cases.tsv` is the shared positive/negative bounded-input corpus. `canonical-golden.tsv` fixes graph SHA-256, canonical-text SHA-256 and lock identity for a two-package graph.
+
+Rust and Bun independently implement the canonical graph byte stream. Tests establish:
+
+* package and dependency input permutation does not change graph or lock identity;
+* source revision, tree digest and other semantic changes alter the graph digest;
+* canonical text round-trips byte-for-byte;
+* malformed counts, digest drift, missing packages, cycles, excessive depth, duplicate provenance, ambiguous selection, missing/duplicate decisions and path escape fail closed.
+
+The Rust module imports only `core`, `std::collections`, `leanbun-core::Sha256` and `Sha256Hasher`. It contains no filesystem, network, process, Lake or `lake update` surface.
+
+== Verification snapshot
+
+The M31 completion run passed:
+
+* Rust workspace: 140 tests passed, one environment-dependent provider snapshot test remained explicitly ignored;
+* `cargo clippy --workspace --all-targets -- -D warnings`;
+* Bun repository suite: 93 tests, 866 assertions;
+* M31 Bun oracle: three tests covering the shared malformed corpus, canonical identities, ordering invariance and semantic drift.
+
+Rust workspace verification used the repository's isolated Cargo home and the existing `.leanbun-dev/tmp` path. This keeps Cargo offline and avoids the macOS `/var` symlink in the older path-provenance fixture; no production dependency was downloaded or changed.
+
+== M32 gate
+
+M32 may consume these types to build the Lake declaration/projection bridge. It may operate only on the isolated fixtures described by the roadmap. Dependency resolution, package fetch, store publication and real-project writes remain closed.

@@ -1,0 +1,16 @@
+schema	leanbun-project-input-tree-v1
+owner	project
+expected	c85118b2aaa87b39fe9bcf031e1c1015e0a2086625c1458684ba1c1f2fe037b2
+counts	9	5	117
+dir	0755	.leanbun
+dir	0755	scripts
+dir	0755	src
+file	0644	.leanbun/binding.json	62696e64696e672d76310a
+file	0644	Main.lean	696d706f7274204c65616e62756e0a646566206d61696e56616c7565203a3d20370a
+file	0755	scripts/check.sh	23212f62696e2f73680a65786563206c616b65206275696c640a
+file	0644	src/Helper.lean	6465662068656c706572203a204e6174203a3d2031310a
+file	0644	src/数.lean	646566206e756d626572203a204e6174203a3d2031330a
+excluded-dir	0755	.git
+excluded-dir	0755	.lake
+excluded-dir	0755	.leanbun/tmp
+excluded-file	0644	.DS_Store	69676e6f726564

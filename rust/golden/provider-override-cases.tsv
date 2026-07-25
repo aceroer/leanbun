@@ -1,0 +1,10 @@
+true	valid-minimal	{"version":"1.2.0","packages":[{"name":"mathlib","type":"path","dir":"/isolated/packages/mathlib"}]}
+true	valid-known-optional-fields	{"version":"1.2.0","packages":[{"type":"path","dir":"/isolated/packages/p","name":"p","manifestFile":"lake-manifest.json","inherited":false,"configFile":"lakefile.toml"}]}
+false	unsupported-version	{"version":"2.0.0","packages":[]}
+false	missing-packages	{"version":"1.2.0"}
+false	unknown-root-field	{"version":"1.2.0","packages":[],"extra":true}
+false	unknown-package-field	{"version":"1.2.0","packages":[{"name":"p","type":"path","dir":"/isolated/p","extra":true}]}
+false	wrong-package-type	{"version":"1.2.0","packages":[{"name":"p","type":"git","dir":"/isolated/p"}]}
+false	relative-directory	{"version":"1.2.0","packages":[{"name":"p","type":"path","dir":"packages/p"}]}
+false	duplicate-package-name	{"version":"1.2.0","packages":[{"name":"p","type":"path","dir":"/isolated/p"},{"name":"p","type":"path","dir":"/isolated/p2"}]}
+false	wrong-known-field-type	{"version":"1.2.0","packages":[{"name":"p","type":"path","dir":"/isolated/p","inherited":"false"}]}

@@ -1,0 +1,10 @@
+true	valid-minimal	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"mathlib","type":"git","rev":"81a5d257c8e410db227a6665ed08f64fea08e997"}]}
+true	valid-known-optional-fields	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"url":"https://example.invalid/p","type":"git","subDir":null,"scope":"scope","rev":"81a5d257c8e410db227a6665ed08f64fea08e997","name":"p","manifestFile":"lake-manifest.json","inputRev":"main","inherited":false,"configFile":"lakefile.toml"}]}
+false	unsupported-version	{"version":"2.0.0","packagesDir":".lake/packages","packages":[]}
+false	missing-packages-dir	{"version":"1.2.0","packages":[]}
+false	unknown-root-field	{"version":"1.2.0","packagesDir":".lake/packages","packages":[],"extra":true}
+false	unknown-package-field	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"p","type":"git","rev":"81a5d257c8e410db227a6665ed08f64fea08e997","extra":true}]}
+false	wrong-package-type	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"p","type":"path","rev":"81a5d257c8e410db227a6665ed08f64fea08e997"}]}
+false	invalid-revision	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"p","type":"git","rev":"ABC"}]}
+false	duplicate-package-name	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"p","type":"git","rev":"81a5d257c8e410db227a6665ed08f64fea08e997"},{"name":"p","type":"git","rev":"023ce7d62a0531e22a5331e20b587817a80d49ff"}]}
+false	wrong-known-field-type	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"p","type":"git","rev":"81a5d257c8e410db227a6665ed08f64fea08e997","inherited":"false"}]}

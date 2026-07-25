@@ -1,0 +1,18 @@
+{
+  "version": "1.2.0",
+  "packagesDir": ".lake/packages",
+  "packages": [
+    {
+      "type": "path",
+      "scope": "",
+      "name": "escape",
+      "dir": "../outside",
+      "manifestFile": null,
+      "inherited": false,
+      "configFile": "lakefile.toml"
+    }
+  ],
+  "name": "leanbun_path_escape_fixture",
+  "lakeDir": ".lake",
+  "fixedToolchain": false
+}

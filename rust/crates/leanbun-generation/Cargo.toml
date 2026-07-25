@@ -1,0 +1,16 @@
+[package]
+name = "leanbun-generation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+leanbun-core = { path = "../leanbun-core" }
+leanbun-lake-bridge = { path = "../leanbun-lake-bridge" }
+leanbun-package = { path = "../leanbun-package" }
+leanbun-resolver = { path = "../leanbun-resolver" }
+leanbun-store = { path = "../leanbun-store" }
+
+[lints]
+workspace = true

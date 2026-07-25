@@ -1,0 +1,8 @@
+true	targeted	5.0.0-src+8c9756b	mathlib	mathlib	mathlib	--keep-toolchain,update,mathlib
+true	sorted-targets	5.0.0-src+8c9756b	mathlib,aesop	aesop,mathlib	aesop,mathlib	--keep-toolchain,update,aesop,mathlib
+false	version-drift	5.0.0-src+deadbeef	mathlib	mathlib	mathlib	-
+false	bare-update	5.0.0-src+8c9756b	<empty>	mathlib	mathlib	-
+false	unknown-package	5.0.0-src+8c9756b	batteries	mathlib	mathlib	-
+false	path-package	5.0.0-src+8c9756b	local	local	<empty>	-
+false	duplicate-package	5.0.0-src+8c9756b	mathlib,mathlib	mathlib	mathlib	-
+false	option-like-package	5.0.0-src+8c9756b	--update	--update	--update	-

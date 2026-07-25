@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "name": "oven-sh/bun",
+  "role": "read-only Rust upstream source library",
+  "remote": "https://github.com/oven-sh/bun.git",
+  "branch": "main",
+  "commit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+  "tree": "81a25490c3c5aeb4271a200a96943239b686404b",
+  "authorDate": "2026-07-23T01:18:13-07:00",
+  "localPath": ".leanbun-dev-rust/upstream/bun",
+  "shallow": true,
+  "submodulesInitialized": false,
+  "cargoTomlSha256": "1b212918f5430c40db082d86dd4cd4a37586ef11d5891731f621f4b48670d8cd",
+  "cargoLockSha256": "934bc1ecbc4ee3f3e82971e50b42a2ad6bc99356b9b543bde98932d83c89700b",
+  "observed": {
+    "cargoWorkspaceMembers": 99,
+    "rustSourceFiles": 1495,
+    "zigSourceFiles": 0,
+    "cppAndCHeaderSourceFiles": 1532
+  }
+}

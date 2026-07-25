@@ -1,0 +1,50 @@
+= LeanBun Managed Project Entry M39
+:toc: left
+:sectnums:
+
+== Result
+
+M39 Phase A 已把 `adopt/update/build/recover/rollback` 从 M38 的显式拒绝改为持久 Rust 状态机。实现位于 `leanbun-managed`，由 Bun fork 内 `src/lean_pm` 的 `0.2.0-m39-dev` 单一 binary dispatch。
+
+本轮没有采用任何外部项目。全部执行使用 `test/fixtures/lake-basic` 的隔离副本，副本、registry、generation state 和 project-control evidence 已在验收后清理。
+
+== Boundary split
+
+`LeanGenerationManagerV1::open_managed` 将两个概念分开：
+
+* `management_root/state_root` 是唯一 writer authority，必须是 private canonical descendant；
+* `project_root` 是显式采用的 canonical source directory，可以位于 state 外，但构造器只读取、不创建、不修改；
+* generation、transaction、active、retained 和 lock 全在 state root；
+* 只有 `build` 经 offline Seatbelt 明确获得项目 `.lake` 写权限。
+
+== Persistent record
+
+每个项目按 canonical path 计算 `ProjectId`，strict record 绑定 project、target、management-input digest、baseline/active/previous/pending transaction。更新先发布 pending record，再进入 M35 transaction；active generation 是 generation commit point，managed record 是 CLI reconstruction point。
+
+Recovery 分为：
+
+* 首次 adopt 在 active rename 前失败：终结 transaction 为 failed，删除 adoption record，重新 adopt 必须再次显式确认；
+* 已采用项目 update 在 active rename 前失败：旧 active 不变，recover 终结 pending 并清空 record；
+* active 已提交而 record 尚未前进：recover 重验 generation 后完成 record publication。
+
+== CLI acceptance
+
+隔离 `lake-basic` 通过多个独立 CLI 进程执行：
+
+----
+leanbun adopt REPO PROJECT leanbun_lake_fixture --explicit-managed-project
+leanbun managed-status REPO PROJECT
+leanbun build REPO PROJECT
+leanbun update REPO PROJECT
+leanbun build REPO PROJECT
+leanbun rollback REPO PROJECT
+leanbun build REPO PROJECT
+leanbun fixture-managed-recovery REPO PROJECT
+----
+
+缺少 confirmation 的 adopt 返回非零，managed-fixture 之外的项目即使带 confirmation 也在 M39 CLI 门被拒绝。最终隔离副本两轮 build artifact 均为
+`8e35f38c94b717d3a9c3c576f1b3afa86a18769982e8606e1282526ec32bbf30`；rollback 恢复原 generation；fault recovery 保持旧 active；六个项目输入文件与 template SHA 全部一致。另一隔离路径的 artifact identity 不要求相同，因为 project output 保持 project/path binding。
+
+== Current stop
+
+Phase A 只接受空 dependency graph。`update` 现在验证 transaction/recovery/rollback 主链，但不会为零依赖项目制造虚假网络活动。带依赖的 resolver metadata、fetch/store 和 explicit update set 属于 M40。外部项目采用属于 M41，尚未授权、尚未执行。

@@ -1,0 +1,21 @@
+{
+  "schema": "leanbun-public-validation-summary-v1",
+  "leanbunVersion": "0.11.0-m42-dev",
+  "platform": "macOS arm64",
+  "rust": {
+    "defaultTestsPassed": 184,
+    "explicitProviderTestsPassed": 1,
+    "clippyPassed": true
+  },
+  "bun": {
+    "testsPassed": 93,
+    "assertionsPassed": 866,
+    "upstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5"
+  },
+  "lean": {
+    "toolchain": "leanprover/lean4:v4.32.0",
+    "lakeVersion": "5.0.0-src+8c9756b"
+  },
+  "scope": "registered-fixtures-only",
+  "externalProjectAuthorization": false
+}

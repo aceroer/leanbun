@@ -1,0 +1,153 @@
+= LeanBun 外部包与依赖管理边界
+:toc: left
+:sectnums:
+
+== 修正决定
+
+IMPORTANT: 本文件的“只观察/计划/调用 Lake update”路线已被
+xref:BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[LeanBun Bun-Managed Lean Package Takeover M30]再次修正。当前主线由 Bun 接管 resolved lock、来源获取、
+完整性、不可变 store、事务、锁、恢复和发布；Lake 保留配置/target/build semantics，Lean 保留编译/kernel。本文件其余 M0--M29 内容作为边界演进
+记录保留，不再是 M30 之后的实施上位规则。
+
+== M0--M29 历史边界
+
+以下内容记录 M0--M29 曾采用的 passive external-manager 边界，用于解释已有 artifacts；出现冲突时一律以 M30 为准。
+
+该阶段曾把既有文档中关于 LeanBun 自行实现 atomic seal/bind、
+project/image build lock、execution recovery、cache publication 或 `leanbun-state` filesystem writer 的路线，均降为
+历史安全实验。M30 已重新启用其中可验证的 transaction/lock/recovery 机制，但只用于 Bun-owned state，不冒充 Lake private cache state。
+
+`RUST_STATE_M0.adoc` 所记录的纯函数实验可以保留作研究证据，但不接入 CLI、不继续实现 writer，也不用于解释
+或改变 Lake 内部状态。
+
+== M0--M29 历史权责分界
+
+Lake 对以下事项保持唯一权威：
+
+* workspace 与 package 配置加载；
+* 依赖约束解析、版本选择和 manifest 生成；
+* package checkout、materialization 与更新；
+* `.lake` 目录、构建缓存、内部锁和增量构建状态；
+* target 构建顺序、失败恢复和 cache 一致性。
+
+LeanBun 不复制这些算法，不根据 Lake 内部文件推演可写状态，也不直接创建、替换、修复、删除或恢复上述对象。
+尤其禁止：
+
+* 写入或修补 `lake-manifest.json`、`.lake/package-overrides.json` 和 `.lake` 内部记录；
+* 模拟 Lake dependency resolver、build scheduler、cache key 或内部 lock lifecycle；
+* 绕过 Lake CLI 直接切换 package checkout、恢复构件或清理 cache；
+* 根据 PID、文件年龄或残留锁自动判定并恢复 Lake 事务；
+* 将 LeanBun 自己的 execution/image/lock 状态解释为 Lake 的真实状态。
+
+== M0--M29 历史外部管理面
+
+LeanBun 只提供四类能力：
+
+. *观察*：只读发现 Lean、Lake、Mathlib、项目配置、manifest、package checkout、revision、dirty 状态及已有构件；
+. *计划*：把用户意图转换为可审阅的 Lake 命令、cwd、环境、预期写入范围和风险说明；
+. *调用*：得到显式许可后，以固定可执行路径和参数数组调用公开、版本锁定的 Lake/Lean/Elan CLI；
+. *核验*：比较调用前后的外部证据，报告 Lake 实际产生的 manifest、checkout、构建结果和漂移，不自行修复。
+
+LeanBun 可以维护自己的配置、审计日志和“防止 LeanBun 重复启动同一外部命令”的任务级互斥；这些对象必须位于
+LeanBun 自有目录，不能放入 `.lake`，不能替代 Lake lock，也不能用于接管或恢复 Lake 操作。
+
+== M0--M29 历史包管理工作流
+
+包操作统一遵循以下外部流程：
+
+. 读取当前外部证据并形成 inventory；
+. 生成 dry-run command plan，明确将调用的 Lake 命令及可能写入；
+. 向用户展示版本、revision、网络、checkout 与构建影响；
+. 只有显式授权后才执行 Lake CLI；
+. 重新读取 manifest、package checkout 和命令退出状态；
+. 报告“Lake 实际完成了什么”，不把 LeanBun 的推测当作解析结果。
+
+例如，更新依赖时由 Lake 自己执行受支持的 update 命令。LeanBun 可以在调用前后备份或比较用户明确指定的外部
+文件，但不得自行编辑 manifest 或移动 `.lake/packages` 来伪造更新结果。
+
+== M0--M29 历史 API 边界
+
+Rust/Bun 侧稳定 API 应围绕外部管理对象组织：
+
+* `PackageInventory`：从公开文件和 checkout 观察得到的事实；
+* `DependencyDriftReport`：声明、manifest 与实际 checkout 的只读差异；
+* `LakeCommandPlan`：绝对 executable、参数、cwd、环境 allowlist、权限和预期影响；
+* `LakeCommandResult`：exit code、有限输出及调用后重新观察的事实；
+* `AuditRecord`：LeanBun 自己的操作记录，不是 Lake state。
+
+禁止建立以可写 Lake 内部状态为职责的 `leanbun-state`、resolver、cache writer 或 recovery API。
+
+== 路线演进记录
+
+下一主线回到外部包管理：
+
+. 建立 Rust `PackageInventory` 与 `DependencyDriftReport`（M0 已完成，见
+  xref:RUST_PACKAGE_INVENTORY_M0.adoc[LeanBun Rust Package Inventory M0]）；
+. 建立只生成、不执行的 `LakeCommandPlan`（targeted update M0 已完成，见
+  xref:RUST_LAKE_COMMAND_PLAN_M0.adoc[LeanBun Rust Lake Command Plan M0]）；
+. 对固定 Lake 版本的公开 CLI 做参数与副作用契约测试（M1 已完成，见
+  xref:RUST_LAKE_UPDATE_CONTRACT_M1.adoc[LeanBun Rust Lake Update Contract M1]）；
+. 生成不含执行权、可人工审阅的 canonical plan report（M2 已完成，见
+  xref:RUST_LAKE_COMMAND_PLAN_REPORT_M2.adoc[LeanBun Rust Lake Command Plan Report M2]）；
+. 生成绑定 report digest、nonce 与短时间窗但仍不含执行权的 pending approval request（M3 已完成，见
+  xref:RUST_LAKE_APPROVAL_REQUEST_M3.adoc[LeanBun Rust Lake Approval Request M3]）；
+. 把 manifest/override/provider/checkout/drift 的 canonical snapshot digest 向上绑定到 plan/report/request（M4 已完成，见
+  xref:RUST_PACKAGE_INVENTORY_SNAPSHOT_M4.adoc[LeanBun Rust Package Inventory Snapshot M4]）；
+. 用 fresh request/snapshot/executable observation 形成仅可进入显式批准的 preflight（M5 已完成，见
+  xref:RUST_LAKE_COMMAND_PREFLIGHT_M5.adoc[LeanBun Rust Lake Command Preflight M5]）；
+. 严格解码并交叉验证外部 grant claim，但在 trusted ingress 前不认证 principal、不授予执行权（M6 已完成，见
+  xref:RUST_LAKE_APPROVAL_GRANT_CONTRACT_M6.adoc[LeanBun Rust Lake Approval Grant Contract M6]）；
+. 建立绑定 session nonce 的短时 challenge 与强制独立 macOS adapter 的安全契约，但不认证终端或授予执行权（M7 已完成，见
+  xref:RUST_TRUSTED_APPROVAL_INGRESS_M7.adoc[LeanBun Rust Trusted Approval Ingress M7]）；
+. 由独立 adapter 只读观察当前进程 terminal，并对非交互、metadata 缺失和不同 terminal fail closed（M8 已完成，见
+  xref:RUST_MACOS_TERMINAL_OBSERVATION_M8.adoc[LeanBun Rust macOS Terminal Observation M8]）；
+. 用固定版本 safe syscall binding 合取 effective UID、foreground PGID、terminal SID 与稳定设备事实（M9 已完成，见
+  xref:RUST_MACOS_TERMINAL_PROOF_M9.adoc[LeanBun Rust macOS Terminal Proof M9]）；
+. 由 OS CSPRNG 生成 session nonce，绑定 terminal/session identity 并只向重验后的 stderr 显示 challenge（M10 已完成，见
+  xref:RUST_MACOS_CHALLENGE_PRESENTATION_M10.adoc[LeanBun Rust macOS Challenge Presentation M10]）；
+. 按值消费已展示 capability，以 bounded exact reader 拒绝非精确 UTF-8/LF、排队输入、terminal/time drift，并只生成 withheld response
+  claim（M11 已完成，见 xref:RUST_MACOS_EXACT_RESPONSE_M11.adoc[LeanBun Rust macOS Exact Response M11]）；
+. 在 private directory FD 下用 `O_EXCL` slot 原子消费 sealed claim；crash-shaped incomplete slot 同样永久阻止重放（M12 已完成，见
+  xref:RUST_MACOS_REPLAY_REGISTRY_M12.adoc[LeanBun Rust macOS Replay Registry M12]）；
+. 把 sealed consumption 与 fresh plan/preflight、inventory/executable identity、time ordering 重新合取为不可执行 withheld proof（M13
+  已完成，见 xref:RUST_APPROVAL_FRESH_REVERIFICATION_M13.adoc[LeanBun Rust Approval Fresh Reverification M13]）；
+. 由 adapter 对固定 managed-toolchain `bin/lake` 做分段 nofollow、bounded streaming SHA 与 path stability 重验，并只输出 sealed
+  observation（M14 已完成，见 xref:RUST_TRUSTED_LAKE_EXECUTABLE_M14.adoc[LeanBun Rust Trusted Lake Executable M14]）；
+. 从当前 project/provider evidence 保守重建 checkout-unobserved inventory、drift 与 targeted fresh plan，并与 M14 observation 合成 sealed
+  M13 input（M15 已完成，见 xref:RUST_TRUSTED_FRESH_PLAN_M15.adoc[LeanBun Rust Trusted Fresh Plan M15]）；
+. 把 exact fresh plan、proof 与 expiry 合成 sealed execution-candidate capsule（M16 已完成，见
+  xref:RUST_SEALED_EXECUTION_CANDIDATE_M16.adoc[LeanBun Rust Sealed Execution Candidate M16]）；
+. 从 unexpired sealed candidate 产生 non-clone、single-command/single-consumption grant capability（M17 已完成，见
+  xref:RUST_TRUSTED_EXECUTION_GRANT_M17.adoc[LeanBun Rust Trusted Execution Grant M17]）；
+. 按值消费 grant，重验 expiry/executable，并从 private canonical directories 密封受控 environment-aware launch intent（M18 已完成，见
+  xref:RUST_PRE_EXECUTION_LAUNCH_INTENT_M18.adoc[LeanBun Rust Pre-Execution Launch Intent M18]）；
+. 以 private directory FD、`O_EXCL` slot 和 file/directory sync 建立 intent-bound durable launch reservation（M19 已完成，见
+  xref:RUST_DURABLE_LAUNCH_RESERVATION_M19.adoc[LeanBun Rust Durable Launch Reservation M19]）；
+. 审计 Rust/rustix/macOS SDK/Bun 与 `/dev/fd` executable handoff，并在缺少 safe FD-bound primitive 时 fail closed（M20 已完成，见
+  xref:RUST_EXECUTABLE_HANDOFF_BOUNDARY_M20.adoc[LeanBun Rust Executable Handoff Boundary M20]）；
+. 把同 UID mutator、writer overlap 与 mount replacement 纳入 path launch threat model，拒绝 user-owned production toolchain（M21 已完成，见
+  xref:RUST_PATH_LAUNCH_POLICY_M21.adoc[LeanBun Rust Path Launch Threat Model and Policy M21]）；
+. 逐 component 持有 `NOFOLLOW` FD，记录 effective-access、Darwin flags 与 mount identity，并对当前 production Lake fail closed（M22 已完成，见
+  xref:RUST_PATH_PROVENANCE_OBSERVER_M22.adoc[LeanBun Rust macOS Path Provenance Observer M22]）；
+. 审计完整 macOS ACL/native API，固定独立最小 FFI crate、conservative ALLOW-ACE denial 与 native mount flag 边界（M23 已完成，见
+  xref:RUST_MACOS_ACL_NATIVE_BOUNDARY_M23.adoc[LeanBun Rust macOS ACL Native Boundary M23]）；
+. 以独立最小 crate 枚举只读 ACL value summary，并用 safe `fstatfs` 记录 native mount flags（M24 已完成，见
+  xref:RUST_MACOS_ACL_WRAPPER_M24.adoc[LeanBun Rust macOS ACL Wrapper and Native Mount Evidence M24]）；
+. 只借用 durable reservation，fresh rehash executable 并合取 path evidence（M25 已完成，见
+  xref:RUST_RESERVATION_BOUND_PATH_ELIGIBILITY_M25.adoc[LeanBun Rust Reservation-Bound Path Eligibility M25]）；
+. 审计 system/read-only/custom acquisition 与 updater/mount continuity（M26 已完成，见
+  xref:RUST_STABLE_EXECUTABLE_DEPLOYMENT_CONTRACT_M26.adoc[LeanBun Rust Stable Executable Deployment Contract M26]）；
+. 审计 privileged coordinator 的 macOS service/authorization/IPC boundary，确认 M19 capability transport 与 M25 threat-principal gap（M27 已完成，见
+  xref:RUST_PRIVILEGED_COORDINATOR_BOUNDARY_M27.adoc[LeanBun Rust Privileged Coordinator Boundary M27]）；
+. 建立 principal-explicit coordinator request 的纯类型/binary identity contract（M28 已完成，见
+  xref:RUST_PRINCIPAL_EXPLICIT_COORDINATOR_REQUEST_M28.adoc[LeanBun Rust Principal-Explicit Coordinator Request M28]）；
+. 建立 bounded canonical wire envelope 与 strict decoder（M29 已完成，见
+  xref:RUST_COORDINATOR_CANONICAL_WIRE_M29.adoc[LeanBun Rust Coordinator Canonical Wire M29]）；
+. M30 已冻结 Bun package takeover 设计，见 xref:BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[LeanBun Bun-Managed Lean Package Takeover M30]；
+. M31 只建立 `LeanBunLockV1`、三类 path provenance 与唯一 `PackagePathDecisionV1` 的纯 model、canonical codec、排序/冲突规则与 Bun oracle；
+. M32 已建立 Lake declaration/projection adapter，M33 已建立 pure deterministic resolver，M34 已建立受限 package fetch/immutable store，M35 已建立仅限开发 fixture 的 active generation transaction；M36 前仍保持正式项目只读且不运行 managed Lake build。
+
+M31--M38 的完整接管路线见 xref:LEANBUN_BUN_TAKEOVER_ROADMAP.adoc[LeanBun Bun Package Takeover Roadmap M31--M38]。
+
+任何新功能若要重写 Lean compiler/kernel 或 Lake target/build semantics 仍视为越界；由 LeanBun 管理的 lock、store、manifest/runtime projection、
+transaction 与 recovery 则属于 M30 明确授权的接管面。

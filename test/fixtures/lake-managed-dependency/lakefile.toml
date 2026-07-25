@@ -1,0 +1,14 @@
+name = "leanbun_managed_dependency_fixture"
+version = "0.1.0"
+defaultTargets = ["leanbun_managed_dependency_fixture"]
+
+[[require]]
+name = "managed_dep"
+path = "vendor/managed_dep"
+
+[[lean_lib]]
+name = "LeanBunManagedDependencyFixture"
+
+[[lean_exe]]
+name = "leanbun_managed_dependency_fixture"
+root = "Main"

@@ -1,0 +1,231 @@
+= LeanBun：Lean / Lake / Mathlib 边界与调用机制
+:toc: left
+:sectnums:
+
+IMPORTANT: 本文的调用面受
+xref:LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]约束。Lake 是依赖解析、checkout、
+`.lake`、cache、内部锁与构建状态的唯一权威；LeanBun 只做外部观察、命令计划、显式 CLI 调用和事后核验。
+
+== 状态与证据基线
+
+本文把 LeanBun 的控制规范落到本机已安装的工具链和共享依赖库上。它规定首版可以调用的
+接口、调用前提及禁止依赖的内部实现；不是对活动项目执行更新或构建的授权。
+
+已现场核验的正式栈如下：
+
+* Lean `v4.32.0`，编译器 commit `8c9756b28d64dab099da31a4c09229a9e6a2ef35`；
+* Lake `5.0.0-src+8c9756b`；
+* Mathlib `v4.32.0`，commit `81a5d257c8e410db227a6665ed08f64fea08e997`；
+* Mathlib 及其八个传递包的精确提交记录在共享库的 registry 中，中心 checkout 已逐项与之匹配。
+
+权威本地材料是：
+
+* `Dependency libraries/documentation/official/lean-v4.32.0/lake.html`；
+* `Dependency libraries/documentation/official/mathlib-v4.32.0/` 下的依赖与缓存说明；
+* `Dependency libraries/lean/registry/lean4-v4.32.0_mathlib-81a5d257c8e4-manifest.json`；
+* `Dependency libraries/lean/overrides/lean4-v4.32.0_mathlib-81a5d257c8e4.json`；
+* 同目录 `package-sets/` 下的实际中心源码与构件。
+
+旧版文档快照仅供追溯，不能决定本栈的命令语义。
+
+== 先划定真实边界
+
+=== LeanBun 不调用 Lake 的内部 Lean API
+
+Lake 源码暴露了 `Lake.Manifest`、`Lake.Workspace`、`Lake.loadWorkspace` 等 Lean 定义，但它们随
+Lean 工具链一起演进，并非 Bun/TypeScript 可长期依赖的跨版本 RPC。LeanBun 不以导入、编译或
+链接 `Lake.*` 的方式获取工作区信息。
+
+首版的稳定契约分为两类：
+
+* 自己解析稳定的外部文件格式：`lean-toolchain`、`lake-manifest.json`、
+  `.lake/package-overrides.json`、中心 registry 与文件系统元数据；
+* 在授权后以无 shell 的子进程调用版本锁定的 `elan`、`lake`、`git` 与 Mathlib `cache` 可执行程序。
+
+这避免把 Lake 的内部数据结构误作 LeanBun 的 API，也允许每个 `ImageIdentity` 明确记录实际
+Lake/Lean 编译器版本。
+
+=== Lake 配置加载不是只读操作
+
+`lakefile.lean` 是会被 Lean elaborator 执行的配置程序，而不是可安全当作静态 TOML 的输入。
+Lake 在加载配置时会创建 `.lake` 配置目录，并可能写入 `lakefile.olean`、trace 及锁文件。
+若没有 manifest，加载工作区还会 materialize 依赖；使用 `--update` 或 `lake update` 则会改写
+manifest 并 checkout/clean Git 包。
+
+因此，以下命令即使表面上像查询，也不得成为默认 `inspect` 路径：
+
+* `lake env`：需要加载项目配置以组成环境；
+* `lake query`：会构建所查询 target；
+* `lake serve`、`lake lean`：会加载配置，且可能产生项目构件；
+* `lake update`、`lake --update`：显式改变解析和 materialized checkout。
+
+在尚未信任项目配置前，LeanBun 不执行项目目录中的任何 `lake` 命令。即使项目已受信任，以上
+命令也必须按其写入级别获得许可，而不能因为名称中有 `query` 或 `env` 就视作无副作用。
+
+=== Mathlib cache 是构件恢复，不是构件认证
+
+`lake exe cache get` 会下载 `.ltar` 并解压 `.olean`、`.ilean`、`.trace`、`.c` 与 `.hash`。
+它是避免源码重编译的恢复机制；其键来自工具链、manifest、配置、源码及导入，但不替 LeanBun
+证明“当前活动镜像中的全部字节仍与已封存身份相同”。特别地，Lake 对已有 `.hash` 可以复用。
+
+所以：
+
+* P1 可以枚举 `.ltar`、构件、trace 与 `.hash`，但只报告存在性；
+* P2 的候选恢复把 `cache get` 当作写入 staging/候选镜像的操作；
+* P3 必须自己重读真实文件并计算摘要；不得把 `.hash` 当 attestation；
+* `cache get!`、`clean!`、`pack`、`put*`、`commit*` 一律不是普通项目 API。
+
+== 三层调用面
+
+[cols="1,2,2",options="header"]
+|===
+|层 |允许的机制 |禁止或需额外许可的机制
+
+|A：P1 证据采集
+|Bun 文件读取、目录遍历、真实文件摘要；`git -C <dir> rev-parse HEAD` 与 `git status --porcelain`；
+锁定运行时的 `lean --version` / `lake --version`。
+|任何以项目为 cwd 的 `lake` 命令；写入 `.lake`；网络；cache 解压。
+
+|B：已绑定项目构建
+|先验证 binding、override、中心提交和构件 attestation；随后仅调用受控 `lake build` 以构建项目 target。
+|`lake update`；任何受保护依赖的写入；发现依赖回退后的自动许可扩大。
+
+|C：显式外部更新
+|生成并展示 `lake update` 或公开 cache CLI 的命令计划；授权后由 Lake/Mathlib CLI 自己完成更新，再只读核验结果。
+|LeanBun 直接编辑 manifest、移动 checkout、写 `.lake`、模拟 resolver/cache、接管 lock 或恢复 Lake 内部事务。
+|===
+
+== P1：`leanbun inspect` 的无副作用协议
+
+`inspect` 的输入是一个绝对项目目录；输出是版本化 JSON 报告。它不得为了“补全信息”创建
+`.lake`、运行 Lake、下载 cache 或修复 manifest。
+
+=== 固定读取顺序
+
+. `realpath(project)`，拒绝不存在目录和不在用户明确范围内的符号链接跳转；
+. 读取并原样保存 `lean-toolchain` 的 trimmed 值；
+. 读取 `lake-manifest.json`，验证 Lake manifest 主版本兼容性后解析 package entries；
+. 读取 `.lake/package-overrides.json`（若存在），但将它标为 *声明*，而非真实绑定证明；
+. 对每个 manifest 或 override package，`realpath` 后检查目录存在、Git `HEAD`、dirty 状态和配置文件；
+. 只枚举已存在的 `build`、`.olean`、`.ilean`、`.trace`、`.hash` 与 `.ltar`，记录大小、mtime 与
+  可选的 SHA-256；
+. 对锁定的 `elan`/`lean`/`lake` 二进制读取版本，并报告其绝对路径。
+
+路径解析必须在 `realpath` 后做 containment check。manifest 的 `path.dir` 或 override 的绝对路径
+不能因包含 `..` 或符号链接而越过允许的项目/依赖库根。JSON 中未知字段应保留为原始证据，不能
+静默丢失后再声称已完整验证。
+
+=== 报告最小契约
+
+[source,json]
+----
+{
+  "schemaVersion": 1,
+  "mode": "filesystem-only",
+  "project": {"path": "/absolute/path", "toolchain": "..."},
+  "runtime": {"lean": {"path": "...", "version": "..."}, "lake": {"path": "...", "version": "..."}},
+  "manifest": {"path": "...", "sha256": "...", "lakeSchema": "1.2.0"},
+  "packages": [{"name": "mathlib", "expectedRevision": "...", "actualRevision": "...", "state": "matched"}],
+  "overrides": {"path": "...", "state": "registered|missing|drifted"},
+  "artifacts": {"observed": [], "unverifiedHashFiles": []},
+  "risks": [{"code": "DEPENDENCY_ARTIFACT_MISSING", "evidence": ["..."]}]
+}
+----
+
+`state: matched` 只表示本次可见 checkout 的 Git `HEAD` 与锁定 revision 一致；它不表示源码、构件
+或 cache 已认证。报告必须分别陈述“未检查”“缺失”“不匹配”和“已通过真实文件摘要检查”。
+
+== Bun 子进程 API
+
+所有执行通过单一 adapter；禁止 `sh -c`、字符串拼接命令和继承不受控的项目环境变量。
+
+[source,typescript]
+----
+type CommandClass = "readEvidence" | "projectBuild" | "candidateUpdate" | "cacheRestore";
+
+type Invocation = {
+  class: CommandClass;
+  executable: string;       // 已解析并位于受管工具链根
+  args: readonly string[];  // 不经过 shell
+  cwd: string;              // 已 canonicalize
+  env: Record<string, string>;
+  transactionId?: string;
+  permitId?: string;
+};
+
+type CommandResult = {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  startedAt: string;
+  finishedAt: string;
+};
+----
+
+adapter 在 spawn 前执行：可执行文件 allowlist、`cwd` containment、参数 allowlist、调用类别授权、
+超时、stdout/stderr 上限和审计记录。环境只注入经登记的 `ELAN_HOME`、`MATHLIB_CACHE_DIR`、
+工具链路径及必要动态库路径；不接受项目传入的 `PATH` 覆盖。调用结果、二进制摘要、环境键集合
+（不记录秘密值）均写入 audit event。
+
+=== 当前允许的调用映射
+
+[cols="2,3,2",options="header"]
+|===
+|LeanBun 操作 |实际调用 |许可
+
+|`inspect`
+|文件/Git adapter；受管 `lean --version` 与 `lake --version`。
+|默认允许，只读。
+
+|`doctor`
+|`inspect` 加中心 registry/override/checkout 比对；可复用共享库的 `manage_lake_packages.py describe`。
+|默认允许，只读。
+
+|`build`
+|验证通过后，以项目 cwd 调用受管 `lake build <approved-project-targets>`。
+|绑定有效；仅项目构建许可。
+
+|`image restore`
+|候选目录中 `lake exe cache get`，使用登记的 `MATHLIB_CACHE_DIR`。
+|候选 transaction；cache restore permit；网络策略许可。
+
+|`update`
+|候选 staging 中的 `lake update`，捕获 manifest 与 checkout 前后快照。
+|update transaction；绝不在活动项目执行。
+|===
+
+`lake query --json` 的 JSON 只适合已许可构建的 target 输出，不是 workspace 元数据 API；P1 不使用它。
+
+== 与现有共享依赖库的接口
+
+LeanBun 将共享库看作一个已登记的外部 provider，而非把其 `.lake` 或 package 目录直接当作任何项目的
+workspace。provider 合约包含：
+
+* stack ID：`lean4-v4.32.0_mathlib-81a5d257c8e4`；
+* canonical manifest 的 SHA-256 和每个 package 的 `name`、`url`、`rev`；
+* canonical override JSON 的 SHA-256；
+* 中心 package 的 realpath、Git `HEAD`、dirty 状态和源码树摘要；
+* Mathlib cache 目录、toolchain 路径、平台与生成时刻。
+
+现有 `manage_lake_packages.py` 的 `describe` 和 `verify` 可作为过渡性只读兼容检查；它的 `install`
+写 project override，故只能由未来 `leanbun bind` 在绑定事务中替代或显式调用。其当前 Git `HEAD`
+校验仍不足以认证构件字节，这正是 P3 attestation 的职责。
+
+== 对原规范的收紧
+
+. “官方 package override”是 Lake 的路径选择机制，不是活动镜像不可变性的证明；binding 和
+   attestation 仍不可省略。
+. 任何依赖 library 的 `.lake/build` 写入，包括 cache 解压，都属于共享镜像写入，必须受完整
+   `ImageIdentity` 锁和 transaction 保护。
+. 首版不得通过 `lake env` 探测 `LEAN_PATH`；它会加载项目配置。LeanBun 应由 manifest 与已核验的
+   override 自己生成观察报告，只有构建阶段才让 Lake 生成实际环境。
+. `--rehash` 是 Lake 自己重算 trace 的构建选项，不能替代 LeanBun 的独立 SHA-256 attestation。
+
+== 实施落点
+
+P1 代码应先实现四个纯模块：`project-inputs`（路径和文本）、`lake-manifest`（JSON/兼容性）、
+`dependency-provider`（registry 与 override）和 `artifact-observer`（枚举与摘要）；`process-adapter`
+只先开放版本与 Git 证据调用。这样首个可执行 `leanbun inspect <project>` 仍然不需要启动 Lake。
+
+在真实项目上验证这份报告后，才引入带审计的 `process-adapter` build 路径；更新、cache restore、
+permit 与锁继续留在 P2/P3。

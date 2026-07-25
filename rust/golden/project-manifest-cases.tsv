@@ -1,0 +1,12 @@
+true	dependency-free	{"version":"1.2.0","packagesDir":".lake/packages","packages":[],"name":"free","lakeDir":".lake","fixedToolchain":false}
+true	git-package	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"url":"https://example.invalid/p","type":"git","subDir":null,"scope":"scope","rev":"81a5d257c8e410db227a6665ed08f64fea08e997","name":"p","manifestFile":"lake-manifest.json","inputRev":"main","inherited":false,"configFile":"lakefile.toml"}],"name":"git","lakeDir":".lake","fixedToolchain":false}
+true	path-package	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"type":"path","dir":"dependency","name":"p","manifestFile":"lake-manifest.json","inherited":false,"configFile":"lakefile.toml"}],"name":"path","lakeDir":".lake","fixedToolchain":true}
+false	unsupported-version	{"version":"2.0.0","packagesDir":".lake/packages","packages":[],"name":"future","lakeDir":".lake","fixedToolchain":false}
+false	missing-root-field	{"version":"1.2.0","packagesDir":".lake/packages","packages":[],"name":"missing","lakeDir":".lake"}
+false	unknown-root-field	{"version":"1.2.0","packagesDir":".lake/packages","packages":[],"name":"extra","lakeDir":".lake","fixedToolchain":false,"extra":true}
+false	unknown-package-field	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"p","type":"path","dir":"dependency","extra":true}],"name":"extra","lakeDir":".lake","fixedToolchain":false}
+false	duplicate-package-name	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"p","type":"path","dir":"one"},{"name":"p","type":"path","dir":"two"}],"name":"duplicate","lakeDir":".lake","fixedToolchain":false}
+false	invalid-git-revision	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"p","type":"git","rev":"ABC"}],"name":"bad","lakeDir":".lake","fixedToolchain":false}
+false	path-missing-directory	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"p","type":"path"}],"name":"bad","lakeDir":".lake","fixedToolchain":false}
+false	git-path-field-mix	{"version":"1.2.0","packagesDir":".lake/packages","packages":[{"name":"p","type":"git","rev":"81a5d257c8e410db227a6665ed08f64fea08e997","dir":"dependency"}],"name":"mixed","lakeDir":".lake","fixedToolchain":false}
+false	wrong-fixed-toolchain-type	{"version":"1.2.0","packagesDir":".lake/packages","packages":[],"name":"bad","lakeDir":".lake","fixedToolchain":"false"}

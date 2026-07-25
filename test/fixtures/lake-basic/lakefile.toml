@@ -1,0 +1,10 @@
+name = "leanbun_lake_fixture"
+version = "0.1.0"
+defaultTargets = ["LeanBunLakeFixture", "leanbun_lake_fixture"]
+
+[[lean_lib]]
+name = "LeanBunLakeFixture"
+
+[[lean_exe]]
+name = "leanbun_lake_fixture"
+root = "Main"

@@ -1,0 +1,9 @@
+matched	matched	present	1	1	true	match	1	false
+unobserved	checkout-unobserved	unobserved	1	1	true	match	-	-
+missing	checkout-missing	missing	1	1	true	match	-	-
+revision-mismatch	checkout-revision-drift	present	1	1	true	match	2	false
+dirty	dirty-checkout	present	1	1	true	match	1	true
+path-mismatch	checkout-path-drift	present	1	1	true	mismatch	1	false
+override-mismatch	override-drift	present	1	1	false	match	1	false
+revision-mismatch	manifest-provider-drift	present	1	2	true	match	1	false
+revision-mismatch,revision-mismatch	manifest-provider-and-checkout-drift	present	1	2	true	match	2	false

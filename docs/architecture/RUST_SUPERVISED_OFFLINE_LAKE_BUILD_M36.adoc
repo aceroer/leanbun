@@ -1,0 +1,94 @@
+= LeanBun Rust Supervised Offline Lake Build and Reuse M36
+:toc: left
+:sectnums:
+
+== Result
+
+M36 is complete inside the development fixture boundary.  LeanBun can now run a fixed Lake binary
+offline under Seatbelt, prove the effective package paths selected by Lake, bind dependency-image
+reuse separately from project output, and recover an interrupted image publication by exact key.
+
+This milestone does not adopt or write a user project.  The real project and the production dependency
+library remain read-only; M37 still requires a separately named project and an explicit bounded
+acceptance transaction.
+
+== Authority chain
+
+`verify_active_generation_build_gate_v1` is the mandatory M31--M35 entry gate.  It:
+
+* re-verifies the exact M35 active record, published transaction, immutable generation bytes and
+  package source trees;
+* requires the M31 decision-set digest and M32 runtime-projection digest to equal the active
+  generation identities;
+* rejects a final package path outside the active generation package namespace.
+
+Only after this gate may a caller construct the supervised Lake request.  Lake receives
+`--packages=<runtime-packages.json> --no-cache --keep-toolchain --no-ansi build <target>`; `update`,
+`try-cache`, Git materialization and toolchain replacement are absent.
+
+== Supervised process boundary
+
+`SupervisedLakeBuildV1` fixes and validates:
+
+* the Lake executable and SHA-256;
+* the Seatbelt executable, profile and profile SHA-256;
+* an absolute working directory and runtime projection;
+* one target selected from a bounded allowlist;
+* an eleven-name environment allowlist;
+* a deadline, termination grace, and combined bounded capture policy.
+
+The small Rust supervisor calls `setsid` through safe `rustix` and then replaces itself with the
+Seatbelt process.  Timeout therefore signals the whole Lake process group, escalates from `TERM` to
+`KILL`, and drains both pipes without deadlock.  Shell command construction is not used.
+
+`verify_lake_workspace_paths_v1` loads the same projection through the same supervisor and extracts
+Lake's effective `LEAN_PATH`.  After removing the root package and compiler sysroot, the remaining
+package roots must equal Bun's final-path set exactly.  Missing, extra, duplicate-by-set, or changed
+paths fail closed.
+
+== Build image and project output
+
+`BuildImageV1` keys dependency reuse by:
+
+* lock, resolved graph, final path decisions, and active generation identity;
+* Lean toolchain and compiler identity;
+* operating system and architecture;
+* build-relevant configuration and selected target.
+
+The dependency artifact digest is verified content, not part of the key.  A same-key lookup must
+rehash it before reuse.  `ProjectBuildOutputV1` separately binds the image key to the project-input
+identity and project-artifact identity, so sharing dependency work does not make outputs from two
+projects interchangeable.
+
+Publication uses an exclusive per-key lock, a private staging object, synced metadata, and atomic
+rename.  Recovery never guesses by age: after-lock is an exact abort; after-artifact or after-metadata
+is completed only when the artifact matches; after-rename is reverified and the exact lock released.
+Unknown or drifted state is retained and rejected.
+
+== Verification
+
+The M36 Rust tests cover:
+
+* dependency-free and Mathlib project builds with Seatbelt network denial;
+* all nine Mathlib package paths observed from Lake and compared to the Bun projection;
+* protected project-input equality before and after build;
+* identical project artifact-tree evidence after the second build;
+* target denial, executable SHA drift, path drift, nonzero exit, signal exit, timeout, and output
+  overflow;
+* image publication/reuse, input-key drift, artifact drift, and all four coordinator crash points.
+
+The Mathlib fixture reuses the already frozen development dependency image; it does not write the
+M35 immutable package source generation.  This is the intentional split between dependency-image
+reuse and project output.  M37 will bind that verified image to one explicitly selected real-project
+transaction rather than weakening generation immutability.
+
+The old path-provenance test fixture now uses independent `/private/tmp` paths derived from an atomic
+sequence.  Tests no longer serialize around a coarse clock-derived name, while device, inode, mount,
+ACL, mode and direct-component checks remain unchanged.  A changed-observation diagnostic now names
+the exact component and class of drift.
+
+== Exit and next gate
+
+M36 opens no production writer.  M37 is next, but cannot be inferred from a generic continuation:
+the user must explicitly name one real Lean project and authorize one bounded dry-run/update/build/
+rollback acceptance transaction.
