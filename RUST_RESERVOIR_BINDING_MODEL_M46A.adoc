@@ -1,0 +1,89 @@
+= LeanBun Reservoir Binding Model M46 Phase A
+:toc: left
+:sectnums:
+
+== Completion status
+
+M46 Phase A is complete as `0.16.0-m46a-dev`. The authority and compatibility choice was recorded before implementation in
+xref:RESERVOIR_BINDING_AUTHORITY_DECISION_M46A.adoc[LeanBun Reservoir Binding Authority Decision M46 Phase A].
+
+The delivered scope is an immutable pure model and strict canonical codec. It contains no registry client, filesystem writer, resolver transition, generation activation or external-project mutation.
+
+== Selected compatibility route
+
+LeanBun retains the strict canonical bytes and reader of `LeanBunLockV1`. A separate `ReservoirBindingDocumentV1` companion disambiguates packages whose user request originated from Reservoir but whose V1 exact source is represented as Git.
+
+The companion belongs to `leanbun-lock`, which still depends only on `leanbun-core`. It uses a separately domain-separated canonical line codec and does not depend on JSON, evidence or lifecycle policy crates.
+
+== Authority model
+
+`ReservoirBindingV1` includes and identity-binds:
+
+* `ReservoirRegistryIdentityV1`;
+* `PackageKeyV1`;
+* a required requested version;
+* observed metadata SHA-256;
+* canonical resolved URL;
+* exact 40-hex Git commit;
+* download integrity;
+* verified source-tree SHA-256;
+* selected-source identity.
+
+`ReservoirBindingDocumentV1::new` requires a non-empty bounded set, canonicalizes package order, rejects duplicates and verifies every binding against the accompanied lock. URL, exact commit, download integrity, source tree and selected-source identity must equal the locked package facts. The document identity binds both the exact V1 lock identity and every binding identity.
+
+`from_canonical_text` additionally rejects wrong lock identity, noncanonical order or representation, binding/document digest drift and trailing content.
+
+The new public surface is recorded in `architecture/m46a/public-api-additions.tsv`.
+
+== First observation policy fixed for Phase B
+
+The model supports a two-stage rule rather than unconditional “first lookup wins”:
+
+. first online resolution produces durable pending evidence;
+. exact download and source-tree verification plus registered build/test occurs before activation;
+. activation freezes the reviewed companion identity for offline reproduction;
+. later online resolution verifies upstream consistency but reports metadata drift or version rebound instead of overwriting the active binding;
+. only an explicit rebind authorization may replace the frozen mapping.
+
+Phase A does not implement those state transitions. It provides the immutable identity material they must consume.
+
+== Compatibility evidence
+
+M46A did not modify `rust/crates/leanbun-lock/src/lock_v1.rs`; its protected SHA-256 remains:
+
+----
+f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c
+----
+
+The Cargo dependency graph and Cargo lock also remain the M45 identities:
+
+----
+962dd3e93fa46d39e943c265cc12f1a9efab38ddbc90a2c84f8b5703830e2dfa  architecture/m45/cargo-dependencies.tsv
+f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07  rust/Cargo.lock
+----
+
+The compatibility regression captures V1 canonical text before companion construction and proves it is byte-identical afterward. Existing M31 Bun golden tests and all registered Bun/Lean tests remain unchanged.
+
+== Validation
+
+The completed gate produced:
+
+* M46A binding tests: 4 passed;
+* Rust workspace: 188 passed, 0 failed, one provider test intentionally ignored by the default run;
+* explicit initialized-provider test: 1 passed;
+* workspace format and clippy with warnings denied: passed;
+* Bun/Lean suite: 103 passed, 0 failed, 882 expectation calls;
+* architecture suite: 10 passed, 16 expectation calls;
+* current graph checker: 15 workspace crates and 6 mainline roots.
+
+Implementation identities:
+
+----
+07ed45ff818fd45cd4c9793239de01f458316c1a17ff2f110b486320862069f0  rust/crates/leanbun-lock/src/reservoir_binding_v1.rs
+061b1b2aca688bf21138092153e81f2ef3accf290dac1492fbdcf5ae36529848  rust/crates/leanbun-lock/tests/m46a_reservoir_binding.rs
+a5bc1a1348ba6e79398b2cd2926c310700ce0a916891b135eb144fc529b47adf  RESERVOIR_BINDING_AUTHORITY_DECISION_M46A.adoc
+----
+
+== Remaining boundary
+
+M46 Phase B must implement pending first-resolution evidence, typed audit outcomes, explicit rebind authorization and generation-side companion identity binding. Until that gate closes, the new types carry no activation authority and arbitrary public Reservoir discovery remains closed.

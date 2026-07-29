@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "version": "0.19.0-m47-dev",
+  "class": "historical-crate-default-member-isolation",
+  "sourceBaseline": {
+    "commit": "736a24b0f175a140b49a9fec4b76db96377905d4",
+    "tree": "415e9079f787f54dbbd0f3a293a52c04e753137d",
+    "status": "uncommitted M43 through M47 working-tree delivery"
+  },
+  "workspace": {
+    "members": 15,
+    "defaultMembers": 10,
+    "historicalMembers": 5,
+    "mainlineRoots": 6,
+    "historicalSourceDeleted": false,
+    "historicalDeprecated": false
+  },
+  "historical": {
+    "crates": [
+      "leanbun-inventory-legacy",
+      "leanbun-plan",
+      "leanbun-state",
+      "leanbun-macos-acl-sys",
+      "leanbun-approval-macos"
+    ],
+    "verificationCommand": "./scripts/dev historical-check",
+    "defaultCompilation": false,
+    "explicitTests": 79
+  },
+  "mainline": {
+    "verificationCommand": "./scripts/rust-dev check",
+    "defaultTests": 117,
+    "ignoredProviderTestsRunExplicitly": 1,
+    "xpcRequired": false,
+    "privilegedCoordinatorRequired": false,
+    "notarizationRequiredForSourceBuild": false
+  },
+  "localConfiguration": {
+    "trackedExample": "config/leanbun-local-provider.example.json",
+    "ignoredMachineConfig": "config/leanbun-local-provider.json",
+    "bootstrapBun": ["initialized development runtime", "BUN", "PATH"],
+    "personalPathsInActiveRustManifests": false,
+    "cleanSourceCopyDefaultCompile": "passed"
+  },
+  "identity": {
+    "decisionSha256": "4c68a90fc3f955b22c34bb020b1e70a120c2d2494055856d2fe8119a83d398e3",
+    "rustWorkspaceManifestSha256": "77b1a71c3ec3dbcab7712856c2aae22c9ccf8d9c2803a5fedbfeae0276864ddf",
+    "rustDevWrapperSha256": "6c5427f841f2fd01511159db84ef57f026ef607e7114313cd31c955dee10a74f",
+    "crateLayeringCheckerSha256": "8933c349570c0a088e2c85b16f2ded1b46abe5158ac2e98a2147bc550f7c7fcf",
+    "crateLayeringTestsSha256": "f7d023d51e681a77356b29ecab65012313bbdd69857585d06718941ed009ee2b",
+    "defaultMembersSnapshotSha256": "ffe42df77df974d10272fe68f87dc892c288d446ca77587c04c42b20bdb6f8c6",
+    "historicalDispositionSnapshotSha256": "321dfde4b9f7ff4d0f76f5fec3e5bc276ffe4f72950fc7a5140650f2d1aeea86"
+  },
+  "compatibility": {
+    "lockV1SourceSha256": "f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c",
+    "cargoGraphSha256": "962dd3e93fa46d39e943c265cc12f1a9efab38ddbc90a2c84f8b5703830e2dfa",
+    "cargoLockSha256": "f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07",
+    "m42ConcurrentHistoryDocumentSha256": "ffa188cc89fc285d3d79e994aeb71185fd852c864ec25fd35737c1f1cf105999"
+  },
+  "validation": {
+    "bunTests": 104,
+    "bunExpectCalls": 885,
+    "architectureTests": 11,
+    "architectureExpectCalls": 19,
+    "mainlineFmt": "passed",
+    "mainlineClippy": "passed",
+    "historicalClippy": "passed",
+    "cleanSourceCopy": "passed"
+  },
+  "boundaries": {
+    "historicalEvidence": "retained",
+    "publicReservoirDiscovery": "closed",
+    "nextMilestone": "M48 post-refactor distribution closure"
+  }
+}

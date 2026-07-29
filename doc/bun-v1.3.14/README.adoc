@@ -1,0 +1,309 @@
+= Bun 1.3.14 技术参考（LeanBun 使用子集）
+:toc: left
+:sectnums:
+
+== 文档身份
+
+[cols="1,3"]
+|===
+|对象 |值
+|验证入口 |`bun`（由仓库 wrapper 固定实际 binary）
+|版本 |`1.3.14`
+|revision |`1.3.14+0d9b296af`
+|平台 |macOS arm64
+|查阅与验证日期 |2026-07-23
+|适用项目 |LeanBun
+|===
+
+本文是 Bun 官方技术文档在 LeanBun 权限控制场景下的本地参考。它覆盖当前实现需要的运行、文件、
+摘要、子进程、SQLite、测试和发布能力；完整来源与证据等级见 xref:SOURCES.adoc[SOURCES.adoc]。
+
+== 启动与运行时边界
+
+=== 固定入口
+
+开发期由仓库 wrapper 解析确切 Bun binary，并关闭两项隐式输入：
+
+[source,shell]
+----
+bun --no-install --no-env-file run src/cli.ts
+----
+
+* `--no-install`：禁止 runtime 为缺失 import 自动安装包；
+* `--no-env-file`：禁止自动加载项目或父目录中的 `.env`；
+* 不通过 shell alias 或不确定的 `PATH` 选择 Bun；
+* 每次报告记录 `bun --revision`，只记录语义版本不够。
+
+需要随父进程终止的开发/测试调用可使用 `--no-orphans`。生产 CLI 自己启动的 Lean/Lake/Git 子进程
+仍由 process adapter 管理 timeout、signal 和清理，不能只依靠 Bun CLI flag。
+
+=== 本项目的依赖规则
+
+P1 只使用 Bun builtin、Web API 和 Bun 的 Node.js compatibility modules，不使用第三方 npm 包。
+运行检查器时不得调用 `bun install`、`bun add`、`bun update`、`bunx` 或任何自动安装模式。
+
+== 文件 I/O
+
+官方入口：https://bun.com/docs/runtime/file-io[Bun File I/O]。
+
+=== `Bun.file`
+
+`Bun.file(path)` 返回惰性 `BunFile`，创建对象本身不读取文件。常用读取方法：
+
+[source,typescript]
+----
+const file = Bun.file(path);
+const text = await file.text();
+const bytes = await file.bytes();
+const stream = file.stream();
+----
+
+LeanBun 约束：
+
+* 配置文件先检查允许的最大字节数，再读取文本；
+* JSON 使用 `text()` 后显式 `JSON.parse`，同时保留原始字节摘要；
+* 大型构件使用 stream 或 file descriptor 分块处理，不用 `bytes()` 整体载入；
+* `exists()` 只能提供瞬时观察，存在检查与后续读取之间有竞态，不能据此作安全判定；
+* 直接执行读取并分类处理 `ENOENT`、权限、类型和 I/O 错误。
+
+=== 目录与路径
+
+`Bun.file` 不覆盖全部目录操作。官方建议对 `readdir`、`mkdir` 等使用 `node:fs` compatibility layer。
+LeanBun 使用：
+
+[source,typescript]
+----
+import { lstat, open, readdir, realpath } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+----
+
+安全顺序是 `resolve -> realpath -> containment check -> open/read`。symlink 跟随后重新检查允许根；路径
+containment 必须按路径分量判断，不能使用普通字符串 `startsWith`。
+
+=== 写入 API
+
+`Bun.write(destination, data)` 会创建或覆盖目标文件，并可能创建父目录。P1 检查路径禁止调用它。
+后续需要写 report、binding 或 attestation 时采用：同目录临时文件、flush/fsync、权限设置、原子 rename，
+并在写前通过 transaction policy。`FileSink` 必须 `.end()`，否则可能使进程保持存活。
+
+== SHA-256 与证据摘要
+
+官方入口：https://bun.com/docs/runtime/hashing[Bun Hashing]。
+
+`Bun.CryptoHasher` 支持增量 SHA-256：
+
+[source,typescript]
+----
+const hasher = new Bun.CryptoHasher("sha256");
+hasher.update(chunk);
+const hex = hasher.digest("hex");
+----
+
+LeanBun 不使用 `Bun.hash()` 的非密码散列作为 attestation。真实文件摘要协议：
+
+. 打开文件并取得 descriptor；
+. `fstat` 记录 device、inode、size 和时间；
+. 分块读取并调用 `hasher.update(Uint8Array)`；
+. 再次 `fstat`；
+. metadata 变化则结果标记 `unstable`，不得签发 attestation。
+
+`.hash`、`.trace` 和 Mathlib cache key 都是被观察证据，不替代 LeanBun 自己的 SHA-256。
+
+== 子进程
+
+官方入口：https://bun.com/docs/runtime/child-process[Bun Spawn]。
+
+=== 基础接口
+
+使用不经 shell 的参数数组：
+
+[source,typescript]
+----
+const proc = Bun.spawn({
+  cmd: [executable, ...args],
+  cwd,
+  env,
+  stdin: null,
+  stdout: "pipe",
+  stderr: "pipe",
+  timeout: timeoutMs,
+  killSignal: "SIGTERM",
+});
+
+const exitCode = await proc.exited;
+const usage = proc.resourceUsage();
+----
+
+禁止使用 `$` tagged shell、`bun exec`、`sh -c` 或拼接后的单个 command string。`executable`、参数、
+`cwd` 与环境必须先由 policy 生成 `ApprovedInvocation`。
+
+=== 输出限额
+
+异步 `Bun.spawn` 的 stdout/stderr 是 stream。必须并行消费，分别累计字节数，避免单边 pipe 背压。
+达到上限后：
+
+. 标记 `outputLimitExceeded`；
+. 发送 `SIGTERM`；
+. 等待有限宽限期；
+. 仍未退出则发送 `SIGKILL`；
+. audit 只保留长度、摘要和有限头尾片段。
+
+`Bun.spawnSync` 提供 `maxBuffer`，但 Lean/Lake 构建可能耗时且输出较大，生产 adapter 使用异步 spawn，
+不能为了内建 `maxBuffer` 阻塞整个控制进程。
+
+=== timeout 与取消
+
+`timeout` 到期默认发送终止信号，`killSignal` 可指定信号；`AbortSignal` 可用于外部取消。LeanBun 同时
+记录 timeout、用户取消、输出超限和普通非零退出，不能都折叠成 `COMMAND_FAILED`。
+
+本机 Bun 1.3.14 smoke 进一步确认：`detached: true` 在 macOS 上创建独立进程组，leader PID 等于 PGID；
+可用负 PID 向整组发送 `SIGTERM`/`SIGKILL`。LeanBun 因此不依赖 Bun 内建的单进程 timeout，而由 adapter
+执行 deadline/AbortSignal 分类、整组 TERM、有限宽限、必要时 KILL、leader/pipe 收割及 cwd 残留审计。
+
+=== 环境
+
+官方示例允许 `{ ...process.env }`，但 LeanBun 不继承全部环境。白名单只包括登记的工具链、cache、
+locale、临时目录及必要动态库路径。以下值不能被项目输入覆盖：
+
+* `PATH`；
+* `ELAN_HOME`；
+* `MATHLIB_CACHE_DIR`；
+* LeanBun state/image 根；
+* transaction 与 permit 身份。
+
+== SQLite
+
+官方入口：https://bun.com/docs/runtime/sqlite[Bun SQLite]。
+
+=== 基础接口
+
+`bun:sqlite` 是同步 API，支持 prepared statements、参数、transaction 和只读打开：
+
+[source,typescript]
+----
+import { Database } from "bun:sqlite";
+
+const db = new Database(databasePath, { create: true });
+db.run("PRAGMA foreign_keys = ON");
+db.run("PRAGMA journal_mode = WAL");
+const query = db.query("select value from metadata where key = $key");
+const row = query.get({ $key: "schemaVersion" });
+----
+
+所有动态值使用绑定参数；不把 package name、路径、image ID 或 audit text 拼入 SQL。
+
+=== LeanBun 使用边界
+
+* P1 不创建或打开状态数据库；
+* P2 起数据库位于 LeanBun state 根，不在项目或封存镜像；
+* schema migration 在显式 transaction 中执行；
+* `BEGIN IMMEDIATE` 只用于短暂 lease 创建、接管或 heartbeat，不跨越整个构建；
+* filesystem lock directory 提供长时排他，SQLite 保存 lease 与审计状态。
+
+=== macOS WAL
+
+macOS 的系统 SQLite 启用 persistent WAL 时，关闭数据库后 `-wal` 和 `-shm` 仍可能存在。这不是孤立
+垃圾文件。备份、迁移、诊断和受控清理必须把 database、WAL、SHM 视作同一状态单元。若确需干净关闭，
+在所有连接停止后按官方机制关闭 persistent WAL 并执行 truncating checkpoint。
+
+== 测试
+
+官方入口：https://bun.com/docs/test[Bun Test Runner]。
+
+测试从 `bun:test` 导入：
+
+[source,typescript]
+----
+import { describe, expect, test } from "bun:test";
+----
+
+当前能力与用法：
+
+* 默认单测试 timeout 为 5000 ms，可用 `--timeout` 或测试参数调整；
+* 默认一个 test file 内串行；纯函数测试可显式 `test.concurrent`；
+* 共享目录、SQLite、process 和 lock 测试使用 `test.serial`；
+* `--seed` 可复现随机测试顺序；
+* `--rerun-each` 用于发现非确定性；
+* `--bail` 适合快速失败；
+* timeout 测试必须额外断言子进程已退出、临时锁已释放。
+
+精确文件路径以 `./test/file.test.ts` 形式传入；普通位置参数是 substring filter，不是 glob。
+
+建议验证命令：
+
+[source,shell]
+----
+bun --no-install --no-env-file test --timeout 10000
+bun --no-install --no-env-file test --seed 432014
+bun --no-install --no-env-file test --rerun-each 20
+----
+
+== 单文件可执行程序
+
+官方入口：https://bun.com/docs/bundler/executables[Bun Single-file Executable]。
+
+稳定后可执行：
+
+[source,shell]
+----
+bun build src/cli.ts --compile --outfile dist/leanbun
+----
+
+`--compile` 会把入口及 imports 与 Bun runtime 打入单文件。LeanBun 到 M7 才采用此发布方式，并记录：
+
+* Bun 完整 revision；
+* 源码 commit；
+* target OS/architecture；
+* compile 参数；
+* 输出二进制 SHA-256；
+* 对应 Lean/Lake/Mathlib provider schema。
+
+单文件不代表跨平台或跨工具链自动兼容。外部 `lean`、`lake`、`git` 和共享依赖库仍在启动后按 policy
+发现和认证。
+
+== 本机已验证的最小能力
+
+2026-07-23 使用 wrapper 解析的 `bun --no-install --no-env-file` 完成以下冒烟检查：
+
+* `Bun.CryptoHasher("sha256")` 生成 64 位十六进制 SHA-256；
+* `Bun.spawn` 以绝对可执行文件、参数数组、pipe 与 timeout 运行并读取结果；
+* `bun:sqlite` 创建内存数据库、建表、插入和 prepared query；
+* 进程正常退出且不写 LeanBun 工作区。
+
+这只证明当前本机 runtime 的最小 API 可用，不证明尚未测试的边角行为。每个对应 adapter 仍需 fixture、
+错误注入和并发测试。
+
+== 快速查阅表
+
+[cols="2,3,3",options="header"]
+|===
+|需求 |Bun API |LeanBun 规则
+
+|小文件读取
+|`Bun.file().text()`
+|先限大小，直接捕获读取错误
+
+|大文件摘要
+|`CryptoHasher("sha256")`
+|descriptor 分块，前后 `fstat`
+
+|目录/路径
+|`node:fs/promises`、`node:path`
+|realpath 后 containment
+
+|子进程
+|`Bun.spawn`
+|无 shell、白名单环境、双流限额、timeout
+
+|状态数据库
+|`bun:sqlite`
+|P2 起启用；短事务 lease
+
+|测试
+|`bun:test`
+|共享状态串行；固定 seed；无 orphan
+
+|发布
+|`bun build --compile`
+|M7；记录 runtime 与二进制 provenance
+|===

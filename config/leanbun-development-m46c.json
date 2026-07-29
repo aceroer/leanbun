@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "version": "0.18.0-m46c-dev",
+  "class": "registered-reservoir-loopback-regression",
+  "sourceBaseline": {
+    "commit": "736a24b0f175a140b49a9fec4b76db96377905d4",
+    "tree": "415e9079f787f54dbbd0f3a293a52c04e753137d",
+    "status": "uncommitted M43 through M46C working-tree delivery"
+  },
+  "registryBoundary": {
+    "kind": "repository-owned-file-loopback",
+    "fixture": "test/fixtures/m46-reservoir-loopback/registry.tsv",
+    "fixtureSha256": "32094fab13464b2a267cbbdfb9b0deb37fbad4e79a95b4f368c9892948fb9d58",
+    "networkAccess": false,
+    "publicDiscovery": false,
+    "externalProjectMutation": false
+  },
+  "durability": {
+    "immutableRecordMode": "0400",
+    "activePointerMode": "0600",
+    "activeCommitPoint": "atomic active.record rename",
+    "pendingBeforeFirstActivation": true,
+    "canonicalVerificationBeforeActivation": true,
+    "ordinaryReboundCanActivate": false,
+    "explicitRebindRequiresExactAuthorization": true,
+    "retention": "run-scoped retain-all"
+  },
+  "regression": {
+    "scenarios": [
+      "stable repeated resolution",
+      "first resolution pending before activation",
+      "same version rebound rejected by ordinary update",
+      "old-new-old oscillation",
+      "metadata drift at unchanged content",
+      "content drift at unchanged commit",
+      "disappeared version and unavailable old commit",
+      "explicit rebind",
+      "frozen offline replay",
+      "rollback to retained old activation"
+    ],
+    "auditRecords": 10,
+    "registryReads": 9,
+    "frozenReplayRegistryReads": 9
+  },
+  "identity": {
+    "controllerSourceSha256": "52acb3ae91618342d4cdab398d55b0b70407b194c55ef64d1f25f8004502431a",
+    "integrationTestSha256": "42f17749dfeb58a96f5365b950a17eee89facc5fcfc4568b2f682b7cebd2f53c",
+    "designDecisionSha256": "fd70a1c2999a666168bf03f80ee851e05e86b6aa50d90ffdad942dfa0b02e124",
+    "oldLockIdentity": "c63ceffa7d357918bb6a1139b132172c789beb0699a999ca0341f17fde80b0e2",
+    "newLockIdentity": "93521568a7d6b54ce56ecaeeb160ae6a41a102ef90d7fbde043e3072cb9a9160",
+    "oldBindingIdentity": "740ae60a6a806353435e3af9ad238a14b9767d35a26a1c1df0d7f4be1e8a6c24",
+    "newBindingIdentity": "b48387e110fae35680c30c35730ca04c1d87390a0b624b10058f78621a1f07d3",
+    "authorizationIdentity": "ece227f4d7069d0510e0d8955c39e83711604ab82b8b19d428602d4832f6da64"
+  },
+  "compatibility": {
+    "lockV1SourceSha256": "f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c",
+    "cargoGraphSha256": "962dd3e93fa46d39e943c265cc12f1a9efab38ddbc90a2c84f8b5703830e2dfa",
+    "cargoLockSha256": "f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07",
+    "m42ConcurrentHistoryDocumentSha256": "ffa188cc89fc285d3d79e994aeb71185fd852c864ec25fd35737c1f1cf105999"
+  },
+  "validation": {
+    "m46cIntegrationTests": 1,
+    "rustDefaultTests": 196,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "bunTests": 103,
+    "bunExpectCalls": 882,
+    "workspaceFmt": "passed",
+    "workspaceClippy": "passed",
+    "crateLayering": "passed"
+  },
+  "boundaries": {
+    "m46Status": "closed through registered regression",
+    "publicReservoirDiscovery": "closed",
+    "nextMilestone": "M47 historical crate disposition"
+  }
+}

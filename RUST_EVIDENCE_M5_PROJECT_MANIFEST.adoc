@@ -1,0 +1,65 @@
+= LeanBun Rust Evidence M5: Project Manifest and Provider Declaration Match
+:toc: left
+:sectnums:
+
+== 结论
+
+`leanbun-evidence` 已加入规范化 Lake project manifest typed decoder，以及无文件/进程能力的
+`compare_project_manifest_to_provider`。它可把项目声明分类为 `DependencyFree`、`Matched` 或 `Mismatched`，
+并返回确定排序的逐字段 mismatch。
+
+本门只读取仓库内隔离 fixture。没有创建 `.lake`，没有读取真实 Lean 项目，没有调用 Git、Lake 或 Lean，也没有
+writer 或 CLI 接入。
+
+== Project manifest schema
+
+根对象只允许并要求：
+
+* major 1 的三段数字 `version`；
+* 非空 `packagesDir`、项目 `name` 与 `lakeDir`；
+* boolean `fixedToolchain`；
+* 最多 4096 项的 `packages`。
+
+package name 必须非空且唯一。typed decoder 支持两种互斥 source：
+
+* `git`：要求 40 位小写十六进制 `rev`，禁止 `dir`；允许且校验 Lake 的 `url`、`subDir`、`scope`、
+  `manifestFile`、`inputRev`、`inherited`、`configFile`；
+* `path`：要求非空 `dir`，禁止 `rev/url/subDir/scope/inputRev`；允许且校验 `manifestFile`、`inherited`、
+  `configFile`。
+
+根或 package 未知字段、变体混用、错误类型、重复 name、超长字符串与数量超限全部拒绝。M5 对 path 只解析
+声明字符串，不 realpath；其 containment 必须在未来 project input transaction 中以 project root 为界验证。
+
+== 纯 provider 比较
+
+空 packages 直接分类为 `DependencyFree`，与当前 Bun 隔离无依赖项目语义一致。非空项目要求：
+
+* manifest 与 provider registry 的完整 version 和 `packagesDir` 一致；
+* package name 集合完全一致；
+* provider package 在项目 manifest 中必须是 `git`；
+* 每个 project revision 与 provider revision 一致。
+
+结果中的 mismatch 按 package/field 排序，明确区分缺失 package、多余 package、source type 和 revision 漂移。
+该比较只证明两份 typed 声明是否一致；不证明 Git HEAD、dirty state、源码 bytes、构件或来源主体。
+
+== 稳定读取与验收
+
+`read_project_manifest` 复用 M1/M2 的 direct regular file、4 MiB 上限、descriptor identity、TOCTOU、SHA-256 与
+strict JSON 门，并在同一结果对象中发布 file evidence 和 typed manifest。
+
+共享 `project-manifest-cases.tsv` 由 Bun contract oracle 与 Rust decoder 共同消费，覆盖空依赖、Git/path package、
+未来 schema、缺失/未知字段、重复 name、非法 revision、变体混用和错误 boolean。
+
+仓库内两个实际 fixture 已进入常规 Rust 测试：
+
+* `test/fixtures/lake-basic`：稳定读取后为零 package；
+* `test/fixtures/mathlib-project`：稳定读取九个 Git package，mathlib revision 正确。
+
+本机默认忽略门已显式把九包项目 manifest 与 `.leanbun-dev/lean` 的 provider pair 比较，结果为 `Matched`，无
+mismatch。真实项目未进入路径。
+
+== 下一门
+
+下一门建立隔离 project input snapshot：稳定读取 `lean-toolchain`、manifest 和可选 project override；对 path
+dependency 做 project-root containment，对绑定 provider 的 override 要求 typed/摘要一致，并在发布前重读全部
+输入。仍只在 fixture 中验收，不创建 `.lake`，不运行任何子进程。

@@ -1,0 +1,52 @@
+= LeanBun Rust Trusted Approval Ingress M7
+:toc: left
+:sectnums:
+
+== 结论
+
+M7 已把 trusted approval ingress 拆成纯 Rust challenge core 与独立 macOS adapter boundary。core 生成绑定
+RequestId、canonical preflight SHA-256、session nonce digest 和六十秒窗口的 challenge，但 execution authority 始终为
+`Withheld`。
+
+当前没有把 M6 external JSON claim 认证成用户批准，也没有创建 execution capability、读终端、接 CLI 或启动 Lake。
+
+== Challenge core
+
+`LakeCommandTrustedApprovalChallengeV1` 只接受相互匹配的 pending request 与
+`ReadyForExplicitApproval` preflight，并要求：
+
+* request/preflight schema、RequestId 和 withheld authority 精确一致；
+* session nonce digest 非全零；真实 nonce 必须在未来 adapter 内由 OS CSPRNG 产生；
+* challenge 不早于 request/preflight，最长六十秒，且不越过 request expiry；
+* `challengeId` 内容寻址 request、preflight、session nonce 与时间窗；
+* confirmation 精确绑定 RequestId、preflight SHA 和 challenge ID。
+
+生成 challenge 只是确定待确认文本，不证明终端或 principal，也不提供单次消费语义。
+
+== macOS adapter contract
+
+`TrustedApprovalIngressContractV1` 的 decision 固定为 `RequiresDedicatedMacOsAdapter`。适配器必须在同一次当前进程交互中
+验证 controlling terminal、stdin/stderr 同一终端、终端属于 effective user、当前进程位于 foreground process group，
+并负责 OS 随机 nonce、deadline/preflight 重验和原子 single-use consumption。
+
+以下来源明确不能成为 trusted approval：命令行参数、环境变量、ordinary file、pipe/redirected stdin、clipboard-only
+或 M6 external JSON claim。
+
+这些检查涉及 macOS terminal/session ownership 和原子 replay registry，不属于 `leanbun-plan` 纯函数层。因此后续使用
+独立 `leanbun-approval-macos` crate；不能以调用方传入布尔值代替 OS observation。
+
+== Verification
+
+Rust 与 Bun golden tests 分别重算 canonical preflight SHA、challenge identity、confirmation、时间窗和 adapter contract。
+测试 fixture 的 session nonce digest 是合成值，不是真实会话随机数或批准。
+
+本步没有运行 `lake update`，没有生成 grant，没有写真实项目或生产依赖库。
+
+== 下一门
+
+`leanbun-approval-macos` 的只读 observation adapter 已完成，见
+xref:RUST_MACOS_TERMINAL_OBSERVATION_M8.adoc[LeanBun Rust macOS Terminal Observation M8]。下一小门是 safe macOS binding 调研与
+effective UID/terminal ownership/foreground process group proof；完成前不设计交互读取或 replay registry。
+
+前置 contract 见 xref:RUST_LAKE_APPROVAL_GRANT_CONTRACT_M6.adoc[LeanBun Rust Lake Approval Grant Contract M6]；上位边界见
+xref:LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]。

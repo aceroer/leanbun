@@ -1,0 +1,53 @@
+= LeanBun Rust Reservation-Bound Path Eligibility M25
+
+== Outcome
+
+M25 已在 `leanbun-approval-macos` 建立 `assess_reservation_bound_path_eligibility_v1`。输入只借用 M19
+`TrustedLakeLaunchReservationV1`，输出把 durable reservation identity、fresh executable identity 与 M24 component provenance 合为一份
+typed assessment。它不按值消费 reservation、不读取或删除 slot、不创建 child process，也不调用 Lake。
+
+== Reservation binding
+
+评估首先在内存中重验 reservation 的 schema、`ReservedOnce` decision/authority、完整 M18 intent identity 与 canonical reservation record SHA。
+assessment 固定携带 reservation SHA、intent SHA、sealed executable SHA 和 exact executable path；无效 lineage 得到
+`DeniedReservationInvalid`。
+
+评估开始与结束都读取 wall clock，要求 `reserved <= assessed < expiry` 且 clock 不回退。过期或回退统一 fail closed 为
+`DeniedReservationExpired`。这里的 `ReservedOnce` 只证明启动机会已经持久预留，不会传播为 execution authority。
+
+== Fresh executable and path join
+
+M25 从 reservation 封存路径推导 direct managed toolchain root，再调用既有 bounded executable observer：
+
+* 重新以 `NOFOLLOW` FD 读取 Lake bytes并计算 SHA-256；
+* 重验 byte length、mode、regular/symlink-free 与 reviewed plan identity；
+* 与 reservation 内封存的完整 `LakeExecutableObservationV1` 精确比较；
+* identity drift 得到 `DeniedExecutableIdentityDrift`；
+* 只有 exact match 后才调用 M24 `observe_macos_path_provenance_v1`。
+
+M24 的每一种 component denial 都映射为 M25 的同名具体 denial。assessment 保存完整 fresh path observation，但
+`execution_authority` 始终是 `Withheld`。当前 observer 尚没有 production-eligible decision，因此 M25 也没有乐观成功分支。
+
+== Non-consuming proof
+
+隔离测试通过完整 M14→M19 pipeline 创建一个 0600 reservation slot。M25 评估 user-owned fixture 后得到
+`DeniedUserOwnedComponent`；评估前后 slot bytes 完全相同且 registry 仍只有一个 slot。另一个测试在 reservation 后修改 Lake bytes，fresh
+rehash 得到 `DeniedExecutableIdentityDrift`，slot 同样保留。
+第三个 injected-clock case 在任何 executable/path observation 前命中 expiry，并确认 slot 仍保持唯一。
+
+这些测试只在 `/private/tmp` 的 fixture 中写入，并由测试夹具回收；runtime M25 没有 filesystem writer、删除 API、process API 或 host environment
+读取。
+
+== Production consequence
+
+M25 没有制造新的生产 reservation，因此没有为当前生产 Lake 执行伪造的完整 approval pipeline。M24 的当前事实仍决定其结果：路径链是 UID
+501 可写、位于 `MNT_IGNORE_OWNERSHIP` external volume，故任何真实绑定到该路径的 reservation 都会得到
+`DeniedUserOwnedComponent`，不会进入 process adapter。
+
+== 下一门
+
+M26 已完成，见 xref:RUST_STABLE_EXECUTABLE_DEPLOYMENT_CONTRACT_M26.adoc[LeanBun Rust Stable Executable Deployment Contract M26]。审计确认
+sealed system binary 不是自定义 Lake acquisition route，user-mounted read-only image 不能关闭 mount replacement，两个 privileged candidates 都需要
+外部 coordinator；本门仍未安装、移动、mount 或 spawn。
+
+前置 native evidence 见 xref:RUST_MACOS_ACL_WRAPPER_M24.adoc[LeanBun Rust macOS ACL Wrapper and Native Mount Evidence M24]。

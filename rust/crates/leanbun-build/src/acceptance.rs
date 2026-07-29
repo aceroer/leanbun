@@ -11,7 +11,7 @@ use leanbun_generation::{
 use leanbun_lake_bridge::{
     LakeManifestProjectionV1, LakeRootDeclarationV1, LakeRuntimePackagesProjectionV1,
 };
-use leanbun_package::{LeanBunLockV1, PackagePathDecisionSetV1};
+use leanbun_lock::{LeanBunLockV1, PackagePathDecisionSetV1};
 use leanbun_resolver::{
     LeanResolutionModeV1, LeanResolutionRequestV1, LeanToolchainIdentityV1,
     resolve_lean_dependencies_v1,

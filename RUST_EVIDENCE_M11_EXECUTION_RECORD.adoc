@@ -1,0 +1,79 @@
+= LeanBun Rust Evidence M11: Strict Execution Record Reader
+:toc: left
+:sectnums:
+
+== 结论
+
+Rust `leanbun-evidence` 已实现 `ControlledBuildExecutionRecordV1`、terminal outcome、recovery identity 与 reuse tree
+evidence 的 strict typed decoder，以及只读 `read_execution_record`。
+
+reader 以 typed `ExecutionId` 定位 `executions/<uuid>.json`，稳定读取后把文件 SHA-256 与 typed record 一起发布。
+M11 不创建或终结记录、不扫描进程、不执行 recovery、不释放 lock，也不把历史记录当作构建许可。
+
+== Root identity
+
+record 必须使用 `schemaVersion = 1` 和 `recordType = "controlled-build-execution"`，并绑定：
+
+* requested/filename/document 三方一致的 lowercase UUID v4；
+* lexical canonical absolute project path 与其 path-only `ProjectId`；
+* valid `BuildTarget` 与 typed `ImageId`；
+* binding、attestation、dependency-before SHA-256；
+* canonical `startedAt`；
+* status、finishedAt 与 outcome。
+
+project path 最大 4096 bytes，拒绝 control、trailing slash、重复 separator、`.` 与 `..` segment。所有 SHA-256
+必须 lowercase。根对象和所有嵌套对象均拒绝 unknown field；文件硬上限保持 Bun 的 64 KiB。
+
+== Policy and recovery identity
+
+`profileSha256` 与 `reusePolicySha256` 必须恰有一个：
+
+* `completed` 必须使用 profile policy；
+* `reused` 必须使用 reuse policy；
+* `running` 与 `failed` 可表示正常 Lake 或显式 reuse transaction。
+
+`coordinatorPid`、`projectProtectedBefore`、`projectProtectedRecordCount` 构成不可拆分的 recovery 三元组：必须全部
+缺失或全部存在。PID 必须为正安全整数，record count 为非负安全整数。
+
+== State/outcome conjunction
+
+四种状态按以下合取解码：
+
+* `running`：`finishedAt = null` 且 `outcome = null`；
+* `completed`：canonical finishedAt 不早于 startedAt，outcome buildExecution 必须为 completed；
+* `failed`：同样要求 terminal 时间，并强制有效 failureStage；
+* `reused`：buildExecution 为 reused，必须有 source execution UUID 与完整 reuse evidence。
+
+`reused` 明确拒绝 Lake exit、termination reason、trigger signal、process group、escalation 与 reap 字段。非 reused
+记录不得携带 `reusedFromExecutionId`。非 failed 记录不得携带 failure stage/message。failure message 上限按 Bun
+字符串语义计为 1024 UTF-16 code units。
+
+timeout/signal/exit、trigger signal、failure stage 均解码为 enum。trigger signal 必须且仅能出现在 signal termination；
+PID/count 均受 JavaScript safe integer 边界约束。
+
+== Reuse evidence
+
+reuse evidence 只允许 schemaVersion、projectInput、projectOutput。两个 tree record 分别固定为：
+
+* `leanbun-project-input-tree-v1`；
+* `leanbun-project-output-tree-v1`。
+
+每棵树绑定 typed SHA-256、entry/file/byte count；计数是非负安全整数，并要求 file count 不超过 entry count。
+
+== Filesystem boundary and differential oracle
+
+canonical state root 下的 `executions` 必须是直接目录；symlinked store 在目标路径构造前拒绝。JSON 文件继续受
+direct regular file、canonical containment、有限读取和 TOCTOU 稳定门保护。
+
+共享 `rust/golden/execution-record-cases.tsv` 覆盖四种有效状态，以及 project identity drift、running 携带
+finishedAt、failed 缺 failure stage、reused 混入 Lake 字段。Bun 独立 strict oracle 与 Rust decoder 对八组案例
+给出相同结果。Rust 文件系统测试另验证稳定重复读取和 symlink store 拒绝。
+
+== 边界与下一门
+
+execution record 是操作证据，不进入 ProjectBinding 或 BuildAuthorization。M11 的 typed validity 也不证明历史
+输出仍存在，candidate reuse 必须重新核对 input/output tree。
+
+该下一门已完成，见 xref:RUST_EVIDENCE_M12_BUILD_LOCK.adoc[LeanBun Rust Evidence M12]：它绑定 lock key、
+execution/project/image/target、coordinator PID 与 acquiredAt，并保持全程只读。后续先建立 `leanbun-state` M0 的纯
+内存 transition/ownership 模型，不直接开放 writer。

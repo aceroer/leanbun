@@ -1,0 +1,56 @@
+= LeanBun Rust macOS Exact Response M11
+:toc: left
+:sectnums:
+
+== 结论
+
+M11 已在 `leanbun-approval-macos` 建立 bounded exact response reader。reader 只能消费一个已经成功写入同一 stderr 的
+presentation capability；成功只产生 `ExactTerminalResponseClaim`，execution authority 仍为 `Withheld`。M12 已进一步把该 claim
+收紧为外部不可构造、不可复制的 sealed capability。
+
+本门不生成 approval grant、不建立 replay registry、不接入 CLI，也不调用 Lake。
+
+== One-presentation / one-attempt boundary
+
+present API 现在要求可变的 presentation，并且只在 stderr `write_all` 与 `flush` 全部成功后把它标为已展示。重复展示被拒绝。
+reader 按值消费 presentation，所以一次读取尝试后，调用方不能用同一对象在进程内重试。未展示的 capability 在观察或读取 stdin
+之前即以 `ChallengeNotPresented` 拒绝。
+
+这只是对象所有权提供的进程内单次尝试，不等价于跨进程、崩溃恢复或持久化的 single-use/replay 证明。
+
+== Exact input contract
+
+reader 在读取前后都重新观察 terminal binding，并检查 challenge 时间窗。它不用 `read_line` 或无界字符串读取，而是分配
+`expected confirmation bytes + 2` 的固定 buffer，要求：
+
+* confirmation 非空且不超过 256 bytes；
+* 输入是有效 UTF-8；
+* 只出现一个结尾 LF，CRLF 不被规范化；
+* LF 前的 bytes 与动态 challenge confirmation 完全相等；
+* 当前 read 未带入 LF 后数据，且 `FIONREAD` 检查时没有排队输入；
+* EOF、I/O error、超限、queue inspection failure、terminal drift 与 time drift 全部 typed fail closed。
+
+`FIONREAD` 是 LF 后的即时 queue observation，不被表述为对未来输入竞态的永久证明。阻塞 read 也不是 wall-clock timer；如果等待跨过
+expiry，读后时间检查会拒绝成功，但本门不声称在 expiry 时主动中断等待。
+
+== Response claim
+
+成功 claim 绑定 challenge ID、request ID、preflight SHA、exact response SHA、terminal binding 与 response time。decision 仅为
+`ExactTerminalResponseClaim`，不能单独认证一个可执行 principal，也不能转换为 Lake execution authority。
+
+== Verification
+
+单元测试覆盖 exact LF success、missing newline、CRLF、mismatch、invalid UTF-8、同次 read extras、排队 extras，以及未展示 capability
+在输入前拒绝。Bun boundary oracle 固定 bounded `Read`、buffer 上限、`FIONREAD`、no `read_line`/unbounded read、no subprocess、
+no environment、no unsafe 与 no `lake update`。
+
+隔离真实 PTY 中，synthetic challenge 已先写入当前 stderr；随后输入其动态 exact confirmation，进程返回
+`ExactTerminalResponseClaim` 且 authority `Withheld`。该 example 的 project path 是不可执行的 synthetic path。
+
+== 后续门
+
+atomic single-use replay registry 已在 M12 完成，见
+xref:RUST_MACOS_REPLAY_REGISTRY_M12.adoc[LeanBun Rust macOS Replay Registry M12]。它以 `O_EXCL` slot 消费 sealed claim，并把
+crash-shaped incomplete slot 继续视为已消费；成功仍不生成 grant。M13 将重新合取 fresh request/preflight facts。
+
+前置 presentation 见 xref:RUST_MACOS_CHALLENGE_PRESENTATION_M10.adoc[LeanBun Rust macOS Challenge Presentation M10]。

@@ -1,0 +1,65 @@
+= LeanBun M5 Controlled Build Execution Record
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第九阶段已把受控构建报告提升为独立的短生命周期 execution record。只有完整 attestation 重验通过、
+sandbox 已准备好且 Lake 即将启动时才创建记录；preflight 拒绝或尚未执行的请求不会生成记录。
+
+记录位于开发 state root 的 `executions/<uuid>.json`。它是操作证据，不写入 project binding，且
+`BuildAuthorizationFacts` 不读取它，因此不能被重放为构建许可。
+
+== 状态转换与落盘协议
+
+[source,text]
+----
+approved + sandbox prepared
+  -> running
+       -> completed
+       -> failed
+----
+
+`running` 和终态都采用同目录协作锁、随机临时文件、文件 `fsync`、mode `0444`、原子 rename、目录
+`fsync` 与立即回读校验。UUID 冲突、重复终结、终态/结果不一致、symlink store 和超出 state root
+全部默认拒绝。状态只能转换一次。
+
+记录绑定 project ID/path、target、Image ID、binding/attestation/profile SHA-256、协调进程 PID、构建前
+dependency artifact hash、项目非写区 hash/count 与开始时间。终态再记录 Lake exit、构建后 artifact hash/count、项目非写区、binding、
+attestation 和 provider inspection 是否稳定。异常消息最多保存 1024 字符。
+
+整个 state root 同时加入 sandbox protected roots；若错误配置使它与 `.lake/build`、`.lake/config` 或
+`.leanbun/tmp` 重叠，构建会在启动前拒绝。
+
+== Mathlib fixture 验收
+
+[cols="1,2"]
+|===
+|Status / execution |`passed` / `completed`
+|Execution ID |`a58825f7-c4be-422d-98a0-a5de14574072`
+|Record status |`completed`
+|Record SHA-256 |`1acdb2bef4f683e10b408feaf69daf2c52ba33829163b73355d881edae93c78d`
+|Record mode |`0444`
+|Lake exit |`0`
+|Dependency artifact before |`82c17f8c55668dd2a10040ed53eaebe742e8d06422a67f25c3968a71203abc12`
+|Dependency artifact after |同上
+|Dependency artifact count |112425
+|Project protected records |stable
+|Binding / attestation / inspection |stable / stable / stable
+|Controlled-build report SHA-256 |`3efa4ebc260b5437f1ad62e6f5cb680706fbda5ca6593b4ed8cb0719274ee827`
+|===
+
+诊断链为既有 `Cli` missing warning、`ATTESTATION_REVERIFIED`、`EXECUTION_RECORD_STARTED`、
+`EXECUTION_RECORD_FINALIZED` 与 `CONTROLLED_BUILD_PASSED`。正式 provider 的 artifact tree、Git、registry、
+override 与 sealed attestation 均保持不变。
+
+单元测试覆盖成功终结、失败终结、重复 ID、重复终结、状态不匹配、symlink store、只读 mode 和锁/临时
+文件清理。验收记录保留在开发 state root；项目副本和临时报告在终检后删除。
+
+== 下一执行门
+
+execution record 现另支持无 Lake 字段的显式 `reused` 终态，详见
+xref:M5_REUSE_TRANSACTION.adoc[M5 Lock-Held Reuse Transaction]。Crash/stale-running recovery 已实现，详见
+xref:M5_EXECUTION_RECOVERY.adoc[M5 Stale Running Execution Recovery]；timeout/signal 终态化也已通过，详见
+xref:M5_TIMEOUT_SIGNAL.adoc[M5 Timeout and Signal Finalization]。project/image 锁也已通过，详见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。下一步研究重复构建复用。

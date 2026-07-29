@@ -1,7 +1,7 @@
 use core::fmt;
 use leanbun_core::{Sha256, Sha256Hasher};
 use leanbun_lake_bridge::{LakeDependencySourceV1, LakeRootDeclarationV1, LakeRootDependencyV1};
-use leanbun_package::{
+use leanbun_lock::{
     CanonicalSourceUrlV1, LeanBunLockV1, LockedLeanPackageV1, PackageKeyV1,
     RequestedPackageSourceV1, ResolvedPackageSourceV1,
 };

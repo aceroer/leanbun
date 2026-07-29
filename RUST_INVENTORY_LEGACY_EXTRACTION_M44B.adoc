@@ -1,0 +1,100 @@
+= LeanBun Inventory Legacy Extraction M44 Phase B
+:toc: left
+:sectnums:
+
+== Result
+
+M44 Phase B is complete as `0.14.0-m44b-dev`. The historical checkout inventory, dependency drift and canonical inventory snapshot model has moved into `leanbun-inventory-legacy`. The mixed `leanbun-package` crate and its temporary lock re-export have been removed from the workspace.
+
+Together with xref:RUST_LOCK_EXTRACTION_M44A.adoc[M44 Phase A], this closes M44's package-model physical separation. The current lock model and historical inventory model no longer share a crate, public namespace or mainline dependency closure.
+
+== Final crate boundary
+
+`leanbun-lock` depends only on `leanbun-core`. It owns exact requested/resolved sources, `LeanBunLockV1`, package graph identity, path provenance and the Bun final-path decision.
+
+`leanbun-inventory-legacy` depends only on `leanbun-core` and `leanbun-evidence`. It owns checkout observations, provider comparison, dependency drift and inventory snapshot identity. Its only direct consumers are the historical `leanbun-plan` and `leanbun-approval-macos` crates.
+
+The six mainline roots directly depend on `leanbun-lock` and cannot reach inventory legacy, plan, state, approval or macOS ACL code. The crate checker rejects any workspace that contains both `leanbun-package` and `leanbun-inventory-legacy`.
+
+The literal digest domain `leanbun-package-graph-v1` remains inside the V1 lock implementation. This is an on-wire identity constant, not a crate dependency, and changing it would break M31 compatibility.
+
+== Mechanical identity
+
+The moved `snapshot.rs` retained its exact M43 SHA-256:
+
+----
+03533dd7363dff8fa4190172942d9b27ffa99d7abd26d76024e333b4a2e9ab62
+----
+
+The canonical inventory snapshot and drift-case fixtures retained SHA-256 values `5b35732e78d1a922349a44ffb833aa6a4db8cf13fe63ea85715c310d611849ff` and `1a77d90127bd9da235fb389df75bba6e2e9c238369f48426e96fde32477a7f6c`. The six inventory tests, plan tests, approval tests and Bun cross-language golden checks passed without changed expected bytes or classifications.
+
+M44A's lock implementation also remains byte-identical at SHA-256 `f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c`.
+
+== Dependency enforcement
+
+The M44B graph contains 14 workspace crates: `leanbun-inventory-legacy` replaces the removed mixed package crate. Automated policy now verifies:
+
+* every mainline root directly imports `leanbun-lock`;
+* no mainline closure reaches inventory legacy or another historical policy crate;
+* inventory legacy cannot depend on lock;
+* mixed package and inventory legacy cannot coexist;
+* the moved lock and snapshot files retain their pre-refactor hashes;
+* the API census resolves to the new physical source paths.
+
+The dependency negative matrix now contains nine tests and thirteen assertions.
+
+== Source and behavior validation
+
+The following passed on 2026-07-29:
+
+* Rust formatting and workspace Clippy;
+* Rust workspace: 184 default tests, zero failures;
+* explicit provider snapshot: one test, zero failures;
+* Bun suite: 102 tests, 879 assertions, zero failures;
+* M31 canonical lock graph/text/identity oracle;
+* inventory snapshot and dependency-drift cross-language golden checks;
+* mainline legacy-import scan;
+* 14-crate Cargo metadata baseline and architecture checker.
+
+One Bun manifest assertion still named the removed package dependency during the first full run. It failed as intended and was updated to require `leanbun-inventory-legacy`; the complete suite then passed. No assertion was weakened or removed.
+
+== Current-source release-binary replay
+
+To avoid resolving or copying the entire Bun workspace dependency cache, a minimal manifest under `.leanbun-dev-rust/replay-build` compiled the existing Bun `lean_pm/main.rs` adapter directly against the current M44B crates. This test-only binary is not tracked and is not a distribution artifact.
+
+Its SHA-256 is `abf6e71fb3f3e5b5657a19579e1783246f28f93fa1e4d97864778d1fef6191da`. It retains the adapter's embedded M42 version string; release version/provenance refresh remains M48 work and is not inferred from this replay binary.
+
+The current-source binary passed all five registered M42 fixture routes:
+
+[cols="2,3,3",options="header"]
+|===
+|Fixture |Run ID |Record/audit SHA-256
+
+|`lake-basic`
+|`946b36f30126eed514ee500f82eccb1de7f623d35e2c720c39cf7d2084baa941`
+|`46752af45b8bb270d69fb534d7daa717eaa71bebd0861afc9e769bbfdc766bbd`
+
+|`lake-managed-dependency`
+|`d56cdf66e48f3d012dbc8663e8c258bd75447e19620b02315b751536781a15b7`
+|`a741dee249ac8a0f7d164500b4707232db5bc9b4bbad2245f8d3efdf6c6e821f`
+
+|`mathlib-project`
+|`bbcc723a36766f3a6111e3209783c94283ce4b52a8bd58938dcdba5e5cb23808`
+|`0f6513646327adcad2a9696911879a6646260154d98202e16e3dffd20a41ae2a`
+
+|`negative-matrix`
+|`23ddad63a45c8c6e0a14471d0ac213b311a8ce8b65fe2b13038113b26c770088`
+|`22eec45d9210fc03fb2e399de705b7bed2b8bdae024449c4355d40dff5ba662d`
+
+|`concurrent-history`
+|`3fc5b2eb89766337a803da67e32cb254c448130335be4baed47329f25cd19631`
+|`1d2f19b3a500e2303d39a557f1cc8a18fa527a987fd6951128c158144591db40`
+|===
+
+The Mathlib route used all nine registered packages and completed explicit update, recovery, rollback and cleanup. The negative matrix covered five failures. Concurrent history retained all prior records, added no deletion path and completed its audit. Run scratch and Store scratch were empty afterward.
+
+== Closure and next gate
+
+M44 is complete: new and old package models are physically separate, the mainline sees only lock, canonical identities are unchanged, and both source and current-source binary regressions pass.
+
+The next milestone is M45. It must first inventory every `StrictJson` consumer and decide whether the parser remains evidence-internal or moves into a platform-neutral codec crate. No module should move before that decision is recorded.

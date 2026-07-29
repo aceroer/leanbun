@@ -1,0 +1,58 @@
+= LeanBun Rust Sealed Execution Candidate M16
+
+== Outcome
+
+M16 已在 `leanbun-approval-macos` 建立 `TrustedLakeExecutionCandidateV1`。公开入口
+`seal_trusted_lake_execution_candidate_v1` 按值接收 M12 consumption record 与 M15 sealed fresh bundle，在 M13 完成 fresh
+reverification 后，把原始 exact `LakeCommandPlanV1` 与新 `LakeCommandTrustedApprovalProofV1` 密封进同一 capsule。
+
+调用方不再需要、也不能在 proof 生成后重新提交一个 plan。capsule 的 decision 是 `ExactPlanAndProofSealed`，execution authority 仍为
+`PlanExecutionAuthorityV1::Withheld`。
+
+== Ownership boundary
+
+M13 内部新增 crate-private bundle path：它只在 proof 成功后返回由 M15 bundle 原样移出的 plan 与 proof。M16 使用该 path 建立 capsule；
+公开的 M13 proof-only API 继续保留，但不会产生 execution candidate。
+
+capsule 不实现 `Clone`，字段保持 crate-private，只提供 exact plan、proof、expiry、candidate SHA 和 authority 的只读 getter。Rust ownership
+不是 durable replay protection；跨进程单次消费仍由 M12 的 `O_EXCL` registry 提供。
+
+== Candidate identity
+
+`candidate_sha256` 使用固定 canonical identity，绑定：
+
+* request ID；
+* M13 proof SHA；
+* full plan-report SHA；
+* inventory snapshot SHA；
+* executable SHA；
+* challenge expiry；
+* `withheld` authority。
+
+plan-report SHA 覆盖 exact executable、arguments、cwd、environment allowlist、effects、risks 和 contract sources。candidate 同时保存原 plan，
+因此以后策略层不需要从 JSON 或散列反推命令。
+
+challenge expiry 被保留并进入 identity，防止后续把“proof 曾在窗口内形成”混同为“candidate 当前仍有效”。M16 本身不做延后授权，
+也不会改变 expiry。
+
+== Security boundary
+
+M16 不生成 execution grant，不把 `Withheld` 转为 granted，不读取 environment，不调用 process/Git/Lake，不写 filesystem，也不接入 CLI。
+它只组合已经密封的 Rust 值；任何 proof 失败都会原样 fail closed，不产生 candidate。
+
+== Verification
+
+Rust public-pipeline test 覆盖 M14 observer -> M15 fresh bundle -> M13 reverification -> M16 capsule，确认 exact plan 未变化、proof report
+SHA 与 request 一致、expiry 被保留且最终 authority 仍为 `Withheld`。
+
+Bun boundary oracle 固定 capsule constructor、crate-private M13 bundle path、plan/proof/expiry identity、non-grant authority，并继续拒绝
+subprocess、environment、deletion、unsafe 与 `lake update`。
+
+== 后续权限边界
+
+M17 已建立 unexpired candidate 到单命令、单次消费 grant capability 的策略与类型契约，见
+xref:RUST_TRUSTED_EXECUTION_GRANT_M17.adoc[LeanBun Rust Trusted Execution Grant M17]。可信 grant 只存在于 non-clone Rust wrapper；仍未实现
+process adapter 或 CLI dispatch。
+
+前置 fresh-plan bundle 见 xref:RUST_TRUSTED_FRESH_PLAN_M15.adoc[LeanBun Rust Trusted Fresh Plan M15]，proof 见
+xref:RUST_APPROVAL_FRESH_REVERIFICATION_M13.adoc[LeanBun Rust Approval Fresh Reverification M13]。

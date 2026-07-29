@@ -1,0 +1,86 @@
+= LeanBun Concurrent History Regression M42 Phase E
+:toc: left
+:sectnums:
+
+== Result
+
+M42 Phase E 已在 `0.11.0-m42-dev` 闭合 M42 最后一段路线：
+
+[source,shell]
+----
+leanbun fixture-regress <registered-fixture-repository> \
+  --fixture=concurrent-history
+----
+
+该入口不接受项目路径。单次运行创建三个 barrier-synchronized worker：两个执行完整 `negative-matrix`，第三个读取
+登记 malformed manifest 并要求实际 parser 返回 `JSON_MALFORMED`。它不并行写同一个 managed project，也不开放外部项目。
+
+== Concurrent publication correction
+
+Phase D 的 `negative-latest` 使用 atomic rename，但发布者随后错误要求 latest 仍指向自己的 record。两个合法 worker 并发时，
+另一个完整 pointer 可以在检查前获胜，旧判断会误报失败。
+
+Phase E 将 post-publish invariant 修正为：当前 latest 必须是 `0600` bounded regular file、schema canonical、fixture 固定，且其
+run ID 与 record SHA-256 必须绑定 `negative-records` 中某个 `0400` immutable record。发布者不再要求自己永久获胜。
+run ID 仍由时间、进程和 process-atomic nonce 唯一化；两轮中四个 worker records 均不同。
+
+== Terminal records
+
+每个 worker 都获得 scheduler-bound job ID，并在 `regression/terminal-records` 发布一个 `0400` terminal record：
+
+* 两个负矩阵 worker 为 `terminal=passed`，绑定各自 outcome record SHA-256；
+* malformed worker 为 `terminal=failed`、`failure-code=JSON_MALFORMED`，没有伪造成功 outcome record；
+* worker 非预期失败时仍先写 failed terminal，然后整个聚合入口失败。
+
+这使“预期失败”成为可审计 terminal，而不是只依赖进程 stderr 或退出码。
+
+== History audit and retention
+
+审计器逐项验证四类历史：positive、negative、terminal 与 prior audit。每个 record 必须是 `0400` bounded regular file，
+首尾 schema、identity 字段、文件名和内容 SHA-256 相符；positive/negative latest 必须是 `0600` 并精确绑定 immutable record。
+排序后的 namespace/name/digest 形成 inventory SHA-256。
+
+审计摘要发布到 `regression/audit-records/<run-id>.record`，独立 `audit-latest.record` 以 atomic rename 更新。
+保留策略冻结为：
+
+----
+retention-policy=retain-all-v1
+automatic-deletion=disabled
+----
+
+Phase E 没有删除 API、时间阈值或数量阈值。第二轮只允许新增四个 negative records、六个 terminal records 中的后三个，
+以及一个 audit record；第一轮所有证据必须仍存在。
+
+== Repeated-run evidence
+
+[cols="2,3,3,3",options="header"]
+|===
+|Run |Scheduler run ID |Audit record SHA-256 |Inventory SHA-256
+
+|1
+|`cb82be63ac9026c97a98af9d7830b75d463ce1532d21941c62b6d40d1caf931d`
+|`792b11a726d992ed53d0c2ca94e2cc1009b8eef2c87c1880540f2d8406911ad5`
+|`ac62f84e6c766bfd9031c82b13e895595471b8264c0047b0cd4b0fc76158e1d4`
+
+|2
+|`8d23cc7322a1c26546acfc369b15e02ad1b7b0f29505fff196fd5538e6b22fd5`
+|`83c01dee6585cedffd95744aae3c6d2bb3f4e4d6883e56eb9e68a8796b74a562`
+|`7226b57f9efde217f9ec10c811ac60f1ea46b1b0f89899b9b37c0333db345600`
+|===
+
+第一轮审计计数为 positive 6、negative 4、terminal 3、prior audit 0；第二轮为 positive 6、negative 6、terminal 6、
+prior audit 1。第二轮 expected-failure terminal SHA-256 为
+`a479234bb11dfb7021022dacbf5174fd061c6e3cfc48edcda8bba6ee9d28ea3a`。
+
+最终三个 latest SHA-256 分别为：positive
+`bf93aeeed4ee8c470f1fc1c03400fce774d4fed6253f794342f236a796b66d8f`、negative
+`4935efd68e2198a26633eccedec8e70a90a687c76ef084ce87e7880a161a42d0`、audit
+`b27b22fbf9b7aa756bb8f94cbdb01a55c390fda27f467c8b77023ea32a11f3b2`。
+
+== Validation and boundary
+
+最终验证为 Rust 默认 184 项、显式 ignored provider 1 项、Bun 93 项/866 次断言，以及 Rust workspace 与
+Bun fork `lean_pm` 定向 Clippy。M41 frozen records 未改变，Store scratch 为空；release binary 仍为 ad-hoc signed、
+未 notarize 的 macOS arm64 development artifact。
+
+M42 A--E 全部闭合。下一 milestone 必须另行冻结目标；本阶段不把 fixture closure 解释为真实外部项目授权。

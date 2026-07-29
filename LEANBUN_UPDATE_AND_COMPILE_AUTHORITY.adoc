@@ -1,0 +1,345 @@
+= LeanBun 更新与编译许可控制规范
+:toc: left
+:sectnums:
+
+IMPORTANT: 本文保留为早期问题分析和历史设计。其“许可接管”、staging state machine、seal/bind、SQLite lease、
+image lock 与 recovery 方案已由
+xref:LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]废止，不再是实施规范。LeanBun
+只做 Lake 外部的观察、命令计划、显式 CLI 调用和结果核验，不写或恢复 Lake 内部状态。
+
+== 文档状态
+
+[cols="1,3"]
+|===
+|状态 |M5 前置授权门已实现；实际 Lake build、bind 和许可事务尚未开放
+|实现语言 |Bun / TypeScript
+|已检查运行时 |Bun 1.3.14
+|审查基线 |Lean 4.32.0；mathlib revision `81a5d257c8e4`
+|首个实现目标 |只读项目检查器
+|===
+
+== 问题定义
+
+Elan 已经负责 Lean 工具链安装，Lake 已经负责依赖解析与构建，但当前组合仍缺少两个上层
+控制面。
+
+第一，更新行为没有统一的显式授权事务。工具链提示、manifest 更新、path override、缓存恢复
+和源码构建分散在不同命令与钩子中，不能共同回答“谁批准了这次变更”。
+
+第二，普通项目构建没有区分“允许编译项目源码”与“允许重新编译锁定依赖”。当依赖构件被
+判定缺失、失效或不可恢复时，Lake 可以自然回退到源码构建。对单个工程这是合理的构建语义，
+对多工程共享 mathlib 的工作站却会造成重复编译、资源争用和不可预测等待。
+
+LeanBun 因而必须成为权限控制层，而不是 `lake build` 的命令别名。
+
+== 已确认的上游行为
+
+当前源码审查得到以下约束，后续实现必须用回归测试重新固定：
+
+* mathlib 使用固定工具链策略，Lean 与 mathlib revision 必须匹配；
+* Lake 的 package override 可以替换依赖来源，但来源重定向不等于构件真实性认证；
+* 模块 trace 或缓存恢复不能提供有效构件时，构建逻辑会回退到 Lean 模块源码编译；
+* 模块构建会在编译前清理目标输出，多个进程之间没有由 LeanBun 管理的全局依赖镜像锁；
+* Lake 默认允许读取 artifact cache，但默认不向其中写入；
+* mathlib cache 依赖标准 Lake 布局，并含有需要人工维护的 package 处理边界；
+* mathlib 更新钩子在运行 Lake 与目标工具链不一致时会跳过自动 cache 获取，要求用户再次手动执行。
+
+这些事实说明：缓存命中优化无法代替更新许可与编译许可。
+
+== 责任边界
+
+[cols="1,3"]
+|===
+|组件 |职责
+
+|Elan
+|安装并选择 Lean 工具链。
+
+|Lake
+|解析 package、生成构建图、执行单项目构建。
+
+|LeanBun
+|批准更新事务、建立不可变依赖镜像、绑定项目、签发依赖源码编译许可、检测漂移并记录审计事件。
+|===
+
+LeanBun 不重新实现 Lean 编译器，也不重新实现 Lake 的依赖求解器。它在调用 Lake 前后建立
+可验证边界，并决定 Lake 是否有权改变活动依赖状态。
+
+== 核心不变量
+
+. 活动项目必须绑定到一个已封存的依赖镜像。
+. 普通构建只能写项目自己的构件目录。
+. mathlib 及传递依赖的源码编译默认拒绝。
+. 依赖更新只能发生在独立 staging 区，不能直接改写活动绑定。
+. staging 失败不得改变当前活动镜像。
+. 依赖源码编译必须具有一次性、有限范围、可过期的许可。
+. 构件认证必须读取真实文件并计算摘要，不能只信任已有 `.hash` 文件。
+. 相同镜像身份在同一平台上只允许一个写入事务。
+. 所有绕过、漂移和回退行为必须留下审计事件。
+
+== 依赖镜像身份
+
+共享目录不能仅按 `mathlib` 名称或版本号区分。镜像身份至少包含：
+
+[source,text]
+----
+ImageIdentity = {
+  schemaVersion,
+  leanToolchain,
+  leanCompilerGithash,
+  mathlibRevision,
+  canonicalManifestHash,
+  packageSourceTreeHash,
+  buildRelevantConfigHash,
+  targetPlatform
+}
+----
+
+`targetPlatform` 至少包含操作系统、CPU 架构和影响本机构件兼容性的工具链信息。完整身份摘要
+作为镜像目录名，不允许多个不同 manifest 共用同一可写目录。
+
+== 更新许可接管
+
+=== 唯一入口
+
+受管项目的更新入口为：
+
+[source,shell]
+----
+leanbun update <project>
+----
+
+直接执行 `lake update` 不应获得活动镜像写权限。初期通过检测和告警实现；控制层成熟后，通过
+只读活动绑定与命令 shim 形成强制边界。
+
+=== 更新状态机
+
+[source,text]
+----
+active
+  -> updateRequested
+  -> snapshotCreated
+  -> stagedResolved
+  -> candidateHydrated
+  -> candidateBuilt
+  -> verified
+  -> sealed
+  -> activated
+----
+
+`candidateBuilt` 只能在编译许可签发后进入。任一步失败，候选目录进入 failed 或 quarantined，
+活动绑定保持不变。
+
+=== 更新事务
+
+一次更新必须执行：
+
+. 读取当前 `lean-toolchain`、`lake-manifest.json`、package overrides 和活动绑定；
+. 在 staging 中创建可回滚快照；
+. 在 staging 中调用 Lake 完成解析，禁止直接改写活动项目；
+. 重新读取解析后的工具链、manifest 与实际 checkout revision；
+. 计算候选 `ImageIdentity`；
+. 优先恢复官方或可信 artifact cache；
+. 对缺失构件提出编译许可请求，禁止静默源码回退；
+. 执行构件、导入和项目 smoke test；
+. 将候选镜像改为只读并写入 attestations；
+. 原子替换项目绑定。
+
+=== 更新防绕过
+
+需要四层防护：
+
+* 命令层：`leanbun lake ...` 与 shell shim 拦截已知写入命令；
+* 文件层：活动依赖镜像及其父目录不可写；
+* 绑定层：每次构建前核验 override、manifest 与镜像身份；
+* 状态层：发现漂移后项目进入 `drifted`，直到重新审计或恢复绑定。
+
+仅包装命令不足以构成安全边界，因为用户、IDE 或其他脚本仍可能直接调用 Lake。
+
+== 编译许可接管
+
+=== 默认策略
+
+[cols="3,1"]
+|===
+|动作 |默认许可
+|编译项目自身 Lean 源码 |允许
+|读取封存依赖构件 |允许
+|从已认证缓存恢复候选构件 |条件允许
+|普通构建中编译 mathlib 源码 |拒绝
+|普通构建中编译传递依赖源码 |拒绝
+|修改封存镜像 |永久拒绝
+|在 staging 中构建候选依赖镜像 |仅凭显式许可
+|===
+
+=== 编译许可对象
+
+[source,text]
+----
+CompilePermit = {
+  permitId,
+  transactionId,
+  projectId,
+  candidateImageId,
+  packageName,
+  packageRevision,
+  allowedTargets,
+  leanToolchain,
+  targetPlatform,
+  reason,
+  issuedAt,
+  expiresAt,
+  status
+}
+----
+
+许可不得只写“允许编译 mathlib”。它必须限定候选镜像、revision、目标集合、平台、事务与期限。
+
+=== 许可状态机
+
+[source,text]
+----
+requested -> approved -> active -> consumed -> sealed
+                     \-> expired
+                     \-> revoked
+----
+
+许可一次性消费。构建完成后立即撤销 staging 写权限；验证通过的目录重新封存为只读镜像。
+
+=== 构建入口
+
+正常项目构建：
+
+[source,shell]
+----
+leanbun build <project>
+----
+
+候选依赖镜像构建：
+
+[source,shell]
+----
+leanbun image build <candidate> --permit <permit-id>
+----
+
+若正常构建发现 Lake 将尝试编译受保护依赖，LeanBun 必须停止并报告原因，包括缺失构件、trace
+失配、工具链漂移、manifest 漂移或缓存认证失败。不得自动扩大许可。
+
+== 文件系统与并发控制
+
+只把 `.olean` 改为只读不够，因为构建还可能清理或重写 trace、依赖摘要和其他构件。活动镜像
+目录及其受管父目录都必须拒绝普通构建写入。
+
+每个候选镜像使用双层锁：
+
+* 文件系统 lock directory，防止跨进程同时写同一镜像；
+* SQLite `BEGIN IMMEDIATE` 事务与 lease，记录持有者、心跳和超时恢复。
+
+锁粒度是完整 `ImageIdentity`，不是项目目录。这样两个项目请求同一镜像时只能有一个构建者，
+其余请求等待并复用封存结果。
+
+== 项目绑定
+
+LeanBun 使用 Lake 官方 package override 将项目指向共享镜像，同时增加自己的绑定文件：
+
+[source,text]
+----
+.lake/package-overrides.json
+.leanbun/binding.json
+----
+
+`binding.json` 至少记录项目 ID、镜像 ID、绑定时间、manifest 摘要、工具链、策略版本和最后一次
+验证结果。override 负责让 Lake 找到依赖，binding 负责证明该路径是经批准的依赖镜像。
+
+== 状态数据库
+
+首版使用 SQLite，至少包含：
+
+* `projects`
+* `images`
+* `packages`
+* `bindings`
+* `update_transactions`
+* `compile_permits`
+* `artifact_attestations`
+* `drift_events`
+* `locks`
+* `audit_events`
+
+数据库只保存索引和状态。源码、manifest、构件及其摘要仍保存在内容寻址目录中。
+
+== 计划中的命令
+
+[source,text]
+----
+leanbun inspect <project>
+leanbun doctor <project>
+leanbun update <project>
+leanbun build <project>
+leanbun permit request ...
+leanbun permit approve ...
+leanbun image list
+leanbun image verify <id>
+leanbun image build <id> --permit <id>
+leanbun bind <project> <image>
+leanbun rollback <project>
+leanbun gc --dry-run
+----
+
+== 实施路线
+
+=== P0：规范固定
+
+* 固定镜像身份、许可对象和状态机；
+* 固定 Lake/mathlib 源码行为证据；
+* 建立不修改活动工程的测试边界。
+
+=== P1：只读检查
+
+实现 `leanbun inspect <project>`：
+
+* 解析 `lean-toolchain` 与 manifest；
+* 读取实际 package checkout revision；
+* 枚举现有构件与 trace；
+* 判断缓存恢复或源码重编译的可能原因；
+* 只生成报告，不执行更新或构建。
+
+=== P2：候选镜像与更新事务
+
+* 建立内容寻址镜像目录；
+* 在 staging 中运行更新；
+* 支持失败不影响活动绑定；
+* 支持原子激活与回滚。
+
+=== P3：编译许可与只读阻断
+
+* 实现一次性 `CompilePermit`；
+* 阻止普通构建写依赖镜像；
+* 将源码回退转化为明确错误和许可请求；
+* 构建后执行真实文件摘要认证。
+
+=== P4：并发与编辑器接入
+
+* 实现跨项目镜像锁；
+* 接入 IDE、CI 和 shell shim；
+* 验证并发项目只产生一次依赖构建。
+
+=== P5：策略与回收
+
+* 实现镜像保留、引用计数与 dry-run GC；
+* 区分可信缓存来源；
+* 提供完整审计导出与灾难恢复流程。
+
+== 第一执行门
+
+在任何缓存迁移或权限修改之前，先完成只读检查器。其验收标准是：对一个 Lean 项目明确回答
+以下问题，并附实际路径与摘要证据：
+
+. 当前使用哪一个 Lean 工具链；
+. manifest 锁定哪一个 mathlib revision；
+. 实际 checkout 是否与锁定值一致；
+. 当前依赖构件是否存在；
+. Lake 下一次为何可能重新编译 mathlib；
+. 是否已经存在可复用且身份完全相同的本机构件。
+
+只有该执行门通过，才进入更新接管和编译许可接管的实现。

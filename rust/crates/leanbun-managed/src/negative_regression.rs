@@ -9,7 +9,7 @@ use leanbun_evidence::{
     canonicalize_directory, hash_project_input_tree, parse_project_manifest, read_project_input,
 };
 use leanbun_lake_bridge::{LakeDependencySourceV1, LakeRootDeclarationV1, LakeRootDependencyV1};
-use leanbun_package::{CanonicalSourceUrlV1, PackageKeyV1};
+use leanbun_lock::{CanonicalSourceUrlV1, PackageKeyV1};
 use leanbun_resolver::{
     LeanDependencyRequirementV1, LeanExactSourceV1, LeanPackageCandidateV1,
     LeanResolutionErrorKind, LeanResolutionModeV1, LeanResolutionRequestV1, LeanSourceRequestV1,

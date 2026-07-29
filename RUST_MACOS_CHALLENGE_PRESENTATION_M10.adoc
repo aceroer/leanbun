@@ -1,0 +1,46 @@
+= LeanBun Rust macOS Challenge Presentation M10
+:toc: left
+:sectnums:
+
+== 结论
+
+M10 已在 `leanbun-approval-macos` 建立 OS CSPRNG session nonce 与只写 stderr、不读 response 的 challenge presentation。
+成功 presentation 仍保持 execution authority `Withheld`，不生成 grant、不写 replay state，也不调用 Lake。
+
+== Random source
+
+本地源码确认 rustix 1.1.4 的 rand API 只对 Linux kernel 暴露，因此 macOS 不使用该入口。M10 采用 exact
+`getrandom =0.4.3`，其 macOS backend 为 `getentropy`；版本、commit、registry checksum、source hashes 和许可证见
+xref:doc/getrandom-v0.4.3/SOURCES.adoc[getrandom 来源记录]。
+
+每次 presentation 从 OS 取得 32-byte nonce。错误直接拒绝，不使用时间、PID、环境变量或普通文件作为 fallback。
+
+== Session binding
+
+原始 nonce 是 private、无 Clone、无 getter 的 session-owned value，不出现在 display text。其 digest 与以下已验证事实形成
+`sessionNonceSha256`：terminal device/inode/rdev、owner/effective UID、foreground process group 与 process session。
+
+改变随机 bytes 或 terminal identity 都改变 session digest 与 challenge ID。presentation 保持 nonce 到对象 drop，并尝试清零内部
+buffer；不把这一普通内存写入当作经过证明的防取证擦除保证。
+
+== Presentation gate
+
+公开 prepare API 自己调用 M9 observer，不接受外部 terminal booleans。只有 `ReadyForChallengeResponse` 且三项 proof verified 才生成
+challenge。公开 present API 在写入前再次观察并要求 terminal binding 不变、challenge 未过期，然后只向锁定的当前 stderr 写入：
+RequestId、preflight SHA、challenge ID、expiry 与未来 response 所需的 exact confirmation。
+
+API 不调用 stdin/read_line，不等待用户，不把显示动作解释为批准。
+
+== Verification
+
+Rust tests 覆盖 nonce/terminal binding 差异、raw nonce 不渲染、request expiry 截断和 withheld authority。隔离 PTY 中的 synthetic
+example 已成功生成并显示 challenge 后立即退出；没有读取 response。Bun boundary oracle 固定 getrandom 版本、fill API、stderr-only
+writer 与 no-input/no-process/no-env/no-unsafe 边界。
+
+== 后续门
+
+bounded exact response reader 已在 M11 完成，见
+xref:RUST_MACOS_EXACT_RESPONSE_M11.adoc[LeanBun Rust macOS Exact Response M11]。它按值消费已展示 capability，并限制
+byte/UTF-8/LF/queued input；成功仍只形成 response claim，不授予执行权。replay registry 另立 M12。
+
+前置 proof 见 xref:RUST_MACOS_TERMINAL_PROOF_M9.adoc[LeanBun Rust macOS Terminal Proof M9]。

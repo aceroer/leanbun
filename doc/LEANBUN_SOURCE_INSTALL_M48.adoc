@@ -1,0 +1,92 @@
+= LeanBun M48 Source-only Installation
+:toc: left
+:sectnums:
+
+== Release boundary
+
+`0.20.0-m48-dev` is a source-only development release. It has no Developer ID signature,
+notarization ticket, installer package or Gatekeeper support claim. Building it does not authorize
+public Reservoir discovery, silent external-project adoption or mutation outside registered fixtures.
+
+Use a short checkout path on macOS. The Rust negative tests create Unix-domain sockets and macOS
+limits their path length; `/private/tmp/leanbun-source` is suitable for verification.
+
+== LeanBun source and local provider
+
+Clone the public LeanBun repository and check out the exact source tag:
+
+[source,shell]
+----
+git clone <leanbun-repository-url> /private/tmp/leanbun-source
+cd /private/tmp/leanbun-source
+git checkout leanbun-v0.20.0-m48-dev
+----
+
+Pure Rust checks require only the public Cargo dependencies in `rust/Cargo.lock`. Bun/Lean integration
+also requires a local provider description. Copy `config/leanbun-local-provider.example.json` to the
+Git-ignored `config/leanbun-local-provider.json`, fill the seven local paths, then run:
+
+[source,shell]
+----
+./scripts/dev setup
+./scripts/dev check
+./scripts/dev historical-check
+./scripts/rust-dev test -p leanbun-evidence --test development_provider -- --ignored
+./scripts/check-public-source
+----
+
+The provider is read-only input to setup. The generated package set, overrides, caches and test state
+remain inside the checkout.
+
+== Recreate the paired Bun fork
+
+Clone official Bun at the exact locked upstream commit into the repository-relative adapter path,
+then apply the seven redacted patches in lexical order:
+
+[source,shell]
+----
+mkdir -p .leanbun-dev-rust/release
+git clone https://github.com/oven-sh/bun.git .leanbun-dev-rust/release/bun-fork
+git -C .leanbun-dev-rust/release/bun-fork checkout 892b1dabc69e2a0a973244f772b84967c73ccad5
+git -C .leanbun-dev-rust/release/bun-fork am \
+  "$PWD"/distribution/bun-fork-patches/*.patch
+git -C .leanbun-dev-rust/release/bun-fork rev-parse 'HEAD^{tree}'
+----
+
+The final tree must be `d390a478a2ec5462b627e8e4e627fa583c223073`. The redacted patch replay has
+a different commit identity from the reviewed local fork because author metadata is intentionally
+removed; tree equality is the reproduction criterion. The reviewed paired fork commit is
+`b5a75e921c10b912c10885207e49ef102ed9e874`.
+
+== Prepare Bun's ignored Rust vendor input
+
+Bun's own workspace references `vendor/lolhtml`, but that directory is intentionally ignored by the
+Bun Git tree. Follow Bun's source setup to configure the debug build and fetch that dependency:
+
+[source,shell]
+----
+cd .leanbun-dev-rust/release/bun-fork
+bun run build --configure-only
+ninja -C build/debug clone-lolhtml
+git -C vendor/lolhtml rev-parse HEAD
+git -C vendor/lolhtml rev-parse 'HEAD^{tree}'
+----
+
+For the reviewed M48 build the required lolhtml identity is commit
+`77127cd2b8545998756e8d64e36ee2313c4bb312`, tree
+`fb6365a7acdfd8cb0bc1836853142181a471fcc7`. Stop if either differs.
+
+== Build and inspect
+
+[source,shell]
+----
+cargo build --locked --release -p leanbun
+./target/release/leanbun version
+./target/release/leanbun doctor ../../..
+----
+
+The reviewed arm64 macOS artifact has SHA-256
+`7ae0ee81016a9782a4d1618aeace888a382f0ed495682a140443b9612e068b85`. A different supported
+compiler or platform may produce different bytes; it must not be represented as that reviewed
+artifact. `version` must report `leanbun-lock-v1,reservoir-bindings-v1` and active-generation readers
+`1,2`.

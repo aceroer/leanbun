@@ -1,0 +1,79 @@
+= LeanBun M5 Atomic Attestation Seal
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第三阶段已实现中央 image attestation 的显式原子封存。命令在封存前重新计算完整
+source/config/dependency/artifact evidence，并再次检查 provider；它只写 `LEANBUN_STATE_ROOT`，不写项目、
+不写 provider，也不执行 Lake。
+
+[source,shell]
+----
+leanbun image seal [--allow-missing-artifact=<package>]...
+----
+
+缺失 artifact root 必须与命令给出的 allowlist 精确相等。多报、少报和拼写错误都会返回
+`ATTESTATION_POLICY_REJECTED`；获准的缺失根写入 attestation，不能只存在于终端参数或日志中。
+
+== Seal transaction v1
+
+. 重新计算 canonical image evidence，要求 provider clean/matched；
+. 读取完构件字节后再次检查 registry、override、Git revision 和工作树状态；
+. canonicalize state root，拒绝 symlink `attestations/`；
+. 以 `O_EXCL | O_NOFOLLOW` 创建每个 Image ID 的协作锁；
+. 在目标同目录以 `O_EXCL | O_NOFOLLOW` 创建随机临时文件；
+. 写入 canonical JSON，执行文件 `fsync`，设置 `0444`，再次 `fsync`；
+. 在持锁状态下原子 rename 为 `<image-id>.json`，随后对目录 `fsync`；
+. 用稳定、受 containment 约束的 reader 立即回读，核对 schema、SHA-256、完整 JSON 和 mode；
+. 删除协作锁并再次同步目录。
+
+目标已存在时不会覆盖。证据字段完全相同则返回 `already-sealed` 并保留原始 `sealedAt`；相同 Image ID
+但 artifact/provider/policy 不同则返回 `ATTESTATION_SEAL_CONFLICT`。崩溃后遗留的锁不会被自动删除，
+必须先人工审计目标与临时文件，避免把并发事务误判为 stale。
+
+== 正式九包封存证据
+
+在禁网、禁 Lake、production provider 只读的 sandbox 中运行；唯一写入位于开发 state root：
+
+[cols="1,2"]
+|===
+|Status |`sealed`
+|Image ID |`f96a870796339f594c527940b43b4a7c1941e8180e9b6f449a917d2f5aff5ff1`
+|Attestation SHA-256 |`4c131d0a6d516b775d169317feb9d60cd08b7116f31707b7669b21710b027c2a`
+|Mode / size |`0444` / 1270 bytes
+|Registry SHA-256 |`219a42ff40db69f5395a2604819c0d173e3336b0cec225b9d541caca72523409`
+|Override SHA-256 |`4b6b0a278d135b9da81301faab4989308b43a5eb20840487b3ee9f91c185d6af`
+|Dependency tree |`0f1c7c64712d06d67184c435c5a766c2fc6b8585671ee4e15418f7de398f927d`
+|Artifact tree |`82c17f8c55668dd2a10040ed53eaebe742e8d06422a67f25c3968a71203abc12`
+|Artifact files / bytes |112425 / 6820362325
+|Explicit missing policy |`Cli`
+|Seal report SHA-256 |`bfb96583203471440d41e89d31b9d1ac980093c23ee2e8aacaae468403eacd0d`
+|===
+
+封存文件为 `.leanbun-dev/state/attestations/<image-id>.json`。它绑定 production override SHA，而不是开发
+COW override；production registry、override、Bun 和九包工作树在封存后另行复核无变化。
+
+真实项目 `grsc-zeta-modern-arithmetic/lean` 在该 seal 已存在的情况下再次执行 preflight，仍因 binding
+missing 以 exit `3` 拒绝，诊断保持为 `BINDING_MISSING`、`BUILD_NOT_AUTHORIZED`、
+`LAKE_BUILD_NOT_ATTEMPTED`。项目封存前后 tree hash 都是
+`87c996c61bf12093aafce7edb4bfb92a466966e2842fdce1da0ca5df716d79fd`，规范化快照逐字节相同。
+
+== 已验证故障边界
+
+测试覆盖同证据幂等、不一致证据不覆盖、symlink store 拒绝、临时文件与锁清理、缺失根默认拒绝、精确
+allowlist 封存，以及 `.olean` 改变后同 Image ID 的 seal 冲突。封存成功不等于 build 授权：preflight
+仍会独立重算 tree，且没有项目 binding 时固定拒绝。
+
+== 下一执行门
+
+Project bind transaction 已实现并在隔离测试库验收，详见
+xref:M5_PROJECT_BIND.adoc[M5 Atomic Project Bind]；build-time re-verification 也已实现，详见
+xref:M5_BUILD_REVERIFICATION.adoc[M5 Build-Time Attestation Re-verification]；build sandbox 探针也已通过，
+详见 xref:M5_BUILD_SANDBOX.adoc[M5 Build Sandbox]；无依赖 Lake probe 也已通过，详见
+xref:M5_LAKE_BUILD_PROBE.adoc[M5 Sandboxed Lake Build Probe]；绑定 Mathlib fixture 的完整事务也已通过，详见
+xref:M5_CONTROLLED_BUILD.adoc[M5 Controlled Mathlib Build Probe]；原子 execution record 也已通过，详见
+xref:M5_EXECUTION_RECORD.adoc[M5 Controlled Build Execution Record]；显式恢复也已通过，详见
+xref:M5_EXECUTION_RECOVERY.adoc[M5 Stale Running Execution Recovery]；timeout/signal 终态化也已通过，详见
+xref:M5_TIMEOUT_SIGNAL.adoc[M5 Timeout and Signal Finalization]。project/image 锁也已通过，详见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。下一步研究重复构建复用；正式项目构建仍关闭。

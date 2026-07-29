@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "version": "0.2.0-m39-dev",
+  "class": "managed-entry-phase-a",
+  "bunUpstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+  "bunUpstreamTree": "81a25490c3c5aeb4271a200a96943239b686404b",
+  "forkBranch": "codex/leanbun-m38",
+  "leanBunCommit": null,
+  "leanBunCommitStatus": "unavailable-unborn-main-repository",
+  "sourceFileCount": 129,
+  "sourceListSha256": "9d78fd7f25d23edc9a04155ae651ae2eabe5159b788c15dc0a8e7e3f198700c0",
+  "sourceListMethod": "sha256 of sorted shasum lines from gitignore-filtered rg --files rust plus Bun fork Cargo.toml Cargo.lock and src/lean_pm",
+  "bunForkCargoLockSha256": "54d107df752ed0122f28e75e8a14a0e77a07c3e5fe23bf62b927fd09c71c5e8d",
+  "leanBunCargoLockSha256": "98dbb8c291665b836fd5ecac340427b37cfeb2f221e73f0a88b2952f14f3c296",
+  "binary": {
+    "path": ".leanbun-dev-rust/release/bun-fork/target/release/leanbun",
+    "sha256": "69dd18cd285894852e4033d65ae09276a4274763b8a73c7496dac652eba49141",
+    "sizeBytes": 1321864,
+    "format": "Mach-O thin arm64",
+    "signature": "adhoc",
+    "cdHash": "c2bdd781660329b23efe66f73314850b9176649e",
+    "notarization": "not-submitted"
+  },
+  "managedEntry": {
+    "dependencyGraph": "empty-only",
+    "projectPathPolicy": "repository-managed-fixture-only",
+    "adoptConfirmation": "--explicit-managed-project",
+    "commands": [
+      "adopt",
+      "managed-status",
+      "update",
+      "build",
+      "recover",
+      "rollback"
+    ],
+    "externalProjectAdoption": "withheld-until-m41"
+  }
+}

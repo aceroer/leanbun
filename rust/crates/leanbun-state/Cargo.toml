@@ -1,0 +1,21 @@
+[package]
+name = "leanbun-state"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[package.metadata.leanbun]
+lifecycle = "retained-historical-experiment"
+default-member = false
+replacement-boundary = "leanbun-generation-plus-leanbun-managed"
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+leanbun-core = { path = "../leanbun-core" }
+leanbun-evidence = { path = "../leanbun-evidence" }

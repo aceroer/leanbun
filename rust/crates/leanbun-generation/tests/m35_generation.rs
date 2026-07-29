@@ -7,7 +7,7 @@ use leanbun_lake_bridge::{
     LakeDependencySourceV1, LakeManifestProjectionV1, LakePackageProjectionMetadataV1,
     LakeRootDeclarationV1, LakeRootDependencyV1, LakeRuntimePackagesProjectionV1,
 };
-use leanbun_package::{
+use leanbun_lock::{
     LeanBunLockV1, LockedLeanPackageV1, PackageKeyV1, PackagePathDecisionSetV1,
     PackagePathDecisionV1, PackagePathProvenanceSetV1, PackagePathProvenanceV1,
     RequestedPackageSourceV1, ResolvedPackageSourceV1,

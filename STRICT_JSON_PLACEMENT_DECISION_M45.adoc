@@ -1,0 +1,74 @@
+= LeanBun Strict JSON Placement Decision M45
+:toc: left
+:sectnums:
+
+== Decision status
+
+This decision is recorded before module movement. The strict JSON value model and bounded in-memory parser will move to a new platform-neutral `leanbun-codec` crate. Stable file reading, canonical path containment, file identity, SHA-256 evidence and the combined stable-JSON result will remain in `leanbun-evidence`.
+
+`leanbun-codec` will depend only on `leanbun-core` so parse failures retain the existing `JSON_MALFORMED` diagnostic code. It will perform no filesystem, process, network, registry, resolver or lifecycle operation.
+
+== Current consumer inventory
+
+The pure `StrictJson`/`parse_strict_json` surface currently has these consumer classes:
+
+* evidence-domain decoders: build lock, execution record, image attestation, project binding, project manifest, provider override and provider registry;
+* `leanbun-lake-bridge`: bounded decoding of Lake probe and projection JSON;
+* `leanbun-managed`: registered fixture and dependency metadata decoding;
+* `leanbun-plan`: strict approval-grant decoding;
+* their Rust/Bun cross-language tests.
+
+The filesystem-coupled `read_strict_json`/`StableJsonFile` surface is only implemented and tested inside evidence. No lock, resolver, store, generation or build code consumes that stable-file wrapper.
+
+This proves that the parser is not evidence-private, while the stable-read composition is evidence-specific.
+
+== Purity audit
+
+The parser uses only:
+
+* borrowed UTF-8 bytes and bounded counters;
+* `BTreeMap`, `Vec`, `String` and scalar Unicode decoding;
+* the shared `DiagnosticCode::JSON_MALFORMED` identity.
+
+It does not use Unix metadata, paths, files, clocks, environment variables, processes, network access or mutable global state. The existing depth and node limits are deterministic and platform-neutral.
+
+The current source mixes this pure parser with `CanonicalDirectory`, `StableTextFile` and `read_stable_text`. That composition, not the parser, creates the Unix evidence dependency.
+
+== Lock and Reservoir decision
+
+`LeanBunLockV1` remains strict canonical line-oriented text. M45 does not add JSON to `leanbun-lock`, change V1 bytes or make lock depend on codec.
+
+M46 has not yet selected whether Reservoir binding evidence will use a strict JSON document, a canonical line format or another separately versioned codec. If M46 selects JSON, it may depend directly on `leanbun-codec`; it must not reach the parser through `leanbun-evidence`. The M45 extraction therefore prevents a future pure binding model from acquiring Unix filesystem dependencies without pre-committing M46's wire format.
+
+== Target dependency direction
+
+[source,text]
+----
+leanbun-core
+  -> leanbun-codec
+      -> leanbun-evidence
+      -> lake-bridge / managed / plan consumers
+
+leanbun-core
+  -> leanbun-lock                 (no codec dependency in V1)
+----
+
+Forbidden directions are:
+
+* codec to evidence, lock, resolver, store, generation, build, managed or legacy policy;
+* evidence to resolver/store/generation/build/managed;
+* lock V1 to evidence merely to obtain JSON parsing;
+* filesystem/path/stable-read types moving into core or codec.
+
+== Compatibility and movement rules
+
+The extraction is mechanical:
+
+* preserve `StrictJson`, `JsonNumber`, maximum depth/node limits and all lexical acceptance/rejection behavior;
+* introduce a pure parser error carrying the same diagnostic code and message;
+* convert that error to `EvidenceError` only at the evidence boundary;
+* retain an evidence re-export during this milestone for source compatibility, while direct non-evidence consumers import codec explicitly;
+* keep `StableJsonFile` and `read_strict_json` in evidence;
+* preserve malformed, duplicate-key, trailing-content, bad-number, Unicode, depth, node and stable-file tests.
+
+No Reservoir semantics, registry access, canonical lock bytes or external-project authority is changed by this decision.

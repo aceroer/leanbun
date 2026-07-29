@@ -1,0 +1,70 @@
+= LeanBun Rust macOS Path Provenance Observer M22
+
+== Outcome
+
+M22 已在 `leanbun-approval-macos` 实现 read-only `observe_macos_path_provenance_v1`。observer 从 `/` directory FD 开始，逐个 direct
+component 使用 locked rustix 1.1.4 safe API 打开并持有 capability，最终只输出 typed provenance observation；不接受 M19 reservation，不修改
+mode/ACL/flags，不创建 child process，也不调用 Lake。
+
+== Observation algorithm
+
+. 要求 absolute path、至少一个 leaf、最多 128 个 normal components；拒绝 parent/current/prefix 变体；
+. `/` 与中间目录使用 `RDONLY|DIRECTORY|NOFOLLOW|CLOEXEC`，leaf 使用 `RDONLY|NOFOLLOW|CLOEXEC`；
+. 每个 component 记录 `fstat` device/inode/owner/mode/ctime/Darwin `st_flags`；
+. 以 `accessat(WRITE_OK, EACCESS|SYMLINK_NOFOLLOW)` 记录当前 effective UID 的 ACL 后写权限；`EACCES`/`EPERM` 为 `Denied`，其他平台错误为
+  typed `Unverified`；
+. 以 `fstatvfs` 记录 mount fsid、flags 与 read-only bit；
+. 检查中间 component 必须是 directory，leaf 必须是 non-symlink regular executable；
+. 返回前对所有已持有 FD 重新读取 identity、ctime、flags 与 mount facts；任一变化均 `ChangedDuringObservation`。
+
+observer 始终返回 `PlanExecutionAuthorityV1::Withheld`。它不声称持有 FD 能绑定未来 path spawn。
+
+== ACL boundary
+
+safe rustix `accessat(EACCESS)` 只能回答当前 effective UID 的有效权限，不能枚举 ACL 中其他 principals。因此 observation 明确写入
+`MacOsAclCoverageV1::EffectiveUidOnly`：
+
+* 任一 component owner 等于 effective UID：`DeniedUserOwnedComponent`；
+* 否则若 effective UID 可写：`DeniedEffectiveUidWriteAccess`；
+* 否则若 Unix mode group/world writable：`DeniedGroupOrWorldWritable`；
+* effective access 无法验证：`DeniedEffectiveAccessUnverified`；
+* 即使以上都未触发，仍因 ACL principal coverage 不完整得到 `DeniedAclCoverageUnverified`。
+
+这意味着 M22 不会把任何现有 path 提升为 M21 的 production candidate；这是刻意的 fail-closed 结果，而不是功能缺失时的乐观推断。
+
+== Darwin flags
+
+observer 从 `st_flags` 记录 raw flags，并单独解码 `UF_IMMUTABLE`、`SF_IMMUTABLE`、`SF_NOUNLINK`。这些只是 evidence：M21 已规定
+owner-changeable `UF_IMMUTABLE` 不能抵御同 UID；单 leaf system flag 也不能替代完整 ancestor/mount proof。
+
+== Current production observation
+
+2026-07-24 使用新增 example 对当前生产 Lake 做只读观察：
+
+`$LEANBUN_PROVIDER_ROOT/lean/elan-home/toolchains/leanprover--lean4---v4.32.0/bin/lake`
+
+结果为：
+
+* `decision=DeniedUserOwnedComponent`；
+* `effective_uid=501`，`acl_coverage=EffectiveUidOnly`；
+* 从 `/` 到 leaf 共 10 个 components；
+* external volume 上从 mount root 到 leaf 均为 UID 501，effective write 为 `Allowed`，mount 不是 read-only；
+* leaf mode `0755`、Darwin flags `0`；
+* execution authority 仍 `Withheld`。
+
+根目录的 effective-access probe 在当前组合下返回 `Unverified`，但这不会掩盖更具体的 user-owned component denial；未来如需 production
+candidate，任一 `Unverified` 都必须先关闭。
+
+== Test boundary
+
+Rust tests覆盖 user-owned fixture 的 typed denial、component/leaf evidence、symlink component rejection 与 non-executable leaf rejection。Bun
+boundary oracle 固定 `NOFOLLOW`、`EACCESS`、`fstatvfs`、`st_flags`、ACL coverage 和 denial vocabulary，并继续扫描 runtime source，禁止
+subprocess、host environment、unsafe、删除与 `lake update`。
+
+== 下一门
+
+M23 已完成，见 xref:RUST_MACOS_ACL_NATIVE_BOUNDARY_M23.adoc[LeanBun Rust macOS ACL Native Boundary M23]。审计确定 ACL enumeration
+需要独立最小 FFI crate，并选定“任一 mutation-capable ALLOW ACE 即拒绝”的 qualifier-free 策略；同时确认 M22 还需 safe `fstatfs` native mount
+flags。M24 只实现这两个只读边界，不 spawn、不修改 ACL/flags。
+
+前置 policy 见 xref:RUST_PATH_LAUNCH_POLICY_M21.adoc[LeanBun Rust Path Launch Threat Model and Policy M21]。

@@ -1,0 +1,88 @@
+= LeanBun Post-refactor Distribution Decision M48
+:toc: left
+:sectnums:
+
+== Decision status
+
+This decision is fixed before rebuilding the Bun-integrated binary. M48 closes a source-only
+development release; it does not create a signed or notarized macOS binary distribution. The
+release identity is not a version string alone. It is the paired identity of the LeanBun source
+commit and the Bun fork adapter commit, plus their recorded trees, toolchain, lock files and rebuilt
+binary digest.
+
+== Two-stage closure
+
+M48 uses two repository commits because a clean source checkout cannot be cited until the M43--M47
+refactor has a committed identity:
+
+. *source baseline*: commit the already verified M43--M47 architecture, lock/inventory extraction,
+  strict codec placement, Reservoir authority and historical-crate disposition;
+. *distribution closure*: after building and replaying from a detached checkout of that baseline,
+  commit the reproducible Bun patch series, source installation instructions, provenance manifest
+  and M48 completion evidence.
+
+The second commit may change documentation and distribution metadata only. If test-driven work
+reveals a required LeanBun source correction, that correction becomes a new source-baseline commit
+and the clean-checkout evidence is regenerated against it.
+
+== Paired Bun source boundary
+
+The Bun fork remains a separate Git repository rooted at the locked public Bun upstream commit
+`892b1dabc69e2a0a973244f772b84967c73ccad5`. Its M48 adapter commit and tree are recorded alongside
+the LeanBun commit and tree. A numbered `git format-patch` series from the locked upstream commit to
+the paired fork commit is stored in this repository so a public source consumer does not depend on
+an unpublished local fork branch.
+
+The documented source build recreates the repository-relative layout expected by the adapter,
+applies the patch series to the exact locked Bun base, and builds `leanbun` through Cargo. No patch
+may contain a personal absolute path, credential, Keychain reference or private dependency-library
+location.
+
+== Clean-checkout evidence
+
+Build and regression evidence is produced from a detached clean checkout of the source-baseline
+commit. Repository-owned toolchain and fixture state may be copied on the same machine as test input,
+but it is ignored state and is not part of the source identity. The following gates run from the
+detached checkout:
+
+* default-mainline Rust formatting, dependency layering, Clippy and tests;
+* explicit historical-crate tests;
+* Bun tests plus Lean/Lake registered-fixture projection tests;
+* the M31 V1 lock reader and M46 Reservoir companion reader fixture paths;
+* a release build of the adapter at the paired Bun fork commit.
+
+A failure is not waived by a successful build in the working checkout.
+
+== M42 upgrade and rollback contract
+
+The upgrade source is the retained `0.11.0-m42-dev` binary with SHA-256
+`f6416817e2c893b311245c65f2a54668b0a633e028de1fe31e05701322670359`. The M48 acceptance must copy
+those exact bytes into a versioned install directory, record M42 as active, install M48 transactionally,
+and prove all of the following:
+
+* M48 becomes active while M42 remains byte-identical and is recorded as previous;
+* rollback restores M42 as active and retains the M48 binary;
+* the restored M42 binary actually executes and reports `0.11.0-m42-dev`;
+* retained M31/M42 history and canonical source fixtures are not rewritten by installation,
+  rollback or reader replay.
+
+The earlier synthetic `0.0.0-dev` install fixture remains a crash-recovery unit fixture; it is not
+accepted as M48 upgrade evidence.
+
+== Supported readers
+
+The M48 binary reports support for the unchanged `LeanBunLockV1` reader, the separately versioned
+`ReservoirBindingsV1` companion reader, active-generation schemas 1 and 2, and managed-project schema
+1. Reader support means parse/validate/replay compatibility; it does not authorize public Reservoir
+discovery, version rebinding or silent external-project adoption.
+
+== Release and publication boundary
+
+The closure version is `0.20.0-m48-dev`. The final provenance manifest records both repositories'
+commit/tree identities, Bun upstream identity, `rust/Cargo.lock` digest, compiler host/version,
+binary digest, reader list and regression evidence digests. The final source tag points to the
+distribution-closure commit.
+
+No Git remote is changed or pushed as part of local closure. GitHub/GitLab mirror agreement is a
+publication-time check after the user authorizes a push. Developer ID signing, hardened-runtime
+packaging, notarization and Gatekeeper acceptance remain explicitly outside M48.

@@ -1,7 +1,7 @@
 use core::fmt;
+use leanbun_codec::{StrictJson, parse_strict_json};
 use leanbun_core::{Sha256, Sha256Hasher};
-use leanbun_evidence::{StrictJson, parse_strict_json};
-use leanbun_package::{
+use leanbun_lock::{
     LeanBunLockV1, PackageKeyV1, PackagePathDecisionSetV1, RequestedPackageSourceV1,
     ResolvedPackageSourceV1,
 };

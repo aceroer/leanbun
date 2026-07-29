@@ -1,0 +1,15 @@
+{
+  "name": "leanbun",
+  "version": "0.20.0-m48-dev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:setup": "./scripts/dev setup",
+    "dev:verify": "./scripts/dev verify",
+    "test": "./scripts/dev test",
+    "check": "./scripts/dev check",
+    "check:historical": "./scripts/dev historical-check",
+    "check:architecture": "./scripts/check-crate-layering",
+    "check:public-source": "./scripts/check-public-source"
+  }
+}

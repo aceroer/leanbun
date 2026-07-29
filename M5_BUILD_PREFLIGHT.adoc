@@ -1,0 +1,102 @@
+= LeanBun M5 构建前置授权门
+:toc: left
+:sectnums:
+
+== 当前状态
+
+M5 第一阶段已实现 `build preflight`，Lake build 仍然关闭。命令只读取项目、provider、binding 和
+attestation；它不创建 `.leanbun/`，不签发 binding，不生成 attestation，也不执行 Lake。
+
+[source,shell]
+----
+leanbun build preflight <project> <target>
+----
+
+返回码 `0` 预留给未来完整批准，`3` 表示证据完整读取但授权被拒绝，`2` 表示请求或检查无法开始。
+普通 `build preflight` 固定把真实 tree attestation 状态设为未验证，所以不会返回批准。显式
+`build verify` 会完整重算依赖树，但仍不执行 Lake，详见
+xref:M5_BUILD_REVERIFICATION.adoc[M5 Build-Time Attestation Re-verification]。
+
+== Binding v1
+
+项目文件为 `.leanbun/binding.json`，schema v1 至少固定：
+
+* canonical project ID 与 realpath；
+* image ID 与 provider ID；
+* manifest SHA-256 与 Lean toolchain；
+* policy version；
+* approved target allowlist；
+* binding/last verification 时间。
+
+binding 路径必须留在项目 realpath 内，image/project/manifest ID 必须是 64 位小写 SHA-256。读取失败、
+schema 错误、symlink 逃逸、manifest/toolchain/provider/path 漂移或目标不在 allowlist 都会拒绝构建。
+
+== Image identity 与 attestation v1
+
+image ID 是下列固定顺序对象的 SHA-256：
+
+[source,text]
+----
+schemaVersion
+leanToolchain
+leanCompilerGithash
+mathlibRevision
+canonicalManifestHash
+packageSourceTreeHash
+buildRelevantConfigHash
+targetPlatform
+----
+
+中央 attestation 位于 LeanBun state root 的 `attestations/<image-id>.json`，另绑定 provider
+registry/override SHA-256、dependency tree hash、artifact tree hash/count、sealed 状态与时间。
+attestation 路径不得逃出 state root。
+
+== 授权合取条件
+
+纯 domain 状态机只有在以下条件全部为真时返回 `approved`：
+
+. filesystem/provider inspection 无 error；
+. target 语法有效；
+. binding 存在且 schema 有效；
+. project ID/path、manifest、toolchain、provider 均与 binding 相同；
+. target 位于 binding allowlist；
+. attestation 存在、schema 有效且 sealed；
+. identity hash、binding image ID 和当前 provider 证据一致；
+. dependency/artifact tree 已被当前进程独立重算验证。
+
+任何一项失败都会附加 `BUILD_NOT_AUTHORIZED`。preflight 总是附加 `LAKE_BUILD_NOT_ATTEMPTED`。
+
+== 真实项目拒绝验收
+
+样本仍为 `grsc-zeta-modern-arithmetic/lean`。在禁网、禁真实项目/生产依赖写入、禁 Lake process-exec
+的 sandbox 中，以生产 provider 请求 target `GRSC`：
+
+[cols="1,2"]
+|===
+|Provider |`matched`
+|Packages |9 个全部 `matched`
+|Binding |`missing`
+|Attestation |`not-requested`
+|Status |`denied`
+|Exit |`3`
+|Diagnostics |`BINDING_MISSING`、`BUILD_NOT_AUTHORIZED`、`LAKE_BUILD_NOT_ATTEMPTED`
+|Report SHA-256 |`3b793a90268c992d7e28ae70abcd15ca48de50f1cab8288f090f864bac138ec0`
+|===
+
+拒绝后的真实项目仍为 44 条快照记录，tree hash 仍是
+`87c996c61bf12093aafce7edb4bfb92a466966e2842fdce1da0ca5df716d79fd`。
+
+== 下一执行门
+
+Canonical source/config/artifact tree 重算已实现，详见
+xref:M5_IMAGE_EVIDENCE.adoc[M5 Canonical Image Evidence]。Atomic seal 已实现，详见
+xref:M5_ATTESTATION_SEAL.adoc[M5 Atomic Attestation Seal]。Atomic project bind 也已实现，详见
+xref:M5_PROJECT_BIND.adoc[M5 Atomic Project Bind]。Build-time re-verification 与 build sandbox 探针也已
+实现，详见 xref:M5_BUILD_REVERIFICATION.adoc[M5 Build-Time Attestation Re-verification]、
+xref:M5_BUILD_SANDBOX.adoc[M5 Build Sandbox]。无依赖 Lake probe 已通过，详见
+xref:M5_LAKE_BUILD_PROBE.adoc[M5 Sandboxed Lake Build Probe]。绑定 Mathlib fixture 的完整事务也已通过，详见
+xref:M5_CONTROLLED_BUILD.adoc[M5 Controlled Mathlib Build Probe]；原子 execution record 也已通过，详见
+xref:M5_EXECUTION_RECORD.adoc[M5 Controlled Build Execution Record]；显式恢复也已通过，详见
+xref:M5_EXECUTION_RECOVERY.adoc[M5 Stale Running Execution Recovery]；timeout/signal 终态化也已通过，详见
+xref:M5_TIMEOUT_SIGNAL.adoc[M5 Timeout and Signal Finalization]。project/image 锁也已通过，详见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。下一步研究重复构建复用；正式项目构建仍关闭。

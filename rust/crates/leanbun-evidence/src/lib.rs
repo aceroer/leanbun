@@ -67,7 +67,8 @@ pub use provider_registry::{
 };
 pub use stable_file::{EvidenceError, MAX_STABLE_TEXT_BYTES, StableTextFile, read_stable_text};
 pub use strict_json::{
-    JsonNumber, StableJsonFile, StrictJson, parse_strict_json, read_strict_json,
+    JsonNumber, MAX_JSON_DEPTH, MAX_JSON_NODES, StableJsonFile, StrictJson, StrictJsonError,
+    parse_strict_json, read_strict_json,
 };
 pub use tree_hash::{
     MAX_PROJECT_TREE_BYTES, MAX_PROJECT_TREE_ENTRIES, MAX_PROJECT_TREE_FILE_BYTES,

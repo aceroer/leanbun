@@ -1,0 +1,67 @@
+= LeanBun M5 Build Sandbox
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第六阶段已实现 build sandbox profile、参数数组 runner 与隔离写入探针。当前仍不调用 Lake；探针 CLI
+只允许项目与模拟 protected root 位于 `.leanbun-dev`，避免用生产依赖测试一个尚未验证的 deny 规则：
+
+[source,shell]
+----
+leanbun build sandbox-probe <dev-project> <dev-protected-root>
+----
+
+== Sandbox contract v1
+
+Seatbelt profile 使用 `allow default` 后显式：
+
+* `deny network*`；
+* `deny file-write*`；
+* 只对 canonical project `.lake/build` 与 `.leanbun/tmp` 恢复写权限；
+* 只对标准 `/dev` 端点恢复 CLI 写权限。
+
+项目、`.lake`、`.leanbun`、build/temp root 与 protected roots 全部先 realpath，并拒绝 symlink、越界或
+protected/write-root 重叠。子进程使用固定 `/usr/bin/sandbox-exec`、参数数组、独立 cwd/environment、30 秒
+timeout 和 pipe；不经过 shell。
+
+`.leanbun/binding.json`、项目源码、manifest/toolchain、state root、attestation、provider、registry 与
+override 都不在写入 allowlist。未来实际 runner 仍必须由同一进程在 build-time re-verification 成功后直接
+调用，不能把 profile 当作可转交的持久 permit。
+
+== 隔离探针验收
+
+[cols="1,2"]
+|===
+|Status |`passed`
+|Build execution |`not-attempted`
+|Profile SHA-256 |`5ea0590efae097692865af79486ff8980be8c498d031ad3fa029f2666adb6f68`
+|Project build write |allowed
+|Controlled temp write |allowed
+|Project source write |denied
+|Project control write |denied
+|Protected dependency write |denied
+|Loopback network listen |denied
+|Probe report SHA-256 |`9ba750edbb25a6df683ff853b71e7a1c094ca943a53729ce28e27740b1d67409`
+|===
+
+模拟 protected dependency 前后完整快照逐字节相同，SHA-256 都是
+`3ab531c65ca398f686668c19b10e7d5ef411cef4a5d87d6ab99434c6525744db`。项目中 `.lake/build` 与
+`.lake/config` 与 `.leanbun/tmp` 因允许的探针文件创建/删除而改变目录 mtime；排除这些允许写目录自身的 metadata 后，
+其余记录逐字节相同，SHA-256 都是
+`98f9b5d5af945f2915f3de1a6a5a3abe4b4a5341bbfbf0f1ccc6599545a78f13`。没有遗留 `.probe-*` 文件。
+
+macOS Seatbelt 不允许在已经应用外层 profile 的进程中再次 `sandbox_apply`，会返回 exit `71` / operation
+not permitted。因此常规 `./scripts/dev check` 验证 profile 生成、路径约束与观察判定；真实 Seatbelt
+执行使用无外层 sandbox、但最小环境且由内层 profile 自行禁网/限写的专用验收命令。
+
+== 下一执行门
+
+无依赖 sandboxed Lake target 已通过，详见
+xref:M5_LAKE_BUILD_PROBE.adoc[M5 Sandboxed Lake Build Probe]；绑定 Mathlib fixture 的完整事务也已通过，详见
+xref:M5_CONTROLLED_BUILD.adoc[M5 Controlled Mathlib Build Probe]。实测确认 Lake 还需要精确写入
+`.lake/config` 以生成 `lakefile.olean` 与 trace。原子 execution record 也已通过，详见
+xref:M5_EXECUTION_RECORD.adoc[M5 Controlled Build Execution Record]；显式恢复也已通过，详见
+xref:M5_EXECUTION_RECOVERY.adoc[M5 Stale Running Execution Recovery]；timeout/signal 终态化也已通过，详见
+xref:M5_TIMEOUT_SIGNAL.adoc[M5 Timeout and Signal Finalization]。project/image 锁也已通过，详见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。下一步研究重复构建复用；正式项目构建仍关闭。

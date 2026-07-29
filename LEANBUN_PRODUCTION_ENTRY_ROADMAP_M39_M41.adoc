@@ -1,0 +1,68 @@
+= LeanBun Production Entry Roadmap M39--M41
+:toc: left
+:sectnums:
+
+== Purpose
+
+M31--M38 完成 repository-fixture 单二进制工程发布后，M39--M41 负责把同一核心收口为显式受管项目入口。该路线不改变权威分工：Bun 决定 lock、fetch/store、final path、transaction 和 publication；Lake 执行 config/target/build；Lean 编译并验证。
+
+外部项目采用仍是单独授权动作。实现和故障测试继续只使用本库 `test/fixtures`；只有 M41 明确选择项目后才允许一次外部验收。
+
+== M39 — Managed project command state
+
+状态：*Phase A 已完成*。
+
+交付：
+
+* `leanbun-managed` controller 和 strict durable adoption record；
+* generation state writer 与 project source path 分离，writer 永远留在 LeanBun private authority root；
+* `adopt` 需要 exact `--explicit-managed-project` token；
+* 跨进程 `managed-status/update/build/recover/rollback`；
+* active/previous/pending transaction reconstruction；
+* initial-adopt failure 撤销、update precommit failure recovery、双向 rollback；
+* source config/toolchain drift fail closed；
+* exact Lake declaration probe、offline sandbox build、实际 package path comparison。
+
+Phase A 只接受空 dependency graph。它开放主程序状态机和真实 Lake build，但还没有把 M33/M34 的远端 dependency metadata/fetch 输入接入通用命令。
+
+== M40 — Dependency-bearing managed update
+
+状态：*已完成*。Phase A 见
+xref:RUST_DEPENDENCY_MANAGED_ENTRY_M40.adoc[Dependency-Bearing Managed Entry M40 Phase A]，已闭合一个无传递依赖的
+local immutable snapshot、transaction-specific final paths、实际 Lake build、显式 update set、derived `.lake`
+cache、recovery 与 rollback。Phase B 见
+xref:RUST_REGISTERED_GIT_CLOSURE_M40.adoc[Registered Git Closure M40 Phase B]，已将同一 controller 扩展到本库
+Mathlib fixture 的九包注册 Git 传递闭包。
+
+M40 把 M33 resolver 与 M34 fetch/store 接入同一 controller：
+
+* frozen build 从 active lock 重建完整 closure；
+* explicit update set 才允许网络；
+* metadata、download digest、revision、tree hash 全部进入 pending record；
+* package fetch 并发/dedupe/失败恢复后才发布 generation；
+* Mathlib fixture 的九包 final path 全由 Bun 决定；
+* rollback 不删除 candidate generation 或 store object。
+
+Phase B 已完成 Git metadata intake、逐包 manifest 传递边、并发多包 fetch、不可变 store publication、九包
+final-path 决策和已验证 cache seed。普通 build 禁网；显式 update 仍只重放登记的 exact revision，不在 M40
+开放任意远端解析。M41 已完成本库小型候选模拟验收，但没有授权真实外部项目。
+
+M40 测试只用 `mathlib-project` 隔离副本和 loopback/local immutable sources。
+
+== M41 — Explicit external acceptance and distribution closure
+
+状态：*Phase A、Phase B 与 Phase C development closure 已完成；production signing gate 关闭*。Phase A 见
+xref:RUST_EXTERNAL_ADOPTION_DRY_RUN_M41.adoc[External Adoption Dry-Run M41 Phase A]：只用
+`lake-managed-dependency` 作为小型外部候选模拟器，完成无持久副作用的 stable tree/config/toolchain/manifest
+快照和 exact Lake declaration probe；没有创建 adoption record，也没有采用外部项目。
+
+Phase B 见 xref:RUST_EXTERNAL_FIXTURE_ACCEPTANCE_M41.adoc[External Fixture Acceptance M41 Phase B]。它把同一候选
+复制到隔离 acceptance root，先保存 immutable dry-run record，再依次执行 explicit adopt、frozen build、单包
+explicit update、故障注入、恢复、rollback 和最终 frozen build。验收前后源码输入完全相同；candidate generation、
+store object、项目 `.lake` 和两份 `0400` 记录按审计要求保留。通用 mutation CLI 仍拒绝 acceptance root。
+
+Phase C development closure 见
+xref:RUST_DISTRIBUTION_CLOSURE_M41.adoc[Distribution Closure M41 Phase C]：LeanBun 与 Bun fork 已形成可引用提交，
+provenance 已刷新，versioned install 和 installed-binary replay 通过。钥匙串实测没有 codesigning identity，且没有
+notary profile；因此 Developer ID 签名和 notarization 未执行，Gatekeeper 对 ad-hoc binary 的拒绝作为正确负证据保留。
+取得签名身份后必须从已标记提交重建并重复签名、notarization、stapling、Gatekeeper 和全部 release replay，才能称为正式生产发行。

@@ -1,0 +1,57 @@
+= LeanBun Rust Approval Fresh Reverification M13
+:toc: left
+:sectnums:
+
+== 结论
+
+M13 已在 `leanbun-approval-macos` 建立 consumed approval 与 fresh plan/preflight facts 的重新合取。sealed `ConsumedOnce` record
+被按值消费；成功只产生外部不可构造、不可复制的 `FreshFactsReverified` proof，execution authority 仍为 `Withheld`。
+
+本门不生成 grant、不接入 CLI、不创建 process adapter，也不调用 Lake。
+
+== Reverification order
+
+公开 API 自己读取 verification clock，不允许调用方指定“当前时间”。它要求：
+
+* consumption record schema、decision、withheld authority 与 response→consumption→challenge expiry 顺序有效；
+* consumed request ID 与待重验 request 完全一致；
+* executable observation 发生在 consumption 之后、verification 之前；
+* proof 在原 challenge expiry 之前完成；
+* `lake_command_preflight_v1` 用 fresh plan 与 executable observation 重新计算 request/plan report、inventory snapshot 与 executable
+  identity，并继续执行既有五秒 freshness gate。
+
+因此 request、inventory、executable、observation age 或 deadline 任一漂移都不会形成 proof。
+
+== Bound identities
+
+proof digest 同时绑定 challenge/request、durable consumption record SHA、被用户确认的原 preflight SHA、新 preflight SHA、exact response
+SHA、fresh plan report/inventory/executable SHA，以及 response、consumption、executable observation 和 verification 四个时间点。
+
+原 preflight 与 fresh preflight 被有意分别保留：fresh observation 的 timestamp 会变化，不应伪装成用户当时看到的同一个 preflight。
+
+== Sealed capability boundary
+
+M12 consumption record 已收紧为外部 crate 不能构造或 Clone/Copy 的 sealed value，并新增 challenge expiry 绑定。M13 proof 同样 sealed，
+只提供只读 getter。Rust privacy 约束正常调用路径，但真正的跨进程防重放仍来自 M12 durable `O_EXCL` slot，而不是 move semantics。
+
+== 后续证据边界
+
+M14 已建立 adapter-owned executable observer，见
+xref:RUST_TRUSTED_LAKE_EXECUTABLE_M14.adoc[LeanBun Rust Trusted Lake Executable M14]。M15 又建立 adapter-owned fresh-plan derivation，见
+xref:RUST_TRUSTED_FRESH_PLAN_M15.adoc[LeanBun Rust Trusted Fresh Plan M15]。M13 公开 API 现只接受同时持有 fresh plan 与 executable
+observation 的 sealed bundle，不再接受外部构造的 plan、executable facts 或 timestamp。
+
+== Verification
+
+Rust tests 覆盖：一致 fresh facts 形成 withheld proof；inventory SHA、executable SHA、五秒 age drift 分别拒绝；observation-before-
+consumption、request mismatch 与 challenge expiry fail closed。proof identity 与 challenged/fresh preflight 双 digest 均进入类型。
+
+Bun boundary oracle 固定 preflight 调用、消费后时间顺序、challenge deadline、sealed proof、no subprocess、no environment、no deletion、
+no unsafe 与 no `lake update`。
+
+== 后续证据边界
+
+M15 已关闭本门的 fresh plan/inventory provenance。M16 已把 exact fresh plan、本门 proof 与 expiry 合成 sealed execution-candidate
+capsule，见 xref:RUST_SEALED_EXECUTION_CANDIDATE_M16.adoc[LeanBun Rust Sealed Execution Candidate M16]；authority 仍 withheld，仍不执行 Lake。
+
+前置 replay registry 见 xref:RUST_MACOS_REPLAY_REGISTRY_M12.adoc[LeanBun Rust macOS Replay Registry M12]。

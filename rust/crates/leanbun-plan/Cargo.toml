@@ -1,0 +1,23 @@
+[package]
+name = "leanbun-plan"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[package.metadata.leanbun]
+lifecycle = "retained-historical-research"
+default-member = false
+replacement-boundary = "leanbun-resolver-plus-leanbun-managed"
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+leanbun-codec = { path = "../leanbun-codec" }
+leanbun-core = { path = "../leanbun-core" }
+leanbun-evidence = { path = "../leanbun-evidence" }
+leanbun-inventory-legacy = { path = "../leanbun-inventory-legacy" }

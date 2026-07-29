@@ -1,6 +1,6 @@
 = LeanBun Lean/Lake 测试库
 
-本目录是 LeanBun 开发测试、回归、故障注入和验收的唯一 Lean/Lake 项目来源。完整强制边界见
+本目录是 LeanBun 开发测试、回归、故障注入和 milestone acceptance 的唯一 Lean/Lake 项目来源。完整强制边界见
 xref:../../TEST_PROJECT_BOUNDARY.adoc[LeanBun Test Project Boundary]。不得用任何外部研究仓库或活动项目替代这里的 fixture。
 
 本目录只保存无构件的测试源模板。集成测试将模板复制到 `.leanbun-dev/tmp/`，然后使用隔离的

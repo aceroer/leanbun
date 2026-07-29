@@ -1,0 +1,75 @@
+= LeanBun Distribution Closure M41 Phase C
+:toc: left
+:sectnums:
+
+== Result
+
+M41 Phase C 的 development distribution closure 已完成。源码、Bun fork 接线、provenance、versioned install 和
+installed-binary replay 现在均有可引用边界；正式 Apple distribution signing 仍关闭，因为本机没有任何有效
+codesigning identity，也没有 `leanbun-notary` keychain profile。
+
+这一区分是强制的：本阶段完成可复查的 unsigned development package，不把 ad-hoc signature 描述为 Developer ID，
+也不把 Gatekeeper 的预期拒绝描述为发布成功。
+
+== Commit boundary
+
+[cols="2,3",options="header"]
+|===
+|Repository |Identity
+
+|LeanBun source baseline
+|commit `3acd6484ef841c87e44346533bb4bacdd1b4ee3e`, tree `0c7039763fc219122808a7b7ac30669a765dfe75`
+
+|Bun fork adapter
+|commit `2e342796efd2e30dfb441a5cbd8b24004bf5fe95`, tree `d05120af0b737218342eba137ea32d71d646df5d`
+
+|Bun upstream base
+|commit `892b1dabc69e2a0a973244f772b84967c73ccad5`, tree `81a25490c3c5aeb4271a200a96943239b686404b`
+|===
+
+LeanBun source baseline 是 327 个受跟踪文件的首个提交。`.leanbun-dev/`、`.leanbun-dev-rust/`、Cargo target、
+fixture `.lake` 和 Codex 本机配置不进入提交。Bun fork commit 只含 workspace member、Cargo lock 和 `src/lean_pm`。
+
+本文件与 M41C manifest 由随后的 provenance closure commit 封存，并以 annotated tag
+`leanbun-v0.6.0-m41-dev` 指向该 closure commit；Bun fork commit 由 tag `leanbun-bun-fork-m41` 标记。
+
+== Installed package replay
+
+构建 binary 以 installation transaction 发布到：
+
+----
+.leanbun-dev-rust/release-fixture/package-0.6.0-m41/
+  active
+  versions/0.6.0-m41-dev/config.v1
+  versions/0.6.0-m41-dev/leanbun
+----
+
+`active` 精确指向 `0.6.0-m41-dev`。构建 binary 与 installed binary 的 SHA-256 都是
+`bb2b346a70e29c92ee99f5c6260fc2fd3a3972c29442687378ea307c42470d57`，大小均为 1,653,656 bytes。
+
+installed binary 独立通过：
+
+* `version`：Bun/Lean/Lake 和 arm64 macOS identity 正确；
+* `doctor`：Bun source lock、Lake source compatibility 和 fixture toolchain 通过；
+* `export-evidence`：binary digest 与安装前一致，并明确报告 `unsigned-development` / `not-submitted`。
+
+M41 Phase B records、generation rollback 状态和 immutable store 均未被 install transaction 改写。
+
+== Apple signing evidence
+
+本机探针结果：
+
+* `security find-identity -v -p codesigning`：`0 valid identities found`；
+* `xcrun notarytool history --keychain-profile leanbun-notary`：profile 不存在；
+* Mach-O signature：`adhoc,linker-signed`，没有 TeamIdentifier；
+* `spctl -a -vv -t install <installed-binary>`：退出码 3，结果 `rejected`。
+
+因此没有执行 `codesign --sign <Developer ID>`，也没有向 Apple 提交 notarization。此处不存在可安全推断或代建的身份。
+
+== Production continuation gate
+
+取得明确授权的 Developer ID Application identity 与 notary credentials 后，必须从 release tag 执行一个新的、可审计的
+production-signing phase：clean rebuild、Developer ID hardened-runtime signing、签名深度验证、notary submit/wait、staple、
+Gatekeeper acceptance、binary/provenance 更新，以及 M38--M41 全部 release-binary replay。
+
+在此之前：真实外部项目 adoption、任意远端解析、公开安装包和 production-ready 声明全部保持关闭。

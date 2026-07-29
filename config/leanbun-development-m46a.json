@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "version": "0.16.0-m46a-dev",
+  "class": "reservoir-binding-companion-model",
+  "sourceBaseline": {
+    "commit": "736a24b0f175a140b49a9fec4b76db96377905d4",
+    "tree": "415e9079f787f54dbbd0f3a293a52c04e753137d",
+    "status": "uncommitted M43 through M46A working-tree delivery"
+  },
+  "compatibility": {
+    "route": "separately-versioned-companion-document",
+    "lockV1CanonicalBytesChanged": false,
+    "lockV1SourceSha256": "f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c",
+    "cargoGraphChangedFromM45": false,
+    "cargoGraphSha256": "962dd3e93fa46d39e943c265cc12f1a9efab38ddbc90a2c84f8b5703830e2dfa",
+    "cargoLockSha256": "f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07"
+  },
+  "bindingAuthority": {
+    "owner": "leanbun-lock",
+    "ownerDependencies": ["leanbun-core"],
+    "fields": [
+      "registryIdentity",
+      "packageIdentity",
+      "requestedVersion",
+      "metadataSha256",
+      "canonicalResolvedUrl",
+      "exactCommit",
+      "downloadIntegrity",
+      "sourceTreeSha256",
+      "selectedSourceIdentity"
+    ],
+    "documentBindsLockV1Identity": true,
+    "generationMustBindDocumentIdentityInPhaseB": true,
+    "networkAccess": false,
+    "filesystemPublication": false,
+    "activationAuthority": "withheld"
+  },
+  "firstResolutionPolicy": {
+    "firstObservation": "pending-reviewable-candidate",
+    "activationPrerequisites": ["content-verification", "registered-build", "registered-tests"],
+    "activeBinding": "frozen-for-offline-build",
+    "laterOnlineResolve": "verify-and-report-drift-without-overwrite",
+    "replacement": "explicit-rebind-only-phase-b"
+  },
+  "identity": {
+    "modelSourceSha256": "07ed45ff818fd45cd4c9793239de01f458316c1a17ff2f110b486320862069f0",
+    "modelTestsSha256": "061b1b2aca688bf21138092153e81f2ef3accf290dac1492fbdcf5ae36529848",
+    "authorityDecisionSha256": "a5bc1a1348ba6e79398b2cd2926c310700ce0a916891b135eb144fc529b47adf"
+  },
+  "validation": {
+    "m46aBindingTests": 4,
+    "rustDefaultTests": 188,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "bunTests": 103,
+    "bunExpectCalls": 882,
+    "architectureTests": 10,
+    "architectureExpectCalls": 16,
+    "workspaceFmt": "passed",
+    "workspaceClippy": "passed"
+  },
+  "boundaries": {
+    "resolverPolicyChanged": false,
+    "generationIdentityChanged": false,
+    "publicReservoirDiscovery": "closed",
+    "externalProjectMutation": "not-authorized",
+    "nextMilestone": "M46 Phase B first-resolution and explicit-rebind policy"
+  }
+}

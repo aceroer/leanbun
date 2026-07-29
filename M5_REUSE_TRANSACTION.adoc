@@ -1,0 +1,80 @@
+= LeanBun M5 Lock-Held Reuse Transaction
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第十五阶段开放隔离开发项目的显式复用入口：
+
+[source,shell]
+----
+leanbun build reuse <project> <target>
+----
+
+该入口可以在完整验证后跳过 Lake，但不自动替代 `controlled-probe`，也不对真实项目开放。调用方必须显式
+选择 reuse；失败不会静默回退为正常构建。
+
+== 事务顺序
+
+. 只读载入 canonical project binding 与 sealed attestation，确定 project/image lock key；
+. 排他获取 project/image build lock；
+. 记录项目 protected snapshot，立即发布 `running` execution record；
+. 在锁内完成 provider inspection、112425 个 dependency artifact 全量重验、binding/attestation 稳定性复核；
+. 只从实际 Lake `completed` 记录中选择同 project/image/target 与相同 binding/attestation SHA 的最新候选；
+. 实时重算 project input 与 `.lake/build` 输出全部 SHA-256 和计数；
+. 再次确认项目 protected records 未变；
+. 全部通过时原子终结为 `reused`，随后按所有权释放锁；
+. 任一条件失败则原子终结为 `failed`、`failureStage=reuse-verification`，释放锁并要求调用方显式运行正常构建。
+
+`reused` record 使用 `reusePolicySha256`，不伪装成 Seatbelt `profileSha256`；它没有 Lake exit、termination
+reason 或 process group 字段，并通过 `reusedFromExecutionId` 指向实际 Lake source record。候选选择不接受
+`reused` 作为来源，因此不会形成无限复用链。
+
+锁后快照失败会在 record 创建前释放锁。record 终态化已经开始后若发生 store/release 异常，不会尝试第二次
+终结；遗留 terminal/running lock 继续由既有显式 recovery 审计处理。
+
+== Mathlib 成功验收
+
+[cols="1,2"]
+|===
+|Actual Lake source execution |`fad27f33-261d-4442-b4ef-657610a03642`
+|Source record SHA-256 |`16122f87332615d11d73860f9951212fb2251e3c112874acdabe21e090e4488c`
+|Reuse execution |`6ae23a59-b9ad-4dd7-9907-46b8518c595b`
+|Reuse status |`reused`
+|Reuse record SHA-256 |`d0d8396e8e43425b81158370360f7f6e2a1e7851412d5d8bd82648e2dc4fd32e`
+|Reuse policy SHA-256 |`e41219179aeadb418dc464b621063d42c3100ea6b4cbf575229abacb599a932f`
+|Input / output match |true / true
+|Dependency artifact |`82c17f8c55668dd2a10040ed53eaebe742e8d06422a67f25c3968a71203abc12`，112425 files
+|Execution record count |9 -> 10
+|Lake |not attempted
+|Lock |released
+|Success report SHA-256 |`2aa2882d68447f344bae5ba7700d881e3e14c7505b64a0d82d1e0f88c407ad26`
+|===
+
+诊断链包含 `BUILD_LOCK_ACQUIRED`、`EXECUTION_RECORD_STARTED`、`REUSE_TRANSACTION_STARTED`、
+`ATTESTATION_REVERIFIED`、`LAKE_EXECUTION_NOT_ATTEMPTED`、record finalize、lock release 与
+`REUSE_TRANSACTION_COMPLETED`。
+
+== 输出破坏验收
+
+只修改隔离 fixture 的 `Prime.olean.hash` 一个字节后，同一显式 reuse 产生：
+
+[cols="1,2"]
+|===
+|Execution |`10bf7add-c9a0-44e8-bc15-ea875bd95df6`
+|Status / stage |`failed` / `reuse-verification`
+|Input / output match |true / false
+|Record SHA-256 |`8335396556e7457352edb0d82cfcf3080847cba639ec55b996e7e7ca76554444`
+|Lake |not attempted
+|Lock |released
+|Diagnostic |`REUSE_OUTPUT_MISMATCH`、`REUSE_TRANSACTION_FAILED`
+|Failure report SHA-256 |`ef0b89e5658d9ad7a93215070f29fa1561299b4aa03c9d7f3745465226859266`
+|===
+
+该失败没有覆盖输出、删除候选或自动运行 Lake。
+
+== 下一执行门
+
+reuse `running` record 的 crash/signal recovery 已通过，详见
+xref:M5_REUSE_RECOVERY.adoc[M5 Reuse Signal and Recovery]。按照新的安全方向，下一主门改为
+xref:RUST_MIGRATION_PLAN.adoc[LeanBun Rust Safety Migration Plan]，暂不扩张 Bun 版统一调度。

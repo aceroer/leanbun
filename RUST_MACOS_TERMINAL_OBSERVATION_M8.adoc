@@ -1,0 +1,45 @@
+= LeanBun Rust macOS Terminal Observation M8
+:toc: left
+:sectnums:
+
+== 结论
+
+独立 `leanbun-approval-macos` crate 已建立。它只观察当前进程的 stdin/stderr terminal 状态与 `/dev/fd/0`、`/dev/fd/2`
+字符设备 metadata，不读取输入、不提示、不读取环境变量、不生成 grant、不 spawn 进程，也不调用 Lake。
+
+任何观察结果的 execution authority 均为 `Withheld`。
+
+== Fail-closed decisions
+
+`observe_current_process_terminal_v1` 不接受调用方提供的 terminal 布尔值。公开入口直接观察当前进程，并发布：
+
+* 任一 stream 非 terminal：`DeniedNonInteractive`；
+* terminal metadata 无法取得：`DeniedUnverifiableTerminal`；
+* stdin/stderr 不是同一字符设备：`DeniedDistinctTerminal`；
+* 二者属于同一 terminal：`RequiresOwnershipAndForegroundProof`。
+
+最后一种也不是批准。它只说明可以进入下一层 macOS proof，effective-user ownership 与 foreground process group 仍明确为
+`Unverified`。
+
+== Device identity
+
+同一 terminal 需要 `/dev/fd/0` 与 `/dev/fd/2` 均为字符设备，且 `dev`、`inode`、`rdev`、owner UID 全部相同。
+adapter 只发布已观察的 device identity，不把 device owner UID 直接等同于当前 effective UID。
+
+Rust 标准库没有完整暴露 macOS `geteuid`、`tcgetpgrp` 与当前 process group 的 safe API。M8 不以环境变量、调用方输入、
+PATH 命令或自行编写 unsafe FFI 补齐这些事实。
+
+== Verification
+
+Rust 单元测试覆盖 non-interactive、metadata unavailable、distinct device、same device 与 live observation 的 withheld invariant。
+Bun 静态边界测试确认 crate 已进入 workspace，且源码不含 input reader、环境变量、process spawn、unsafe block 或 Lake update。
+
+完整验证仍在隔离 `.leanbun-dev-rust` target 内进行。生产依赖库与真实 Lean 项目不进入 adapter。
+
+== 下一门
+
+effective UID、terminal owner、session ID 与 foreground process group proof 已通过 exact rustix safe binding 完成，见
+xref:RUST_MACOS_TERMINAL_PROOF_M9.adoc[LeanBun Rust macOS Terminal Proof M9]。下一小门是 proof 后的 OS CSPRNG session nonce 与
+challenge presentation contract；仍不读取 response 或建立 replay registry。
+
+上位 challenge contract 见 xref:RUST_TRUSTED_APPROVAL_INGRESS_M7.adoc[LeanBun Rust Trusted Approval Ingress M7]。

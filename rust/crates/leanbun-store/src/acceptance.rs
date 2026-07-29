@@ -5,7 +5,7 @@ use crate::{
 };
 use leanbun_core::{Sha256, Sha256Hasher};
 use leanbun_lake_bridge::{LakeDependencySourceV1, LakeRootDeclarationV1, LakeRootDependencyV1};
-use leanbun_package::{CanonicalSourceUrlV1, PackageKeyV1};
+use leanbun_lock::{CanonicalSourceUrlV1, PackageKeyV1};
 use leanbun_resolver::{
     LeanExactSourceV1, LeanPackageCandidateV1, LeanResolutionModeV1, LeanResolutionRequestV1,
     LeanSourceRequestV1, LeanToolchainIdentityV1, resolve_lean_dependencies_v1,

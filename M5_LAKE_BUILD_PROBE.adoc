@@ -1,0 +1,61 @@
+= LeanBun M5 Sandboxed Lake Build Probe
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第七阶段已在 `.leanbun-dev` 内实际执行一个无依赖 Lake target。该入口是 sandbox 能力探针，不是正式
+项目构建授权：它强制 dependency-free manifest、匹配 toolchain、开发根 containment 和至少一个模拟
+protected root。
+
+[source,shell]
+----
+leanbun build lake-probe <dev-project> <target> <dev-protected-root>
+----
+
+== 同进程协议
+
+. 规范化项目、隔离 Elan/Lake 和 protected root，全部必须位于 `.leanbun-dev`；
+. 要求 `lake-manifest.json` 的 packages 为空且 `lean-toolchain` 匹配；
+. 准备只允许 `.lake/build` 与 `.leanbun/tmp` 写入的 Seatbelt profile；
+. 对项目和 protected root 做完整 metadata/content 快照；
+. 以参数数组运行固定 Lake proxy：`lake --verbose build <target>`；
+. 构建后再次完整快照，要求 protected root tree hash 相同、项目非允许写区记录逐字节相同；
+. 对生成的 `.lake/build` 计算 canonical artifact tree hash。
+
+Elan 的 `bin/lake` 是依赖 `argv[0]` 分派工具的代理链接。LeanBun 会验证 link target 仍位于隔离
+`ELAN_HOME`，但执行时保留原始 `bin/lake` 路径；直接执行 realpath 后的 `elan` 会把 `build` 错当成 Elan
+参数，本阶段已用一次受控失败验证该 API 边界。
+
+== 实际构建证据
+
+样本为 `test/fixtures/lake-basic` 的临时副本，target `LeanBunLakeFixture`：
+
+[cols="1,2"]
+|===
+|Status / execution |`passed` / `completed`
+|Lake exit |`0`
+|Profile SHA-256 |`0c545a42d86fb90970d6442678dd5401b16ee165cb32fe3457890f71d9b0a9c1`
+|Protected root before/after |`b409253db0ecd7acfe738ab2a3be3ac7fb7f463b425e5f3438cca36ebb4f3c00`
+|Project protected records |stable
+|Project artifact files |16
+|Project artifact tree |`d366bbb3132b5b5f23699ee9ec2a36c67060c8aabc8e582eac824ac48e233a28`
+|Lake stdout SHA-256 |`8a74c179b8ce3b7bb1687abc2be81d9996a92541bcbf61be3739cfbd366e25bb`
+|Lake stderr SHA-256 |empty SHA-256 `e3b0c442...b855`
+|Report SHA-256 |`abd80473d83911fd7bf7cbb6209d3f8b6e0a3def82f1710079bb7a843804bd5c`
+|===
+
+全部 16 个 `.olean`、`.ilean`、`.trace`、`.hash`、C 与 setup JSON 输出都位于 `.lake/build`；Lake 4.32
+没有要求放宽项目根、`.lake` 其他路径、源码或控制目录。模拟 protected dependency 前后 tree hash
+相同。
+
+== 下一执行门
+
+绑定 Mathlib fixture 的完整事务已通过，详见
+xref:M5_CONTROLLED_BUILD.adoc[M5 Controlled Mathlib Build Probe]。Execution record 也已完成，详见
+xref:M5_EXECUTION_RECORD.adoc[M5 Controlled Build Execution Record]。
+Stale-running recovery 也已通过，详见
+xref:M5_EXECUTION_RECOVERY.adoc[M5 Stale Running Execution Recovery]。Timeout/signal 终态化也已通过，详见
+xref:M5_TIMEOUT_SIGNAL.adoc[M5 Timeout and Signal Finalization]。project/image 锁也已通过，详见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。
+当前下一门槛为可验证的重复构建复用。

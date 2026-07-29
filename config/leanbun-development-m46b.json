@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "version": "0.17.0-m46b-dev",
+  "class": "reservoir-policy-generation-binding",
+  "sourceBaseline": {
+    "commit": "736a24b0f175a140b49a9fec4b76db96377905d4",
+    "tree": "415e9079f787f54dbbd0f3a293a52c04e753137d",
+    "status": "uncommitted M43 through M46B working-tree delivery"
+  },
+  "policy": {
+    "outcomes": [
+      "FirstResolutionPending",
+      "StableBinding",
+      "AmbiguousCandidates",
+      "MetadataDrift",
+      "VersionRebound",
+      "DisappearedBinding",
+      "ContentMismatch",
+      "ExplicitRebindAccepted"
+    ],
+    "ordinaryUpdateCanAcceptRebound": false,
+    "firstResolutionCanActivate": false,
+    "crossScopeObservation": "rejected",
+    "networkAccess": false,
+    "persistentPublication": false
+  },
+  "rebindClaim": {
+    "fields": [
+      "registryIdentity",
+      "packageIdentity",
+      "requestedVersion",
+      "oldCommit",
+      "newCommit",
+      "observedMetadataSha256",
+      "activeBindingIdentity",
+      "proposedBindingIdentity"
+    ],
+    "staleClaim": "rejected",
+    "mutationAuthority": "withheld"
+  },
+  "generation": {
+    "nonReservoirMetadata": "leanbun-generation-v1 unchanged",
+    "reservoirMetadata": "leanbun-generation-v2",
+    "reservoirCompanionRequired": true,
+    "reservoirVersionRequired": true,
+    "companionIdentityBound": true
+  },
+  "compatibility": {
+    "lockV1SourceSha256": "f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c",
+    "cargoGraphSha256": "962dd3e93fa46d39e943c265cc12f1a9efab38ddbc90a2c84f8b5703830e2dfa",
+    "cargoLockSha256": "f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07"
+  },
+  "identity": {
+    "policySourceSha256": "18e5b5517238b186d604d35d4b2212ab7c165070f5b9e5aaaa3a9bdbd484bf79",
+    "policyTestsSha256": "b0053535295cc08d15ac286d9f625c6d8742100bd286d61ce63c17db0c6ac2f6",
+    "generationModelSha256": "36a945fcabd46c2a1e4a98cd298e7346dc9756cc698dc5f141da5b9360441e94",
+    "policyDecisionSha256": "85c234c2fd071007d8f555a33e336e91910eb2757af1a119ff58de062cb11994"
+  },
+  "validation": {
+    "m46bPolicyTests": 4,
+    "m46bGenerationTests": 3,
+    "rustDefaultTests": 195,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "bunTests": 103,
+    "bunExpectCalls": 882,
+    "architectureTests": 10,
+    "architectureExpectCalls": 16,
+    "workspaceFmt": "passed",
+    "workspaceClippy": "passed"
+  },
+  "boundaries": {
+    "publicReservoirDiscovery": "closed",
+    "durableLoopbackTransition": "M46C",
+    "externalProjectMutation": "not-authorized",
+    "nextMilestone": "M46 Phase C registered loopback regression closure"
+  }
+}

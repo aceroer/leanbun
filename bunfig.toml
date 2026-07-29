@@ -1,0 +1,13 @@
+env = false
+telemetry = false
+
+[install]
+auto = "disable"
+prefer = "offline"
+frozenLockfile = true
+
+[run]
+noOrphans = true
+
+[test]
+root = "./test"

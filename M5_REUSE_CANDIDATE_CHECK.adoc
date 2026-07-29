@@ -1,0 +1,66 @@
+= LeanBun M5 Read-Only Reuse Candidate Check
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第十四阶段新增只读入口：
+
+[source,shell]
+----
+leanbun build reuse-check <project> <target>
+----
+
+它只报告 `eligible` 或 `miss`，`buildExecution` 永远是 `not-attempted`。当前没有 reused 执行状态，
+不运行 Lake、不创建 execution record，也不获取或删除 build lock。
+
+== 候选协议
+
+. 完成与受控构建相同的 provider inspection、binding/image authorization 和全部 dependency artifact 重验；
+. 在不存在同 project/image active build lock 时只读扫描 execution store，最多接受 10000 条严格记录；
+. 只选择 `completed`、Lake exit 0、进程组已收割、所有后验 stable 且带 reuse evidence 的记录；
+. 精确匹配 project ID/path、image、target、binding SHA 与 attestation SHA；
+. 按 `finishedAt` 选择最新兼容候选，execution ID 作为确定性 tie-break；
+. 实时重算 project input 与整个 `.lake/build`，比较 schema、SHA-256、entry/file/byte count 和 missing roots；
+. 哈希完成后再次检查 build lock，避免把与活动构建重叠的观察报告为 eligible。
+
+这是一个时间点快照。未来若实际跳过 Lake，仍必须先获取 project/image lock，并在锁内重新验证，不能直接
+消费本报告。
+
+== 拒绝语义
+
+* 没有完整兼容记录：`REUSE_CANDIDATE_NOT_FOUND`；
+* 项目输入不一致：`REUSE_INPUT_MISMATCH`；
+* 项目输出不一致或缺失：`REUSE_OUTPUT_MISMATCH`；
+* 检查前后出现 active writer：`BUILD_LOCK_BUSY`；
+* 全部匹配：`REUSE_CANDIDATE_ELIGIBLE`。
+
+损坏或非 canonical execution record 会令整个扫描 fail closed，不能被静默跳过。
+
+== Mathlib fixture 验收
+
+新的绑定 fixture 先完成一次真实构建，再运行 `reuse-check`：
+
+[cols="1,2"]
+|===
+|Candidate execution |`faf2a8e6-155b-427a-ac47-a28828579cf2`
+|Candidate record SHA-256 |`afe3b70cb3b714a5b89fd7e97006ed5cb4626f26595baad2752b4116f03c4583`
+|Eligible result |`eligible` / `not-attempted`
+|Input match |true，`179e2b3925a8965c498e982ea43679064ab0d7e3de44a28c9f131919fbc06269`
+|Output match |true，`3253f5eecd8aaa998a539147c8fb4850d8a1487a6217df8416f544c87dff6e31`
+|Execution record count |检查前 8 / 检查后 8
+|Eligible report SHA-256 |`102ae655a46002c2110cf18419803f98b46919ff3c4c93ead944cd5a07fb185a`
+|===
+
+随后只修改 fixture 中一个 `Prime.olean.hash` 字节，再次运行同一检查：输入仍匹配，输出摘要变为
+`31817362f1bfcee22c4adfab59e74d8197d39c9fdabe65907eeae670fd98bcad`，结果为 `miss` 并产生
+`REUSE_OUTPUT_MISMATCH`。record 数仍为 8；miss report SHA-256 为
+`aa3fad4759345ee41600447db3a47c7c0f5b084ccfced8e70d916720ec24f4a2`。
+
+两次检查都完整重验 112425 个依赖构件，没有运行 Lake；生产依赖未写入。
+
+== 下一执行门
+
+lock 内 reuse transaction 已实现并通过成功/输出破坏验收，详见
+xref:M5_REUSE_TRANSACTION.adoc[M5 Lock-Held Reuse Transaction]。下一步验证 reuse crash/signal recovery，
+再考虑统一调度入口。

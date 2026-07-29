@@ -1,0 +1,13 @@
+targeted-usage	help	199	200	explicit-packages	none	none	require-explicit-packages
+canonical-command	help	199	202	canonical-update-command	none	none	use-canonical-update-command
+bare-updates-all	help	214	214	explicit-packages	none	CheckoutMutation	reject-bare-update
+project-config-load	workspace	56	65	none	LoadAndExecuteProjectConfiguration	UntrustedProjectConfigurationExecution	none
+package-overrides	main	330	334	none	ReadPackageOverrides	none	none
+manifest-rewrite	resolve	501	517	none	RewriteManifest	ManifestRewrite	none
+lake-directory-mutation	help	204	207	none	CreateOrModifyLakeDirectory	LakeInternalStateMutation	none
+remote-content	materialize	84	94	none	FetchRemotePackageContent	NetworkAndRemoteContent	none
+checkout-materialization	materialize	84	94	none	CreateOrModifyPackageCheckouts	CheckoutMutation	none
+post-update-hooks	resolve	519	539	none	ExecutePostUpdateHooks	PostUpdateHookExecution	none
+keep-toolchain-parser	main	275	276	keep-toolchain	none	none	include-keep-toolchain
+toolchain-restart-default	resolve	419	425	keep-toolchain	none	LakeInternalStateMutation	include-keep-toolchain
+toolchain-reference	reference	4395	4427	keep-toolchain	none	LakeInternalStateMutation	include-keep-toolchain

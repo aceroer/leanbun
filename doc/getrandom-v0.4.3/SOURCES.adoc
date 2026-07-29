@@ -1,0 +1,35 @@
+= getrandom 0.4.3 来源与验证矩阵
+:toc: left
+:sectnums:
+
+== 来源
+
+[cols="2,4",options="header"]
+|===
+|对象 |来源
+|官方仓库 |https://github.com/rust-random/getrandom
+|版本文档 |https://docs.rs/getrandom/0.4.3/getrandom/
+|crates.io |https://crates.io/crates/getrandom/0.4.3
+|===
+
+== 本地 source verification
+
+[cols="2,3",options="header"]
+|===
+|文件 |SHA-256
+|`Cargo.toml` |`eebe7c6d086d3f40c2fa79f8784b00c36dc501e49b2757a1caa97e7fa4dbacf7`
+|`src/lib.rs` |`68bd1f2daa0aec1b55da25c07744869728a8be25d7c7d127bc788cd50fd8687b`
+|`src/backends.rs` |`4eeedf166b675594c32254a2ee99bf93ff8bc4e7f37f5bdfc33fb56e666fc17d`
+|`src/backends/getentropy.rs` |`10f9486239aea0506eedcb13b553ed064addf27a902d8e19728a811a763dbcc7`
+|===
+
+Git checkout 与 crates.io unpacked source 的 public API 和 macOS backend 文件逐字相同。Cargo.lock 固定 registry checksum，
+项目 manifest 使用 exact `=0.4.3`。
+
+== License 与信任限制
+
+上游声明 `MIT OR Apache-2.0`，Rust MSRV 为 1.85。`v0.4.3` 是 lightweight、未签名 tag，因此 provenance 由 commit、
+Cargo registry checksum 与 relevant source hashes 合取，不能声称签名发布证明。
+
+依赖内部包含 audited upstream unsafe platform binding；LeanBun 自身继续 `forbid(unsafe_code)`。升级需建立新版本目录并重跑
+source diff、random uniqueness/binding、PTY/non-TTY 和 no-input tests。

@@ -1,5 +1,5 @@
+use leanbun_codec::{StrictJson, parse_strict_json};
 use leanbun_core::{Sha256, Sha256Hasher};
-use leanbun_evidence::{StrictJson, parse_strict_json};
 use leanbun_lake_bridge::{
     LakeBridgeErrorKind, LakeDependencySourceV1, LakeManifestProjectionV1,
     LakeObservedPackagePathV1, LakePackageProjectionMetadataV1, LakeRootDeclarationV1,
@@ -7,7 +7,7 @@ use leanbun_lake_bridge::{
     LakeWorkspacePathObservationV1, parse_root_declaration_probe_v1, run_lake_root_probe_v1,
     validate_managed_runtime_package_files_v1,
 };
-use leanbun_package::{
+use leanbun_lock::{
     CanonicalSourceUrlV1, LeanBunLockV1, LockedLeanPackageV1, PackageDependencyV1, PackageKeyV1,
     PackagePathDecisionSetV1, PackagePathDecisionV1, PackagePathProvenanceSetV1,
     PackagePathProvenanceV1, RequestedPackageSourceV1, ResolvedPackageSourceV1,
@@ -172,19 +172,35 @@ fn root_probe_decoder_is_strict_bounded_and_canonical() {
         .unwrap_or_else(|error| panic!("probe decode failed: {error}"));
     assert_eq!(declaration.dependencies().len(), 1);
     assert_eq!(declaration.dependencies()[0].key().name(), "mathlib");
-    assert!(
-        parse_root_declaration_probe_v1(
-            &json.replace("\"schemaVersion\":1", "\"schemaVersion\":1,\"unknown\":0")
-        )
-        .is_err()
-    );
-    assert!(
-        parse_root_declaration_probe_v1(&json.replace(
-            "\"name\":\"mathlib\"",
-            "\"name\":\"mathlib\",\"name\":\"other\""
-        ))
-        .is_err()
-    );
+    let cases = [
+        ("malformed", "{".to_owned()),
+        (
+            "unknown",
+            json.replace("\"schemaVersion\":1", "\"schemaVersion\":1,\"unknown\":0"),
+        ),
+        (
+            "duplicate",
+            json.replace(
+                "\"name\":\"mathlib\"",
+                "\"name\":\"mathlib\",\"name\":\"other\"",
+            ),
+        ),
+        ("trailing", format!("{json} null")),
+        (
+            "oversize",
+            json.replace(
+                "\"rootName\":\"fixture\"",
+                &format!("\"rootName\":\"{}\"", "x".repeat(257)),
+            ),
+        ),
+    ];
+    for (label, case) in cases {
+        assert_eq!(
+            parse_root_declaration_probe_v1(&case).map_err(|error| error.kind),
+            Err(LakeBridgeErrorKind::MalformedProbeOutput),
+            "case: {label}",
+        );
+    }
 }
 
 #[test]
@@ -373,7 +389,9 @@ fn exact_lake_manifest_parse_entries_accepts_both_rust_projections_field_for_fie
         fs::write(&projection_file, projection)
             .unwrap_or_else(|error| panic!("projection write failed: {error}"));
         let output = Command::new("/usr/bin/sandbox-exec")
-            .args(["-f"])
+            .arg("-D")
+            .arg(format!("LEANBUN_REPOSITORY={}", repository.display()))
+            .arg("-f")
             .arg(repository.join("config/leanbun-dev.sb"))
             .arg(toolchain.join("bin/lean"))
             .arg("--run")

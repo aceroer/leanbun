@@ -1,0 +1,113 @@
+= LeanBun Historical Crate Disposition M47
+:toc: left
+:sectnums:
+
+== Result
+
+M47 is complete as `0.19.0-m47-dev`. All fifteen Rust crates remain workspace members for metadata,
+dependency auditing and evidence retention. Cargo defaults now contain exactly the ten-crate
+Bun-managed lifecycle closure; the five historical crates are excluded from default compilation and
+remain explicitly testable. No historical source, record, canonical format or test was deleted.
+
+== Disposition
+
+The authoritative per-crate decision is
+xref:HISTORICAL_CRATE_DISPOSITION_DECISION_M47.adoc[LeanBun Historical Crate Disposition Decision M47].
+Machine-readable snapshots are stored in `architecture/m47/default-members.tsv` and
+`architecture/m47/historical-disposition.tsv`.
+
+The retained historical set is:
+
+* `leanbun-inventory-legacy`: support for the old inventory/drift planning route;
+* `leanbun-plan`: non-executing Lake command planning research;
+* `leanbun-state`: isolated pure acquire/release experiment;
+* `leanbun-macos-acl-sys`: platform support used only by historical approval research;
+* `leanbun-approval-macos`: macOS authorization, denial and privileged-coordinator research.
+
+None is marked deprecated because the code remains useful historical safety evidence and has no
+accidental mainline consumer. `leanbun-state` and `leanbun-approval-macos` have no workspace
+consumers; `leanbun-plan` and `leanbun-macos-acl-sys` are consumed only by
+`leanbun-approval-macos`; `leanbun-inventory-legacy` is consumed only by the plan/approval line.
+
+== Executable separation
+
+`rust/Cargo.toml` defines ten `default-members`. `./scripts/rust-dev check` now runs format, Clippy and
+tests over Cargo defaults rather than `--workspace`. It executed 117 default tests with zero
+failures; the initialized-provider test remains ignored by default and passed when run explicitly.
+
+`./scripts/dev historical-check` bypasses the Bun integration runner and explicitly runs Clippy and
+tests for all five historical packages. It executed 79 tests with zero failures. This retains a
+single reviewable historical verification route without making XPC, `LaunchDaemon`, ACL,
+notarization or the old Lake plan part of normal Bun-managed compilation.
+
+The architecture checker consumes Cargo metadata and rejects both failure directions: adding any
+historical crate to defaults, or omitting any of the ten mainline crates. The current result is 15
+workspace crates, ten defaults, five historical members and six mainline roots.
+
+== Local configuration and clean source build
+
+Machine-specific provider paths were removed from active `scripts/dev` and `scripts/dev.ts` source.
+Bun bootstrap now uses the initialized development runtime, `BUN`, or `PATH`. Provider paths live in
+Git-ignored `config/leanbun-local-provider.json`, with a path-neutral tracked example. Existing local
+setup was reverified after this change.
+
+A `/private/tmp` source-copy test reproduced the `rust/` workspace and tracked `test/fixtures`
+without `.git`, `.leanbun-dev`, `.leanbun-dev-rust` or local provider configuration. Offline
+`cargo test --no-run` compiled the complete default selection successfully. A manifest/source scan
+found no embedded personal path in the Rust Cargo manifests. This verifies the source-build boundary;
+full Bun/Lean integration intentionally remains a separately configured local-provider test.
+
+== Validation
+
+* default Rust mainline: 117 passed, zero failed, one provider test ignored by default;
+* explicit initialized-provider test: one passed;
+* historical Rust route: 79 passed, zero failed;
+* Bun/Lean: 104 logical tests and 885 assertions, run twice as 208 passes and 1,770 assertions;
+* architecture suite: 11 passed and 19 assertions per run;
+* workspace formatting and both mainline/historical Clippy: passed;
+* clean source-copy default compile: passed;
+* Cargo dependency graph, protected V1 lock, Cargo lock and M42 history digests: unchanged.
+
+== Compatibility identities
+
+[cols="1,1"]
+|===
+|Fact |SHA-256
+
+|M47 decision
+|`4c68a90fc3f955b22c34bb020b1e70a120c2d2494055856d2fe8119a83d398e3`
+
+|Rust workspace manifest
+|`77b1a71c3ec3dbcab7712856c2aae22c9ccf8d9c2803a5fedbfeae0276864ddf`
+
+|Rust development wrapper
+|`6c5427f841f2fd01511159db84ef57f026ef607e7114313cd31c955dee10a74f`
+
+|crate-layering checker
+|`8933c349570c0a088e2c85b16f2ded1b46abe5158ac2e98a2147bc550f7c7fcf`
+
+|crate-layering tests
+|`f7d023d51e681a77356b29ecab65012313bbdd69857585d06718941ed009ee2b`
+
+|default-member snapshot
+|`ffe42df77df974d10272fe68f87dc892c288d446ca77587c04c42b20bdb6f8c6`
+
+|historical disposition snapshot
+|`321dfde4b9f7ff4d0f76f5fec3e5bc276ffe4f72950fc7a5140650f2d1aeea86`
+
+|protected V1 lock source
+|`f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c`
+
+|Cargo lock
+|`f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07`
+
+|Internal M42 concurrent-history document before public path redaction
+|`ffa188cc89fc285d3d79e994aeb71185fd852c864ec25fd35737c1f1cf105999`
+|===
+
+== Remaining boundary
+
+Historical evidence is retained internally, including old path observations. The public source
+snapshot replaces the local checkout path with a neutral placeholder. Those records are not
+active build configuration. M48 must rebuild distribution provenance and public release checks over
+the new default closure; M47 does not claim a signed/notarized binary release.

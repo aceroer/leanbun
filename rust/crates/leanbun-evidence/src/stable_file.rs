@@ -1,3 +1,4 @@
+use leanbun_codec::StrictJsonError;
 use leanbun_core::{DiagnosticCode, Sha256, Sha256Hasher};
 use std::fmt;
 use std::fs::{self, File, Metadata};
@@ -32,6 +33,12 @@ impl fmt::Display for EvidenceError {
 }
 
 impl std::error::Error for EvidenceError {}
+
+impl From<StrictJsonError> for EvidenceError {
+    fn from(error: StrictJsonError) -> Self {
+        Self::new(error.code, error.message)
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StableTextFile {

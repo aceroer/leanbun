@@ -96,8 +96,17 @@ pub fn run_lake_root_probe_v1(
     let generated_c = request.staging_directory.join("m32-root-probe.c");
     let generated_probe = request.staging_directory.join("m32-root-probe");
     let lean_library_path = lean_sysroot.join("lib/lean");
+    let sandbox_repository = profile
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| boundary("sandbox profile has no repository parent"))?;
     let compile = Command::new(&sandbox)
-        .args(["-f"])
+        .arg("-D")
+        .arg(format!(
+            "LEANBUN_REPOSITORY={}",
+            sandbox_repository.display()
+        ))
+        .arg("-f")
         .arg(&profile)
         .arg(&lean)
         .arg("-c")
@@ -117,7 +126,12 @@ pub fn run_lake_root_probe_v1(
         .map_err(|error| probe_failed(format!("cannot compile root probe Lean source: {error}")))?;
     require_success("Lean probe compilation", &compile)?;
     let link = Command::new(&sandbox)
-        .args(["-f"])
+        .arg("-D")
+        .arg(format!(
+            "LEANBUN_REPOSITORY={}",
+            sandbox_repository.display()
+        ))
+        .arg("-f")
         .arg(&profile)
         .arg(&leanc)
         .arg("-o")
@@ -137,7 +151,12 @@ pub fn run_lake_root_probe_v1(
         .map_err(|error| probe_failed(format!("cannot link native root probe: {error}")))?;
     require_success("native probe link", &link)?;
     let output = Command::new(&sandbox)
-        .args(["-f"])
+        .arg("-D")
+        .arg(format!(
+            "LEANBUN_REPOSITORY={}",
+            sandbox_repository.display()
+        ))
+        .arg("-f")
         .arg(&profile)
         .arg(&generated_probe)
         .arg(&request.staging_directory)

@@ -1,0 +1,93 @@
+= LeanBun Reservoir Loopback Regression M46 Phase C
+:toc: left
+:sectnums:
+
+== Result
+
+M46 Phase C is complete as `0.18.0-m46c-dev`. The pure M46A/M46B model is now exercised by a
+durable controller in `leanbun-managed`, but only against the repository-owned file-loopback
+fixture. No public Reservoir discovery, external project mutation or network transport was added.
+
+== Durable closure
+
+`run_reservoir_loopback_regression_v1` canonicalizes the LeanBun repository and exact registered
+fixture, then creates a private run below `.leanbun-dev-rust/reservoir-m46c/runs`. Candidate V1 lock
+and companion bytes plus pending, verification, authorization, audit and activation evidence are
+immutable `0400` files. The two verification records bind successful strict lock/companion
+round-trips before first activation and rebind activation. `active.record` is the only mutable commit
+point and is replaced by file sync, atomic rename and directory sync.
+
+The regression proves:
+
+* the first candidate is durable and reviewable while active is absent;
+* repeated old observations are stable;
+* ordinary old-to-new rebound publishes evidence but leaves active bytes unchanged;
+* a subsequent old observation records old-new-old oscillation;
+* metadata-only and same-commit content drift remain distinct typed outcomes;
+* disappearance leaves the old exact lock and companion replayable;
+* explicit rebind binds the exact M46B authorization and prior pending record;
+* new frozen replay and rollback to the retained old activation do not read the registry.
+
+One completed run contains ten audit records and nine file-loopback registry observations. Frozen
+replay and rollback finish with the same observation count. The final immutable result records
+`ordinary-rebind=rejected`, `network-access=none` and `public-discovery=closed`.
+
+== Deterministic identities
+
+[cols="1,1"]
+|===
+|Fact |SHA-256
+
+|M46C controller source
+|`52acb3ae91618342d4cdab398d55b0b70407b194c55ef64d1f25f8004502431a`
+
+|M46C integration test
+|`42f17749dfeb58a96f5365b950a17eee89facc5fcfc4568b2f682b7cebd2f53c`
+
+|registered registry fixture
+|`32094fab13464b2a267cbbdfb9b0deb37fbad4e79a95b4f368c9892948fb9d58`
+
+|design decision
+|`fd70a1c2999a666168bf03f80ee851e05e86b6aa50d90ffdad942dfa0b02e124`
+
+|old lock identity
+|`c63ceffa7d357918bb6a1139b132172c789beb0699a999ca0341f17fde80b0e2`
+
+|new lock identity
+|`93521568a7d6b54ce56ecaeeb160ae6a41a102ef90d7fbde043e3072cb9a9160`
+
+|old binding identity
+|`740ae60a6a806353435e3af9ad238a14b9767d35a26a1c1df0d7f4be1e8a6c24`
+
+|new binding identity
+|`b48387e110fae35680c30c35730ca04c1d87390a0b624b10058f78621a1f07d3`
+
+|exact rebind authorization
+|`ece227f4d7069d0510e0d8955c39e83711604ab82b8b19d428602d4832f6da64`
+|===
+
+== Compatibility and validation
+
+The protected `lock_v1.rs` digest remains
+`f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c`.
+`Cargo.lock` remains
+`f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07`, and the reviewed Cargo graph
+remains `962dd3e93fa46d39e943c265cc12f1a9efab38ddbc90a2c84f8b5703830e2dfa` with 15 workspace crates
+and six mainline roots. The internal protected M42 concurrent-history document remained
+`ffa188cc89fc285d3d79e994aeb71185fd852c864ec25fd35737c1f1cf105999` during M46C; the later public
+source snapshot redacts its local checkout path without changing the M46C namespace or result.
+
+Validation passed:
+
+* dedicated M46C integration: 1 passed;
+* Rust workspace: 196 passed, zero failed, one provider test ignored by default;
+* Bun/Lean suite: 103 logical tests, 882 assertions, run twice by the repository check;
+* crate-layering guard: 15 crates, six mainline roots;
+* workspace format and Clippy with warnings denied.
+
+== Remaining boundary
+
+M46 is now closed through registered regression. This is not a production Reservoir client. Public
+registry discovery, credential policy, network fetching and external-project activation require a
+separate future authorization milestone. The next roadmap milestone is M47 historical crate
+disposition; it must not delete historical evidence.

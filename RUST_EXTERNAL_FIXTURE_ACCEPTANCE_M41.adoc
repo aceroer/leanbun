@@ -1,0 +1,74 @@
+= LeanBun External Fixture Acceptance M41 Phase B
+:toc: left
+:sectnums:
+
+== Result
+
+M41 Phase B 已在 `0.6.0-m41-dev` 闭合。验收只使用本库
+`test/fixtures/lake-managed-dependency` 的固定隔离副本，没有读取或修改真实外部项目，也没有开放通用外部 mutation CLI。
+
+专用命令为：
+
+[source,shell]
+----
+leanbun fixture-external-accept "$LEANBUN_REPOSITORY"
+----
+
+它不接受候选项目路径，固定复制到
+`.leanbun-dev-rust/external-acceptance-fixture/m41-small-project`。副本或验收记录已存在时拒绝重跑，避免覆盖耐久证据。
+
+== Transaction closure
+
+一次验收按以下顺序完成：
+
+. 对模板和副本计算同一 stable project-input tree；
+. 对副本执行 adoption dry-run，并原子发布 `0400` dry-run record；
+. 显式 adopt，执行 baseline frozen/offline Lake build；
+. 只对 `managed_dep` 执行 explicit update，再次 frozen build；
+. 在 active rename 前注入 update fault，确认旧 active 保持且 pending evidence 存在；
+. recover 到 updated generation，清除 pending；
+. rollback 到 adopted generation，再执行 frozen build；
+. 重验源码输入未变、dependency source 内没有 `.lake`，最后发布 `0400` acceptance record。
+
+三次 build 的 artifact SHA-256 相同；baseline generation 与 rollback generation 相同，而 updated generation 不同。
+因此本次证据同时覆盖可重复构建、真实差分 generation、失败恢复和可逆发布。
+
+== Retained evidence
+
+[cols="2,3",options="header"]
+|===
+|Field |Value
+
+|Project ID
+|`9aaa58051b442d171718521b01d167ba43f9f08bc30f8e4d7bc266879536b618`
+
+|Project tree
+|`bff2599f9f37cc0f4525897a4dfe8c2d11b62a465fbeedd4120cfc98d4ff3ddb`
+
+|Baseline / rollback generation
+|`78d69e5ea57927b3f2222387c98f9f8b1c5106fecd85f859fb12ab51aab78b64`
+
+|Updated generation
+|`5b07509b43b95c8fd81bf73dd94e8fa477dd5d0a9c8e0615e2df0dcef062e952`
+
+|Project artifact
+|`4ff19626084c63541685565231a15eb256616b1b7e592b7e0e999ebbdf920864`
+
+|Dry-run record SHA-256
+|`c1603675599f69e9f9748ddf1a34a81f8bbe52a24e31f3f8405e04c8542776c7`
+
+|Acceptance record SHA-256
+|`b476f6d14c16b1c668608469dcdeb61cff705b2beabc73ad2aa2a669a170d514`
+|===
+
+保留 candidate project `.lake`、controller generations、immutable store objects 和两份 record 是审计设计的一部分，
+不是生产项目残留。依赖源码 `vendor/managed_dep` 内没有 `.lake`。
+
+== Authority boundary
+
+`fixture-external-accept` 是固定输入的一次性集成验收入口，不授予任意路径采用权。现有 `adopt/update/build/managed-status/recover/rollback`
+仍只接受 `.leanbun-dev-rust/managed-fixture`；对 acceptance root 的独立探针得到非零退出。
+
+M41 Phase C development closure 已由
+xref:RUST_DISTRIBUTION_CLOSURE_M41.adoc[Distribution Closure M41 Phase C] 完成 commits、provenance、install 与 replay。
+Developer ID、notarization 和通过 Gatekeeper 仍取决于外部签名身份；没有真实项目授权和签名身份时不得宣称 production-ready。

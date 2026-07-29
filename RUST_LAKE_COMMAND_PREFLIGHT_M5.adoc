@@ -1,0 +1,56 @@
+= LeanBun Rust Lake Command Preflight M5
+:toc: left
+:sectnums:
+
+== 结论
+
+`leanbun-plan` 已加入纯输入 `LakeCommandPreflightV1`。它把仍为 pending 的 M3 request、重新生成的 fresh plan/M4
+snapshot、fresh executable observation、显式 observation time 与 current time 合取为
+`ReadyForExplicitApproval`，或返回 typed rejection。
+
+M5 没有 `ReadyForExecution` 状态。成功结果的 execution authority 仍固定为 `Withheld`，不签发许可、不读取系统、
+不接入 CLI、不 spawn Lake。
+
+== Executable identity binding
+
+为了让 fresh observation 可与用户审阅时的对象比较，`LakeExecutableObservationV1` 已先进入 plan：
+
+* canonical path 与固定 Lake version；
+* executable SHA-256 与 byte length；
+* Unix mode；
+* regular-file 与 symlink-free facts。
+
+plan 生成时拒绝空文件、非 regular、symlink、无任一 execute bit、越出 managed toolchain root、basename 非 `lake`
+或版本不符。上述字段继续进入 M2 canonical report，因此 M3 report digest、RequestId 也绑定同一 executable identity。
+
+== Fresh preflight
+
+preflight 首先用 fresh plan 重新验证 pending request；这一步同时重验 report、inventory snapshot、packages、project、
+Lake version、nonce 和 request 时间窗。随后要求：
+
+* fresh observation schema 为 v1；
+* observation time 不晚于 current time，且年龄不超过 5 秒；
+* fresh executable 仍为 non-empty regular、symlink-free executable；
+* path、version、SHA、length、mode 和 file facts 与 fresh plan 全部相等。
+
+rejection 分为 `RequestInvalid`、`ObservationTimeInvalid`、`ExecutableInvalid` 与 `ExecutableMismatch`。调用方不能把失败
+折叠为 ready。
+
+== Output contract
+
+成功结果只发布 request id、plan report SHA、inventory snapshot SHA、executable SHA、observation time、
+`ready-for-explicit-approval` decision 和 `withheld` authority。共享 `lake-command-preflight.json` 由 Rust 与 Bun 验证
+canonical bytes，并核对它与 report/request golden 的交叉引用。
+
+测试覆盖 executable SHA 漂移、超过 5 秒的 stale observation、过期 request 与 fresh inventory drift。所有测试只使用
+隔离临时假 executable；没有执行该文件或 `lake update`。
+
+== 后续门
+
+外部 `LakeCommandApprovalGrantV1` contract 已完成：strict decoder/verifier 要求 claim 明确引用 M5 preflight 和
+RequestId，但只把它判为 structurally valid，不认证 principal，见
+xref:RUST_LAKE_APPROVAL_GRANT_CONTRACT_M6.adoc[LeanBun Rust Lake Approval Grant Contract M6]。下一门先建立 trusted
+interactive approval ingress；仍不实现 process adapter，也不会把本对话中的“继续下一步”解释成具体 update 授权。
+
+pending request 见 xref:RUST_LAKE_APPROVAL_REQUEST_M3.adoc[LeanBun Rust Lake Approval Request M3]；fresh evidence binding
+见 xref:RUST_PACKAGE_INVENTORY_SNAPSHOT_M4.adoc[LeanBun Rust Package Inventory Snapshot M4]。

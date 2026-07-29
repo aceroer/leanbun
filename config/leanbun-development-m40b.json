@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "version": "0.4.0-m40-dev",
+  "class": "registered-git-closure-phase-b",
+  "bunUpstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+  "bunUpstreamTree": "81a25490c3c5aeb4271a200a96943239b686404b",
+  "forkBranch": "codex/leanbun-m38",
+  "leanBunCommit": null,
+  "leanBunCommitStatus": "unavailable-unborn-main-repository",
+  "sourceFileCount": 130,
+  "sourceListSha256": "050adeca59bcd8794d52c907d3334ff91f07a939af7b5a5e2dcee08ede2ffac5",
+  "sourceListMethod": "sha256 of sorted shasum lines from gitignore-filtered rg --files rust plus Bun fork Cargo.toml Cargo.lock and src/lean_pm",
+  "bunForkCargoLockSha256": "47f4e874c284ae44ab348eb703cb43a363cbcb95f9933b52b971134ad24eb39e",
+  "leanBunCargoLockSha256": "c95d153401acf04d7510a52f3d7098963580a6f96fcab4e7ee5ced97fa7c1c21",
+  "binary": {
+    "path": ".leanbun-dev-rust/release/bun-fork/target/release/leanbun",
+    "sha256": "167283b8f1bc8f0f93ff59a215e91b4c8c9512962e74ac7693189c329b8d9867",
+    "sizeBytes": 1539496,
+    "format": "Mach-O thin arm64",
+    "signature": "adhoc",
+    "cdHash": "36b6139c7328e43b64373f38e69c25a6fcd24415",
+    "notarization": "not-submitted"
+  },
+  "managedEntry": {
+    "dependencyGraph": "local-path-or-registered-git-exact-closure",
+    "registeredPackageCount": 9,
+    "transitiveDependencyGraph": "per-package-exact-manifest-edges",
+    "fetchPublication": "bounded-concurrent-immutable-store",
+    "projectPathPolicy": "repository-managed-fixture-only",
+    "adoptConfirmation": "--explicit-managed-project",
+    "dependencyUpdateSet": "explicit-package-required",
+    "generationSource": "read-only-sha256-reverified",
+    "generationDerivedCache": "package-dot-lake-plus-bounded-proofwidgets-lock-trace",
+    "externalProjectAdoption": "withheld-until-m41"
+  },
+  "acceptance": {
+    "fixture": "test/fixtures/mathlib-project isolated copy",
+    "network": "denied",
+    "packageCount": 9,
+    "initialGeneration": "b9058f09c84f8f6e02d43b5995166e46bd4dc12152ac39ceb1b8c30067d6566b",
+    "updatedGeneration": "8334d08d899ee8c22084a8ccedc6e9da9a5b60a0f7117fe70d712424bf457c45",
+    "projectArtifactSha256": "b00747efa247f3bded023f1d8ce4cec41fbf2f5d9aa670f7a28228578d335e88",
+    "faultRecovery": "passed",
+    "rollbackBuild": "passed"
+  }
+}

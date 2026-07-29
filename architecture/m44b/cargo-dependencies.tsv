@@ -1,0 +1,14 @@
+leanbun-approval-macos	leanbun-core,leanbun-evidence,leanbun-inventory-legacy,leanbun-macos-acl-sys,leanbun-plan
+leanbun-build	leanbun-core,leanbun-generation,leanbun-lake-bridge,leanbun-lock,leanbun-resolver,leanbun-store
+leanbun-core	
+leanbun-evidence	leanbun-core
+leanbun-generation	leanbun-core,leanbun-lake-bridge,leanbun-lock,leanbun-resolver,leanbun-store
+leanbun-inventory-legacy	leanbun-core,leanbun-evidence
+leanbun-lake-bridge	leanbun-core,leanbun-evidence,leanbun-lock
+leanbun-lock	leanbun-core
+leanbun-macos-acl-sys	
+leanbun-managed	leanbun-build,leanbun-core,leanbun-evidence,leanbun-generation,leanbun-lake-bridge,leanbun-lock,leanbun-resolver,leanbun-store
+leanbun-plan	leanbun-core,leanbun-evidence,leanbun-inventory-legacy
+leanbun-resolver	leanbun-core,leanbun-lake-bridge,leanbun-lock
+leanbun-state	leanbun-core,leanbun-evidence
+leanbun-store	leanbun-core,leanbun-lake-bridge,leanbun-lock,leanbun-resolver

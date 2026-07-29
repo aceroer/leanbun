@@ -1,0 +1,64 @@
+= LeanBun Rust macOS Replay Registry M12
+:toc: left
+:sectnums:
+
+== 结论
+
+M12 已在 `leanbun-approval-macos` 建立 atomic single-use replay registry。M11 response claim 现在是外部 crate 不能构造、不能
+Clone/Copy 的 sealed capability；registry 按值消费它，并以 challenge ID 原子争抢唯一持久槽位。
+
+成功结果只是 `ConsumedOnce` record，execution authority 仍为 `Withheld`。本门不生成 grant、不接入 CLI、不调用 Lake。
+
+== Registry root capability
+
+公开 open API 只接受调用方预先创建的 absolute root，不自行创建、修复或放宽目录。它用 exact rustix safe API 以
+`O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC` 打开 root，随后从持有的 FD 验证：对象是目录、owner 是 effective UID、POSIX mode 精确为
+0700。symlink root、相对路径、owner/mode 不符或检查失败全部 fail closed。
+
+后续 slot 操作都相对这个已打开的 directory FD 执行；路径替换不会改变已持有 capability 指向的目录。本门只证明上述 POSIX
+owner/mode 与 FD-relative 边界，不声称已经检查 ACL、sandbox policy、TCC 或备份介质策略。
+
+== Atomic single-use reservation
+
+slot 文件名固定为 `<challengeId>.consumed-v1`。registry 使用
+`openat(O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600)`；同一 challenge 的并发消费者最多一个能创建 slot，`EEXIST`
+统一返回 `AlreadyConsumed`。filename 只来自 fixed-width SHA-256，不接受外部 path component。
+
+在创建 slot 之前，registry 要求 sealed claim schema/decision/withheld authority 合法，并要求消费时间不早于 response、严格早于
+challenge expiry。过期或 clock rollback 在任何状态写入前拒绝。
+
+== Crash and durability rule
+
+安全规则是“slot 存在即已消费”，而不是“完整 JSON 存在才算消费”。创建成功后写入 canonical record，先同步 slot，再同步
+directory FD。任一步骤失败都返回 `PersistenceUncertain` 且 authority 保持 withheld；已经出现的空文件或部分文件不得删除、修复后重试
+或重新授权，只能作为 crash-shaped audit evidence 保留。
+
+这样优先避免 uncertain execution 下的重复批准。它不是事务数据库：突然断电时最终 durability 仍受 filesystem/hardware 的 fsync 语义
+约束，因此任何 sync error 都不能继续执行。
+
+== Consumption record
+
+canonical record 绑定 challenge/request/preflight/response hashes、完整 terminal binding、response/consumption/challenge-expiry time 与 withheld
+authority，并返回 record SHA-256。record 是审计事实，不是 approval grant，也不是 process capability。
+
+== Verification
+
+macOS 实际文件系统测试覆盖：
+
+* 同一 claim 首次消费成功、再次消费为 `AlreadyConsumed`；
+* 两线程同时竞争时严格一成功、一拒绝；
+* 预先存在的零字节 crash-shaped slot 永久阻止重试；
+* broad permissions 与 symlink root 被拒绝；
+* expiry 在创建 slot 前拒绝；
+* record bytes、record SHA、private file mode 与 withheld authority 一致。
+
+Bun boundary oracle 固定 exact rustix fs feature、`CREATE|EXCL|NOFOLLOW`、private root、file/directory sync、no deletion、no process、
+no environment、no unsafe 与 no `lake update`。
+
+== 后续门
+
+fresh request/preflight 重新合取已在 M13 完成，见
+xref:RUST_APPROVAL_FRESH_REVERIFICATION_M13.adoc[LeanBun Rust Approval Fresh Reverification M13]。consumption record 现为 sealed
+value 并绑定 challenge expiry；成功只形成不可执行、withheld proof。M14 将补 trusted executable observation provenance。
+
+前置 exact reader 见 xref:RUST_MACOS_EXACT_RESPONSE_M11.adoc[LeanBun Rust macOS Exact Response M11]。

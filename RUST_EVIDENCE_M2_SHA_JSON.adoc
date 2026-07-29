@@ -1,0 +1,72 @@
+= LeanBun Rust Evidence M2: SHA-256 and Strict JSON
+:toc: left
+:sectnums:
+
+== 结论
+
+`leanbun-evidence` 的稳定文件事务现已加入流式 SHA-256，并在相同结果对象上提供严格 JSON 结构解析。
+实现仍为两个本地 crate、零第三方依赖、零 unsafe、无 writer、无 CLI、无 Lake/Lean 调用。
+
+== 依赖审计
+
+本门先审计了 2026-07-23 crates.io 当前版本：
+
+[cols="1,1,1,3"]
+|===
+|crate |版本 |许可证 |观察
+|`sha2` |`0.11.0` |MIT OR Apache-2.0 |RustCrypto；MSRV 1.85；关闭默认 feature 后仍解析 CPU feature/digest 图
+|`serde_json` |`1.0.151` |MIT OR Apache-2.0 |MSRV 1.71；默认有界递归；本地 Bun main 锁的是较早 `1.0.149`
+|`serde` |`1.0.228` |MIT OR Apache-2.0 |未请求 derive，但 lock/跨 target 图仍包含相关 proc-macro 包
+|===
+
+临时解析将 Cargo.lock 扩展到 20 个 registry package，包括 `libc`、`memchr`、`zmij`、多个 crypto buffer/type
+crate，以及 lock 中的 `syn/quote/proc-macro2/serde_derive`。实际 aarch64 feature tree没有启用 derive，但 SHA
+路径启用了 CPU feature 探测并带入 `libc`。下载源码中 sha2/serde_json 及多个传递 crate 存在内部 unsafe；
+serde_json、serde、serde_core、libc、zmij 等还包含 build.rs。
+
+RustSec 对 `sha2` 列出的 `RUSTSEC-2021-0100` 只影响已撤回的 `0.9.7` AVX2 backend，`>=0.9.8` 已修复，
+因此 `0.11.0` 不受该漏洞影响。拒绝引入不是因为已知未修漏洞，而是当前小型控制面不值得承担 20 包、build
+script、FFI/unsafe 与更新审计成本。
+
+审计后撤回全部 registry dependency，离线重建的正式 Cargo.lock 仅包含 `leanbun-core` 与
+`leanbun-evidence`。下载源码保留在被忽略的隔离 Cargo cache 中，仅作审计材料，不进入构建依赖图。
+
+== 流式 SHA-256
+
+`leanbun-core::Sha256Hasher` 使用安全 Rust 实现 FIPS 180-4 SHA-256 compression/padding，可跨多次 `update`
+保持 64 字节 block 状态。`read_stable_text` 每次从已打开 descriptor 读取 64 KiB chunk 时同时更新 hasher；
+不会为了摘要重新打开路径。只有读取后的 inode/metadata/canonical path 复核全部通过才发布 digest。
+
+验收包括空串、`abc`、`evidence`，以及 55/56/63/64/65 字节 padding/block 分界。向量由系统 `shasum`
+产生并由 Bun `CryptoHasher` 与 Rust 分块实现共同消费。测试曾发现并修复“部分 buffer update 后错误清零长度”的
+真实缺陷，说明 streaming 分界是必要验收门。
+
+该 SHA-256 用于内容身份与非变更证据，不是 MAC 或数字签名，不能证明来源主体。
+
+== 严格 JSON 结构层
+
+项目内 parser 支持完整 JSON value、标准 escape、UTF-16 surrogate pair 和严格 number grammar，并设置：
+
+* 最大 nesting depth：128；
+* 最大 value node：100000；
+* 总输入上限继承 stable text 的 16 MiB hard cap及调用方更小 schema limit；
+* object 使用 `BTreeMap`，重复键立即拒绝，不静默覆盖；
+* 尾随 value、前导零、缺失 fraction/exponent digit、孤立 surrogate 与未转义 control 全部拒绝；
+* number 保存原始 lexical string，避免浮点转换改变证据。
+
+`read_strict_json` 先完成稳定文件读取与 SHA，再解析内存中的同一份已认证 bytes，并同时返回 file evidence 和
+`StrictJson`。M2 只承诺严格结构层；manifest/binding/attestation 的字段、未知字段和 schemaVersion 校验将在
+各自 typed decoder 中实现，不能把“JSON 可解析”等同于“schema 合法”。
+
+== 验收与剩余边界
+
+Rust core 现有 SHA/identity/diagnostic/golden 测试和 evidence 的 containment、TOCTOU、stable text、strict JSON
+测试全部进入 `./scripts/rust-dev check`。Bun 侧新增同一 SHA 黄金表验证。
+
+当前仍不开放：任意生产路径读取、JSON schema decoder、state writer、atomic publish、CLI、Lake 或 Lean 进程。
+
+== 下一门
+
+为一个最小、只读的既有 schema 建立 typed decoder，首选 provider registry/override 的必要字段子集；要求
+schemaVersion、字段类型、未知字段、重复 package 名和限额全部显式拒绝，并与 Bun fixture 做差分。不得因此
+开放生产 provider 路径，先只在 `.leanbun-dev-rust/tmp` fixture 验收。

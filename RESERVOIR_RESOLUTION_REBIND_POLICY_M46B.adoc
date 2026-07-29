@@ -1,0 +1,56 @@
+= LeanBun Reservoir Resolution and Rebind Policy M46 Phase B
+:toc: left
+:sectnums:
+
+== Decision status
+
+This policy is recorded before Phase B implementation. It consumes the immutable M46A companion model and adds pure decision types plus generation identity enforcement. It does not add a Reservoir network client or filesystem publication path.
+
+== Outcome precedence
+
+For one active binding and an online observation over the same registry/package/version scope, classification order is:
+
+. no observation: `DisappearedBinding`;
+. more than one observation: `AmbiguousCandidates`;
+. a valid explicit authorization exactly binding active and proposed identities: `ExplicitRebindAccepted`;
+. changed exact commit: `VersionRebound`;
+. unchanged commit but changed resolved URL, download integrity, source tree or selected-source identity: `ContentMismatch`;
+. exact content unchanged but metadata digest changed: `MetadataDrift`;
+. every field unchanged: `StableBinding`.
+
+With no active binding, exactly one observation produces `FirstResolutionPending`; it does not produce an active lock or generation. Zero observations is `DisappearedBinding`; multiple observations remain ambiguous.
+
+Registry, package or requested-version mismatch is not drift within one scope. It is invalid input and must be rejected before classification.
+
+== Explicit rebind authorization
+
+`ReservoirRebindAuthorizationV1` is a pure, immutable claim binding:
+
+* registry identity;
+* package identity;
+* requested version;
+* old exact commit;
+* new exact commit;
+* newly observed metadata digest;
+* active binding identity;
+* proposed binding identity.
+
+Old and new commits must differ. An authorization for another scope, another active identity, another proposed identity or stale metadata cannot accept a rebound. Phase B defines no persistent signing/approval ingress; callers cannot treat construction of this value as user authority outside registered tests. A future mutation entry must supply it from an independently authorized transaction.
+
+== Frozen and generation rule
+
+Frozen builds use the already activated lock, companion and verified store objects without observations or network access.
+
+The M33 resolution graph retains whether each request was Reservoir. Generation construction therefore enforces:
+
+* a graph with no Reservoir request must not receive a companion;
+* every Reservoir request must have an explicit requested version and exactly one matching companion binding;
+* every companion binding must correspond to a Reservoir-requested graph package;
+* binding scope/version, exact source and content facts must match graph and lock;
+* a Reservoir graph without a companion is rejected.
+
+Non-Reservoir generations retain their exact V1 identity and metadata bytes. Reservoir-backed generations use an explicit generation metadata V2 form and bind the companion document identity into the generation identity. This closes the one-way adjacency left intentionally open in M46A.
+
+== Remaining non-authority
+
+Phase B does not publish pending evidence, persist authorization, query public Reservoir, activate a real Reservoir candidate or modify external projects. Those IO/state transitions and loopback failure recovery belong to Phase C or a later explicitly authorized mutation milestone.

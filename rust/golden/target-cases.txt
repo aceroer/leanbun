@@ -1,5 +1,6 @@
 true	text	LeanBunMathlibFixture
-false	repeat-a	0false	text	-bad
+false	text	
+false	text	-bad
 false	text	a..b
 false	hex	62616400746172676574
 false	hex	6261647f746172676574

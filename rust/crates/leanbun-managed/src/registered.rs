@@ -1,6 +1,7 @@
+use leanbun_codec::{StrictJson, parse_strict_json};
 use leanbun_core::{Sha256, Sha256Hasher};
-use leanbun_evidence::{StrictJson, canonicalize_directory, parse_strict_json, read_provider_pair};
-use leanbun_package::{CanonicalSourceUrlV1, PackageKeyV1};
+use leanbun_evidence::{canonicalize_directory, read_provider_pair};
+use leanbun_lock::{CanonicalSourceUrlV1, PackageKeyV1};
 use leanbun_resolver::LeanSourceRequestV1;
 use leanbun_store::{LeanStoreLimitsV1, normalized_tar_tree_sha256_v1};
 use std::collections::{BTreeMap, BTreeSet};

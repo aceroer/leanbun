@@ -1,0 +1,69 @@
+= LeanBun Rust Executable Handoff Boundary M20
+
+== Outcome
+
+M20 完成 fixed-executable handoff 审计，但结论是 fail closed：本机锁定的 Rust 1.96.0、rustix 1.1.4、macOS SDK 26.5 与 Bun Rust
+source revision `892b1dabc69e2a0a973244f772b84967c73ccad5` 均未提供可由当前 safe adapter 使用的 macOS FD-bound executable launch。
+
+`macos_executable_handoff_contract_v1` 把六条候选路径固定为
+`DeniedNoStableFdBoundExecution`，并保持 `PlanExecutionAuthorityV1::Withheld`。本门没有接受或消费 M19 reservation，没有创建 child
+process，也没有调用 Lake、Git 或生产依赖。
+
+== Exact local-source audit
+
+[cols="2,3,3",options="header"]
+|===
+|候选 |本机锁定证据 |结论
+
+|Rust standard command/exec
+|Rust 1.96.0 `library/std/src/os/unix/process.rs` 的 `exec` 明确调用 `execvp`；Darwin fast path 在
+`library/std/src/sys/process/unix/unix.rs` 最终把 program C string 交给 `posix_spawnp`。
+|启动时仍按 path 解析 executable，无法消费 M14 已打开文件的 identity。
+
+|Rust `pre_exec`
+|同一 `CommandExt` API 将 callback 标为 unsafe；它只做 child setup，没有增加 macOS executable-FD primitive。
+|既违反当前 crate 的 `forbid(unsafe_code)`，也没有关闭 executable path race。
+
+|rustix `execveat`
+|锁定 rustix 1.1.4 的 `src/runtime.rs` 把它标为 unsafe experimental API，并引用 Linux；`src/not_implemented.rs` 仍将公共
+`execveat` 列为 not implemented。
+|本机 macOS safe API 不可用。
+
+|macOS `posix_spawn`
+|SDK `usr/include/spawn.h` 的 `posix_spawn` / `posix_spawnp` 第二参数都是 `const char * path`；file actions 只能
+chdir/fchdir/close/dup/open，不接受 executable FD。`POSIX_SPAWN_SETEXEC` 只改变 process replacement 语义。
+|没有 FD-bound executable handoff。
+
+|Bun Rust spawn
+|项目锁定 Bun `src/spawn_sys/posix_spawn.rs` 的 macOS non-PTY 路径调用 system `posix_spawn`；
+`src/spawn_sys/spawn_process.rs` 将 `argv0_cstr` 传给 `spawn_z`。
+|同语言便于复核实现，但 Bun 当前实现同样是 path-based，不能作为本门安全 primitive。
+
+|`/dev/fd/N`
+|隔离探针 `exec 9</bin/echo; /dev/fd/9 leanbun-fd-probe` 在本机返回 `permission denied`，exit 126。
+|不能把 inherited executable FD 转化为可执行路径。
+|===
+
+SDK headers 中也没有 `fexecve` 或 `execveat` 声明；本机 `man 2 fexecve` 无条目。以上结论针对本项目锁定版本和当前 macOS，未来任一
+版本变化必须重新审计，不能沿用为动态事实。
+
+== Security decision
+
+M14/M18 的 reopen、metadata 与 SHA 重验可发现观测期间的 drift，但若随后使用 path-based spawn，仍存在“最后一次重验”到 kernel
+解析 executable path 之间的替换窗口。M19 durable reservation 解决单次机会和 crash replay，不解决这个 vnode handoff。
+
+因此不能用“尽量靠近 spawn 再 hash”宣称关闭 TOCTOU，也不能因 Bun 已用 Rust 重构就直接复制其 unsafe FFI。当前 adapter 继续禁止
+subprocess、unsafe 与 CLI dispatch；M19 reservation 暂无 process consumer。
+
+== Verification
+
+Rust unit test 固定六项 mechanism/rejection、四项版本 provenance、唯一 deny decision 与 withheld authority。Bun boundary oracle 验证
+M20 source 已进入 adapter boundary，并继续扫描 runtime source，拒绝 subprocess、host environment、unsafe、删除和 `lake update`。
+
+== 下一门
+
+M21 已完成，见 xref:RUST_PATH_LAUNCH_POLICY_M21.adoc[LeanBun Rust Path Launch Threat Model and Policy M21]。同 UID mutator 已明确纳入
+生产攻击面；user-owned toolchain 与 owner-changeable immutable flag 均拒绝。M22 只实现 read-only macOS path provenance observer，不
+spawn、不修改权限或 flags。
+
+前置 reservation 见 xref:RUST_DURABLE_LAUNCH_RESERVATION_M19.adoc[LeanBun Rust Durable Launch Reservation M19]。

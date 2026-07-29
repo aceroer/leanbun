@@ -1,0 +1,97 @@
+= LeanBun M4 真实项目只读验收
+:toc: left
+:sectnums:
+
+== 结论
+
+M4 通过。LeanBun 在一个真实、已登记的 Lean 4.32 下游项目上完成 filesystem-only inspect；检查前后
+完整目录快照一致，没有创建、删除或修改项目文件，没有执行 Lake workspace 命令，也没有网络权限。
+
+== 样本
+
+[cols="1,3"]
+|===
+|项目 |`grsc-zeta-modern-arithmetic`
+|Lean 根 |`$M4_REGISTERED_PROJECT/lean`（公开记录已脱敏）
+|选择理由 |真实研究项目；Lean 子目录仅约 3.8 MiB、31 个普通文件；Lean 4.32；九包 manifest；已有正式 override
+|项目边界 |README 明确当前 Lean 层是 source-attribution interface，不把未形式化的 Z1-Z8 数学陈述暗示为已证明
+|===
+
+== 执行约束
+
+验收使用 `config/leanbun-inspect.sb`：
+
+* `(deny network*)`；
+* 默认拒绝文件写入，只允许 LeanBun 仓库和标准设备端点；
+* `(deny process-exec (regex #"/lake$"))`，并已单独验证 Lake 启动会被拒绝；
+* provider 显式指向生产 dependency library，但只有读取权限；
+* Bun 固定为 `1.3.14+0d9b296af`，入口使用 `--no-install --no-env-file`。
+
+完整快照由 `scripts/nonmutation-snapshot.ts` 生成，覆盖根目录、子目录、普通文件和 symlink 的类型、mode、
+uid/gid、size、mtime/ctime、inode/device、link count；普通文件另从受保护文件描述符计算 SHA-256。
+
+== Inspect 结果
+
+[cols="1,2"]
+|===
+|Toolchain |`leanprover/lean4:v4.32.0`
+|Provider |`lean4-v4.32.0_mathlib-81a5d257c8e4`
+|Provider 状态 |`matched`
+|项目 override |`registered`
+|Package |9 个全部 `matched`
+|构件遍历 |`complete: true`
+|构件总数 |103311
+|`.olean` |8651
+|`.ilean` |8651
+|`.trace` |8663
+|`.hash` |51882
+|`.ltar` |25464
+|===
+
+风险诊断只有：
+
+* `DEPENDENCY_ARTIFACT_MISSING`：登记包 `Cli` 没有观察到 `.olean`；
+* `HASH_FILE_UNVERIFIED`：51882 个 Lake `.hash` 只作观察证据，不作认证；
+* `LAKE_EXECUTION_NOT_ATTEMPTED`：未执行 Lake workspace 命令。
+
+前两项属于共享 provider 的现状，不是本项目 manifest、override 或 Git revision 漂移。
+
+== 共享库交叉验证
+
+在同一个 sandbox 中运行既有只读接口：
+
+[source,text]
+----
+project=.../grsc-zeta-modern-arithmetic/lean
+toolchain=leanprover/lean4:v4.32.0
+mathlib_rev=81a5d257c8e410db227a6665ed08f64fea08e997
+dependency_count=9
+verified: .../lean -> lean4-v4.32.0_mathlib-81a5d257c8e4
+----
+
+其结果与 LeanBun 报告一致。系统 `/usr/bin/python3` 会尝试建立 Xcode `xcrun_db` 并被 sandbox 拒绝；
+最终干净证据改用 `/opt/homebrew/bin/python3`，且设置 `PYTHONDONTWRITEBYTECODE=1`。
+
+== 非变更证据
+
+[cols="1,2,2"]
+|===
+| |前置 |后置
+|记录数 |44 |44
+|Tree hash |`87c996c61bf12093aafce7edb4bfb92a466966e2842fdce1da0ca5df716d79fd`
+|`87c996c61bf12093aafce7edb4bfb92a466966e2842fdce1da0ca5df716d79fd`
+|归一化快照 SHA-256 |`470d4f4fe49337b0386345ca52b3ac3613b3e8369af0a6d8005bf61d7f4969bb`
+|`470d4f4fe49337b0386345ca52b3ac3613b3e8369af0a6d8005bf61d7f4969bb`
+|===
+
+归一化只移除不同的 `capturedAt`；其余完整记录通过 `cmp` 逐字节一致。
+
+本次临时证据文件的摘要为：inspect JSON
+`85483302debe3155d591a31be74202f186703f19f38b24ac3480c6afa6b10f6c`，provider describe
+`76f2f23b6ecd1203c9a03b206be4b92f85f0f8325190961515bda8c8c8cd9a73`，provider verify
+`68bad204c1d3948aa43f1990343d21cd4119055ef3c5cc949a67a5beb0d83079`。
+
+== 后续边界
+
+M4 通过不自动授权 build。M5 仍须先设计 binding、identity/attestation 与依赖根写入监视，才能开放
+approved project target；`lake update`、cache restore 和依赖源码编译继续禁止。

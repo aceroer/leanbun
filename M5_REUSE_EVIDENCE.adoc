@@ -1,0 +1,66 @@
+= LeanBun M5 Repeated-Build Reuse Evidence
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第十三阶段已建立 repeated-build reuse 的证据基础，但尚未启用跳过 Lake。新的 successful execution
+record 同时绑定内容寻址的项目输入树与项目输出树；旧记录和缺少该对象的记录一律不具备复用资格。
+
+== 输入域
+
+`leanbun-project-input-tree-v1` 从 canonical project root 计算真实文件 SHA-256，并记录目录/文件 mode、
+entry count、file count 与 byte count。它排除纯生成状态：
+
+* `.git`；
+* 整个 `.lake`，包括已有 build/config；
+* `.leanbun/tmp`；
+* `.DS_Store`。
+
+项目源码、`lakefile`、`lean-toolchain`、`lake-manifest.json` 与 `.leanbun/binding.json` 都保留在输入域。
+因此已有输出或临时日志变化不会误伤复用 identity，而源码、manifest、toolchain 或 binding 任一字节变化都会
+产生新 identity。
+
+== 输出域
+
+`leanbun-project-output-tree-v1` 单独哈希完整 `.lake/build`。输出根必须真实存在；缺失时产生
+`PROJECT_OUTPUT_MISSING`，不能把成功执行升级为可复用记录。输入必须在 Lake 前后保持同一内容摘要，否则产生
+`PROJECT_INPUT_DRIFTED`。只有其他全部受控构建条件也通过时，terminal record 才带 `reuseEvidence`，并产生
+`REUSE_EVIDENCE_RECORDED`。
+
+这一阶段没有建立 latest-record index，没有选择候选记录，也没有返回 reused 状态；因此不会因为“找到旧记录”
+而绕过 lock、attestation re-verification、dependency artifact 验证或 Lake。
+
+== 测试
+
+树哈希测试确认修改 `.lake/build` 和 `.leanbun/tmp` 不改变输入 identity，而修改 binding 会使其变化。
+execution store 测试确认两种 schema、摘要和计数经过 atomic terminal publication 后仍能严格回读。
+controlled-build 合取测试要求输入稳定且输出根存在。
+
+== Mathlib fixture 验收
+
+全新的绑定 fixture 完成真实 `LeanBunMathlibFixture` 构建后，记录如下：
+
+[cols="1,2"]
+|===
+|Execution ID |`468b50c2-1da3-4124-a886-1b8b4be954f1`
+|Status / Lake |`completed` / `0`
+|Input tree |`1f3ce753c667a433639e300cd7e13f60c220cea41c71bd8d40f5585a5988aed6`
+|Input entries / files / bytes |9 / 6 / 4815
+|Output tree |`862ef13d45e5b278107dac925962e2d98bd77af5e467bc016c7f08e2d60a70af`
+|Output entries / files / bytes |22 / 16 / 935907
+|Independent re-verification |input true / output true
+|Dependency artifact before / after |`82c17f8c55668dd2a10040ed53eaebe742e8d06422a67f25c3968a71203abc12`
+|Build lock released |true
+|Diagnostic |`REUSE_EVIDENCE_RECORDED`
+|Execution record SHA-256 |`ae6414cef898144c45528f605452d84e1c6fc81e81d58a1daa053f7ac4fe3e35`
+|Build report SHA-256 |`2cdaaeb962449eb200065e5a800632ea169e79549baffda470073bee8a757873`
+|===
+
+输入/输出摘要是在记录发布后从现存 fixture 独立重算并比对。生产依赖构件保持不变。
+
+== 下一执行门
+
+只读 reuse candidate selection 已实现并通过真实输出破坏测试，详见
+xref:M5_REUSE_CANDIDATE_CHECK.adoc[M5 Read-Only Reuse Candidate Check]。下一步设计 lock 内 reuse transaction；
+在其记录与恢复协议通过前仍不跳过 Lake。

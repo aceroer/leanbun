@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "version": "0.7.0-m42-dev",
+  "class": "run-scoped-lake-basic-regression-phase-a",
+  "leanBunSource": {
+    "commit": "f4baa0db7ef5f6a011385ce2c28886d6e1af07ba",
+    "tree": "0961cbca76a570e8745f3a67fa8d55c79435711d",
+    "sourceFileCount": 133,
+    "sourceListSha256": "98f2472cdd03e06fe8f5982d281f9a0a41209b7b4cf00fe2a8d3c0ef4318633f"
+  },
+  "bunFork": {
+    "branch": "codex/leanbun-m38",
+    "commit": "99a19d3d781657d8385c40c6edf8152c214e2679",
+    "tree": "5d02043959a9f65be922091c8e8dd21b9acb6c9d",
+    "upstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+    "upstreamTree": "81a25490c3c5aeb4271a200a96943239b686404b",
+    "cargoLockSha256": "47f4e874c284ae44ab348eb703cb43a363cbcb95f9933b52b971134ad24eb39e"
+  },
+  "binary": {
+    "path": ".leanbun-dev-rust/release/bun-fork/target/release/leanbun",
+    "sha256": "034adefd903f8327e3cc5ba11a00c316ac8f2ff1e4462404f553571952f6049f",
+    "sizeBytes": 1655272,
+    "format": "Mach-O thin arm64",
+    "signature": "adhoc-linker-signed",
+    "cdHash": "1ecb3f58a5f11f79ee90a5e59401410d77c39cfb",
+    "notarization": "not-submitted"
+  },
+  "fixtureRegression": {
+    "command": "fixture-regress",
+    "fixture": "lake-basic",
+    "executionRoot": ".leanbun-dev-rust/generation-fixture/m42-regression/runs/<run-id>",
+    "recordRoot": ".leanbun-dev-rust/regression/records",
+    "historyMode": "0400",
+    "latestMode": "0600",
+    "executionCopiesAfter": 0,
+    "runs": [
+      {
+        "runId": "365e0640ed1ba94fab17c0bb3b3fc04444e2265ee24d65e01ae5bf3dbb74c8cc",
+        "recordSha256": "0b1022b5ffd591bbf87fb41ce601f926806da88927854e3fd0c979943b3fc740"
+      },
+      {
+        "runId": "cce60e082f22f760a4a728f82ecf87c9fbcf8cddcebd8162767fe4537b18e017",
+        "recordSha256": "80c62826f09d0961bda1a606b4533489dc017f0fcd60a0879feeefa2db871e74"
+      }
+    ],
+    "latestRunId": "cce60e082f22f760a4a728f82ecf87c9fbcf8cddcebd8162767fe4537b18e017",
+    "m41RecordsUnchanged": true,
+    "extraArgumentProbe": "rejected-nonzero"
+  },
+  "validation": {
+    "rustDefaultTests": 181,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "bunTests": 93,
+    "bunExpectCalls": 866,
+    "workspaceClippy": "passed",
+    "forkClippy": "passed"
+  },
+  "boundaries": {
+    "authorizedFixtures": ["lake-basic"],
+    "dependencyBearingRegression": "deferred-to-m42-phase-b",
+    "mathlibRegression": "deferred-to-m42-phase-c",
+    "actualExternalProject": "not-authorized",
+    "productionSigning": "out-of-scope-for-fixture-regression"
+  }
+}

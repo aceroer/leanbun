@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "version": "0.14.0-m44b-dev",
+  "class": "mechanical-inventory-legacy-extraction",
+  "sourceBaseline": {
+    "commit": "736a24b0f175a140b49a9fec4b76db96377905d4",
+    "tree": "415e9079f787f54dbbd0f3a293a52c04e753137d",
+    "status": "uncommitted M43 through M44B working-tree delivery"
+  },
+  "crateBoundary": {
+    "workspaceCrates": 14,
+    "mainlineRoots": 6,
+    "mixedPackagePresent": false,
+    "lockDependencies": ["leanbun-core"],
+    "inventoryLegacyDependencies": ["leanbun-core", "leanbun-evidence"],
+    "inventoryLegacyConsumers": ["leanbun-plan", "leanbun-approval-macos"],
+    "cargoGraphSha256": "f1f4159a1ef0f8d404829b0f8bc714328988dbf116aa1b20e85a705a6046c066",
+    "cargoLockSha256": "6db1de8c127459a59a5e06f4d8b5ab664d48a65c132947b307fdd76b3011f6c9"
+  },
+  "mechanicalIdentity": {
+    "inventoryLegacySourceSha256": "47d7cfca76c853f216c9bad7cad0955dda5a7b7528f26ef20ceccbf5a8ba3af6",
+    "m43SnapshotSourceSha256": "03533dd7363dff8fa4190172942d9b27ffa99d7abd26d76024e333b4a2e9ab62",
+    "m44SnapshotSourceSha256": "03533dd7363dff8fa4190172942d9b27ffa99d7abd26d76024e333b4a2e9ab62",
+    "inventorySnapshotGoldenSha256": "5b35732e78d1a922349a44ffb833aa6a4db8cf13fe63ea85715c310d611849ff",
+    "driftCasesSha256": "1a77d90127bd9da235fb389df75bba6e2e9c238369f48426e96fde32477a7f6c",
+    "lockSourceSha256": "f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c"
+  },
+  "validation": {
+    "architectureTests": 9,
+    "architectureExpectCalls": 13,
+    "bunTests": 102,
+    "bunExpectCalls": 879,
+    "rustDefaultTests": 184,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "workspaceFmt": "passed",
+    "workspaceClippy": "passed",
+    "mainlineLegacyImportScan": "clean"
+  },
+  "releaseBinaryReplay": {
+    "class": "isolated-test-only-current-source-adapter",
+    "embeddedDistributionVersion": "0.11.0-m42-dev",
+    "distributionProvenanceRefresh": "deferred-to-M48",
+    "binarySha256": "abf6e71fb3f3e5b5657a19579e1783246f28f93fa1e4d97864778d1fef6191da",
+    "binarySizeBytes": 2497088,
+    "replayCargoLockSha256": "ec0890732a88ad29ed4aef521b0953441ef1fe7e34ca1c58cbc417ea98323e08",
+    "runs": [
+      {"fixture": "lake-basic", "runId": "946b36f30126eed514ee500f82eccb1de7f623d35e2c720c39cf7d2084baa941", "recordSha256": "46752af45b8bb270d69fb534d7daa717eaa71bebd0861afc9e769bbfdc766bbd"},
+      {"fixture": "lake-managed-dependency", "runId": "d56cdf66e48f3d012dbc8663e8c258bd75447e19620b02315b751536781a15b7", "recordSha256": "a741dee249ac8a0f7d164500b4707232db5bc9b4bbad2245f8d3efdf6c6e821f"},
+      {"fixture": "mathlib-project", "runId": "bbcc723a36766f3a6111e3209783c94283ce4b52a8bd58938dcdba5e5cb23808", "recordSha256": "0f6513646327adcad2a9696911879a6646260154d98202e16e3dffd20a41ae2a"},
+      {"fixture": "negative-matrix", "runId": "23ddad63a45c8c6e0a14471d0ac213b311a8ce8b65fe2b13038113b26c770088", "recordSha256": "22eec45d9210fc03fb2e399de705b7bed2b8bdae024449c4355d40dff5ba662d"},
+      {"fixture": "concurrent-history", "runId": "3fc5b2eb89766337a803da67e32cb254c448130335be4baed47329f25cd19631", "auditRecordSha256": "1d2f19b3a500e2303d39a557f1cc8a18fa527a987fd6951128c158144591db40"}
+    ],
+    "runScratchAfter": "empty",
+    "storeScratchAfter": "empty",
+    "retentionPolicy": "retain-all-v1"
+  },
+  "boundaries": {
+    "strictJsonMoved": false,
+    "reservoirSemanticsChanged": false,
+    "canonicalFormatChanged": false,
+    "externalProjectMutation": "not-authorized",
+    "nextMilestone": "M45 StrictJson consumer audit and placement decision"
+  }
+}

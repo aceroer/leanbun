@@ -1,0 +1,64 @@
+= LeanBun Rust Package Inventory Snapshot M4
+:toc: left
+:sectnums:
+
+== 结论
+
+`leanbun-package` 已加入纯 `PackageInventorySnapshotDigestV1`，把完整 typed inventory 与 canonical drift report
+编码为固定 JSON 并计算 SHA-256。该 digest 已成为 `LakeCommandPlanV1` 的必填字段，并继续进入 M2 report 与 M3
+pending approval request。
+
+因此 manifest、override、provider、checkout 或 drift evidence 任一变化都会改变 plan report digest 和 RequestId。
+本功能不读取文件、不调用 Git/Lake、不写 `.lake`，只处理调用方已经采集的 typed facts。
+
+== Canonical snapshot
+
+snapshot 顶层包含：schema/type、ProjectId/path、toolchain、manifest SHA、optional project override SHA、optional provider
+registry/override SHA、drift summary 以及按 package name 排序的 facts。
+
+每个 package 完整编码：
+
+* Git revision 或 path declaration；
+* project override directory 与 resolved path directory；
+* provider revision 与 canonical directory；
+* checkout 的 `unobserved`/`missing`/`present` 状态；
+* present checkout 的 canonical directory、optional revision 与 dirty bit；
+* 全部排序 drift findings，包括 kind、field、expected、observed。
+
+optional 字段显式编码为 JSON `null`，避免 absent 与空字符串混淆。canonical path 若不是 UTF-8 则失败关闭。
+
+== Consistency gates
+
+生成 snapshot 前必须满足：
+
+* inventory/drift schema 均为 v1；
+* 两者 ProjectId 相同，且等于 canonical project path 派生值；
+* package name 有界、唯一，inventory 与 drift 名称集合完全相同；
+* 对 inventory 重新运行 `report_dependency_drift` 后必须与传入 report 全字段相等。
+
+最后一项禁止调用方伪造 `Matched` summary、删除 finding 或改变 expected/observed 来获得更弱的摘要。
+
+== Upward binding
+
+`plan_lake_update` 在生成参数前计算 snapshot；不一致输入直接返回 `BUILD_INSPECTION_FAILED`。M2 report 公开
+`inventorySnapshotSha256`，M3 request 也公开同一 digest，而 RequestId 通过 report SHA 间接绑定它。
+
+纯 request verifier 从当前 plan 重新生成报告和 request。测试已证明 checkout 从 `Unobserved` 变为 `Missing` 后，
+snapshot digest 改变，旧 pending request 对新 plan 验证失败。
+
+== Verification
+
+共享 `package-inventory-snapshot.json` 由 Rust canonical writer 与 Bun `JSON.stringify` 共同验证。Bun 独立重算 snapshot
+SHA，并验证 checkout/finding 改变会改变 digest；report 与 approval golden 同时要求三层 digest 一致。
+
+验收未读取或改变生产 package checkout，未运行 `lake update`。
+
+== 后续门
+
+只读、纯输入的 `LakeCommandPreflightV1` 已完成：pending request、当前时间、重新生成的 fresh plan/snapshot 与 fresh
+executable identity 现在合取为 `ReadyForExplicitApproval` 或 typed rejection，见
+xref:RUST_LAKE_COMMAND_PREFLIGHT_M5.adoc[LeanBun Rust Lake Command Preflight M5]。下一门只建立外部 explicit grant 的
+strict contract；仍不实现 process adapter。
+
+inventory 来源见 xref:RUST_PACKAGE_INVENTORY_M0.adoc[LeanBun Rust Package Inventory M0]；pending request 见
+xref:RUST_LAKE_APPROVAL_REQUEST_M3.adoc[LeanBun Rust Lake Approval Request M3]。

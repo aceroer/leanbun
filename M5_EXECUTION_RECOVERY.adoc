@@ -1,0 +1,77 @@
+= LeanBun M5 Stale Running Execution Recovery
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第十阶段已实现显式 stale-running recovery：
+
+[source,shell]
+----
+leanbun build recover <execution-id>
+----
+
+该命令不按记录年龄自动判 stale，不执行 Lake，也不把未知结果猜成成功。`running` record 的成功恢复
+终态只能是 `failed`，`failureStage` 固定为 `recovery`。若崩溃发生在 terminal record 发布后、锁释放前，
+同一命令可在 PID/cwd 与所有权审计后只补做锁释放，不改写既有终态。
+
+== 恢复证据
+
+新的受控构建记录在 Lake 启动前额外绑定：
+
+* LeanBun 协调进程 PID；
+* 排除 `.lake/build`、`.lake/config` 与 `.leanbun/tmp` 后的项目记录 SHA-256；
+* 对应项目非写区记录数。
+
+恢复按以下顺序执行：
+
+. 以只读、严格 schema reader 载入 record，并校验其 build-lock key 与完整所有权；
+. 用 signal `0` 检查原协调 PID；仍活动、无权限确认或状态未知都拒绝；
+. 使用固定 `/usr/sbin/lsof -a -d cwd -Fpcn` 审计系统进程；任何进程 cwd 位于项目或其子目录都拒绝，
+  timeout、输出超限或命令失败也拒绝；
+. canonicalize 项目并要求仍位于 `.leanbun-dev`；
+. 重算项目非写区、provider source/config 与全部 dependency artifact evidence；
+. 复核 project ID、binding SHA、attestation SHA、Image ID、target allowlist 与 provider inspection；
+. 将审计结果原子写入终态 `failed` record，再释放匹配锁。
+
+若完整审计成功但发现证据漂移，记录仍会终结为 `failed`，并标记 `evidenceStatus=drifted`；若审计本身
+无法完成，则保持 `running`，等待人工处理。旧式 `running` record 若缺少 PID 或项目摘要，同样默认拒绝。
+
+== 反向测试
+
+测试在临时项目 cwd 内保持真实 `/bin/sleep` 子进程。即使 record 的协调 PID 已不存在，恢复仍返回
+`EXECUTION_PROJECT_PROCESS_ACTIVE`，并验证 record 未发生状态转换。协调 PID 本身仍活动时也在任何文件和
+provider 重验前直接拒绝。
+
+== Mathlib fixture 恢复验收
+
+验收在绑定 production sealed image 的隔离 fixture 中合成一条协调 PID 不存在的 `running` record；没有
+启动或杀死 Lake。正式恢复入口完成一次完整只读证据重算：
+
+[cols="1,2"]
+|===
+|Execution ID |`deadbeef-dead-4bee-8bad-feed00000002`
+|Recovery status |`recovered`
+|Coordinator |`absent`
+|Project cwd processes |`clear` / 0
+|Evidence |`stable`
+|Project protected records |stable
+|Dependency artifacts |stable
+|Binding / attestation / inspection |stable / stable / stable
+|Artifact before / after |`82c17f8c55668dd2a10040ed53eaebe742e8d06422a67f25c3968a71203abc12`
+|Artifact count |112425
+|Terminal record status |`failed`
+|Terminal record SHA-256 |`f1254e939dc7bd16ca8690b8a71438ba1f97a077d069572e75adb42311a2128c`
+|Recovery report SHA-256 |`23a71da06b71917ea121cd6e7d665e832f4ca8e197bd490cf9b875ebf35e772e`
+|===
+
+诊断只有 `LAKE_EXECUTION_NOT_ATTEMPTED`、既有 `Cli` artifact missing warning 与
+`EXECUTION_RECOVERED`。这证明恢复路径没有运行 Lake。验收项目与临时报告在终检后删除，终态记录保留在
+开发 state root。
+
+== 下一执行门
+
+主动 timeout、外部 signal 与 project/image lock 已纳入同一终态协议，详见
+xref:M5_TIMEOUT_SIGNAL.adoc[M5 Timeout and Signal Finalization] 与
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。下一步研究重复构建复用；
+正式项目构建仍关闭。

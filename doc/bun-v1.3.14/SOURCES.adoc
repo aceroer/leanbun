@@ -1,0 +1,82 @@
+= Bun 1.3.14 来源与验证矩阵
+:toc: left
+:sectnums:
+
+== 证据等级
+
+[cols="1,3"]
+|===
+|等级 |含义
+|L |本机 Bun `1.3.14+0d9b296af` 的 CLI 或冒烟测试已验证
+|O |2026-07-23 查阅的 Bun 官方文档
+|D |LeanBun 根据 L/O 作出的设计约束，尚需 adapter 测试
+|===
+
+Bun 官方在线文档以最新版为主，不提供本文所需的完整 `1.3.14` 冻结站点。故任何只有 O、没有 L 的
+行为都不能自动视为 1.3.14 已验证能力。升级时建立新目录并重新执行验证，不覆盖本记录。
+
+== 来源矩阵
+
+[cols="2,3,1,3",options="header"]
+|===
+|主题 |官方来源 |证据 |LeanBun 采用结论
+
+|CLI/runtime
+|https://bun.com/docs[Bun Docs] 与本机 `bun --help`
+|L/O
+|绝对二进制；`--no-install --no-env-file`；记录 revision
+
+|File I/O
+|https://bun.com/docs/runtime/file-io[File I/O]
+|O
+|`Bun.file` 读文件；目录使用 `node:fs`；P1 禁止写
+
+|Hashing
+|https://bun.com/docs/runtime/hashing[Hashing]
+|L/O
+|`CryptoHasher("sha256")` 增量真实文件摘要
+
+|Child process
+|https://bun.com/docs/runtime/child-process[Spawn]
+|L/O
+|参数数组、cwd/env、pipe、timeout/signal；异步流自行限额
+
+|SQLite
+|https://bun.com/docs/runtime/sqlite[SQLite]
+|L/O
+|P2 起使用 prepared statement、WAL 和短事务 lease
+
+|Test runner
+|https://bun.com/docs/test[Test Runner]
+|O
+|TypeScript tests、timeout、serial/concurrent、seed、rerun
+
+|Executable
+|https://bun.com/docs/bundler/executables[Single-file Executable]
+|O
+|M7 才 compile；发布固定 provenance
+|===
+
+== 本机复核命令
+
+[source,shell]
+----
+bun --version
+bun --revision
+bun --help
+bun run --help
+bun test --help
+----
+
+这些命令只读取 runtime 信息。不要在检查活动 Lean 项目时用 `bun install`、`bun update`、`bunx` 或
+未关闭 auto-install 的脚本作为文档验证方式。
+
+== 升级检查表
+
+. 新 Bun 二进制写入独立 provenance；
+. 保存 `--version`、`--revision` 与 relevant help；
+. 重新检查 File、CryptoHasher、Spawn、SQLite、Test、Compile 官方页面；
+. 运行 hash/spawn/SQLite 本机 smoke；
+. 运行 LeanBun adapter、non-mutation 与 concurrency tests；
+. 生成新的 `doc/bun-v<version>/`；
+. 方案审查通过后才修改默认 runtime gate。

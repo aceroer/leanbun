@@ -1,0 +1,63 @@
+From 4b843dd210da556f8e98c08221c3dfc05fb3f8e2 Mon Sep 17 00:00:00 2001
+From: LeanBun contributors <noreply@invalid>
+Date: Sat, 25 Jul 2026 11:23:07 +0800
+Subject: [PATCH 5/7] feat: add negative fixture regression matrix
+
+---
+ src/lean_pm/main.rs | 20 +++++++++++++++++---
+ 1 file changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/src/lean_pm/main.rs b/src/lean_pm/main.rs
+index c7686501..5e491df7 100644
+--- a/src/lean_pm/main.rs
++++ b/src/lean_pm/main.rs
+@@ -6,7 +6,7 @@ use leanbun_lake_bridge::verify_lake_source_compatibility_v1;
+ use leanbun_managed::{
+     ManagedProjectControllerV1, ManagedProjectStatusV1, dry_run_external_adoption_v1,
+     run_external_fixture_acceptance_v1, run_managed_dependency_regression_v1,
+-    run_mathlib_regression_v1,
++    run_mathlib_regression_v1, run_negative_fixture_regression_v1,
+ };
+ use leanbun_store::run_loopback_update_acceptance_v1;
+ use std::env;
+@@ -18,7 +18,7 @@ use std::os::unix::process::CommandExt;
+ use std::path::{Path, PathBuf};
+ use std::process::{Command, ExitCode};
+ 
+-const RELEASE_VERSION: &str = "0.9.0-m42-dev";
++const RELEASE_VERSION: &str = "0.10.0-m42-dev";
+ const BUN_UPSTREAM_COMMIT: &str = "892b1dabc69e2a0a973244f772b84967c73ccad5";
+ const BUN_UPSTREAM_TREE: &str = "81a25490c3c5aeb4271a200a96943239b686404b";
+ const LEAN_TOOLCHAIN: &str = "leanprover/lean4:v4.32.0";
+@@ -26,7 +26,7 @@ const LEAN_COMPILER_COMMIT: &str = "8c9756b28d64dab099da31a4c09229a9e6a2ef35";
+ const LAKE_VERSION: &str = "5.0.0-src+8c9756b";
+ const BUN_LOCK_FILE_SHA256: &str =
+     "d2292d26c8200f23db4fc4fc89237117f0d90a25821fb65b8fe009f0e9134ae4";
+-const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReader=1\nmanagedProjectSchema=1\ndependencyClosure=registered-git-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-v1\n";
++const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReader=1\nmanagedProjectSchema=1\ndependencyClosure=registered-git-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-matrix-v1\n";
+ 
+ fn main() -> ExitCode {
+     let mut arguments = env::args_os().skip(1);
+@@ -189,6 +189,20 @@ fn fixture_regress(repository: &Path, fixture: &str) -> Result<(), String> {
+     } else if fixture == "mathlib-project" {
+         let report = run_mathlib_regression_v1(&repository, &executable).map_err(managed_error)?;
+         print_managed_fixture_regression(&report);
++    } else if fixture == "negative-matrix" {
++        let report = run_negative_fixture_regression_v1(&repository).map_err(managed_error)?;
++        println!("negative-fixture-regression-status=passed");
++        println!("run-id={}", report.run_id);
++        println!("fixture=m42-negative");
++        println!("record={}", report.record.display());
++        println!("record-sha256={}", report.record_sha256);
++        println!("matrix-tree-sha256={}", report.matrix_tree_sha256);
++        println!("case-count={}", report.case_count);
++        println!("positive-records=unchanged");
++        println!("positive-latest=unchanged");
++        println!("managed-project-state=none");
++        println!("execution-copy=not-created");
++        return Ok(());
+     } else {
+         return Err("fixture-regress names an unregistered fixture".to_owned());
+     }
+-- 
+2.55.0

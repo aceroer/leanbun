@@ -1,0 +1,300 @@
+From b5a75e921c10b912c10885207e49ef102ed9e874 Mon Sep 17 00:00:00 2001
+From: LeanBun contributors <noreply@invalid>
+Date: Wed, 29 Jul 2026 22:04:03 +0800
+Subject: [PATCH 7/7] feat: close M48 reader and M42 upgrade adapter
+
+---
+ Cargo.lock          |  37 ++++++++------
+ src/lean_pm/main.rs | 118 ++++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 137 insertions(+), 18 deletions(-)
+
+diff --git a/Cargo.lock b/Cargo.lock
+index 04b17f78..25432893 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2922,12 +2922,19 @@ dependencies = [
+  "leanbun-core",
+  "leanbun-generation",
+  "leanbun-lake-bridge",
+- "leanbun-package",
++ "leanbun-lock",
+  "leanbun-resolver",
+  "leanbun-store",
+  "rustix 1.1.4",
+ ]
+ 
++[[package]]
++name = "leanbun-codec"
++version = "0.1.0"
++dependencies = [
++ "leanbun-core",
++]
++
+ [[package]]
+ name = "leanbun-core"
+ version = "0.1.0"
+@@ -2936,6 +2943,7 @@ version = "0.1.0"
+ name = "leanbun-evidence"
+ version = "0.1.0"
+ dependencies = [
++ "leanbun-codec",
+  "leanbun-core",
+ ]
+ 
+@@ -2945,7 +2953,7 @@ version = "0.1.0"
+ dependencies = [
+  "leanbun-core",
+  "leanbun-lake-bridge",
+- "leanbun-package",
++ "leanbun-lock",
+  "leanbun-resolver",
+  "leanbun-store",
+ ]
+@@ -2954,31 +2962,32 @@ dependencies = [
+ name = "leanbun-lake-bridge"
+ version = "0.1.0"
+ dependencies = [
++ "leanbun-codec",
+  "leanbun-core",
+  "leanbun-evidence",
+- "leanbun-package",
++ "leanbun-lock",
+ ]
+ 
+ [[package]]
+-name = "leanbun-managed"
++name = "leanbun-lock"
+ version = "0.1.0"
+ dependencies = [
+- "leanbun-build",
+  "leanbun-core",
+- "leanbun-evidence",
+- "leanbun-generation",
+- "leanbun-lake-bridge",
+- "leanbun-package",
+- "leanbun-resolver",
+- "leanbun-store",
+ ]
+ 
+ [[package]]
+-name = "leanbun-package"
++name = "leanbun-managed"
+ version = "0.1.0"
+ dependencies = [
++ "leanbun-build",
++ "leanbun-codec",
+  "leanbun-core",
+  "leanbun-evidence",
++ "leanbun-generation",
++ "leanbun-lake-bridge",
++ "leanbun-lock",
++ "leanbun-resolver",
++ "leanbun-store",
+ ]
+ 
+ [[package]]
+@@ -2987,7 +2996,7 @@ version = "0.1.0"
+ dependencies = [
+  "leanbun-core",
+  "leanbun-lake-bridge",
+- "leanbun-package",
++ "leanbun-lock",
+ ]
+ 
+ [[package]]
+@@ -2996,7 +3005,7 @@ version = "0.1.0"
+ dependencies = [
+  "leanbun-core",
+  "leanbun-lake-bridge",
+- "leanbun-package",
++ "leanbun-lock",
+  "leanbun-resolver",
+ ]
+ 
+diff --git a/src/lean_pm/main.rs b/src/lean_pm/main.rs
+index ffb99f17..c018a079 100644
+--- a/src/lean_pm/main.rs
++++ b/src/lean_pm/main.rs
+@@ -7,7 +7,7 @@ use leanbun_managed::{
+     ManagedProjectControllerV1, ManagedProjectStatusV1, dry_run_external_adoption_v1,
+     run_concurrent_history_regression_v1, run_external_fixture_acceptance_v1,
+     run_managed_dependency_regression_v1, run_mathlib_regression_v1,
+-    run_negative_fixture_regression_v1,
++    run_negative_fixture_regression_v1, run_reservoir_loopback_regression_v1,
+ };
+ use leanbun_store::run_loopback_update_acceptance_v1;
+ use std::env;
+@@ -19,7 +19,9 @@ use std::os::unix::process::CommandExt;
+ use std::path::{Path, PathBuf};
+ use std::process::{Command, ExitCode};
+ 
+-const RELEASE_VERSION: &str = "0.11.0-m42-dev";
++const RELEASE_VERSION: &str = "0.20.0-m48-dev";
++const M42_RELEASE_VERSION: &str = "0.11.0-m42-dev";
++const M42_BINARY_SHA256: &str = "f6416817e2c893b311245c65f2a54668b0a633e028de1fe31e05701322670359";
+ const BUN_UPSTREAM_COMMIT: &str = "892b1dabc69e2a0a973244f772b84967c73ccad5";
+ const BUN_UPSTREAM_TREE: &str = "81a25490c3c5aeb4271a200a96943239b686404b";
+ const LEAN_TOOLCHAIN: &str = "leanprover/lean4:v4.32.0";
+@@ -27,7 +29,8 @@ const LEAN_COMPILER_COMMIT: &str = "8c9756b28d64dab099da31a4c09229a9e6a2ef35";
+ const LAKE_VERSION: &str = "5.0.0-src+8c9756b";
+ const BUN_LOCK_FILE_SHA256: &str =
+     "d2292d26c8200f23db4fc4fc89237117f0d90a25821fb65b8fe009f0e9134ae4";
+-const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReader=1\nmanagedProjectSchema=1\ndependencyClosure=registered-git-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-v1\n";
++const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReaders=1,2\nlockReaders=leanbun-lock-v1,reservoir-bindings-v1\nmanagedProjectSchema=1\ndependencyClosure=registered-git-reservoir-companion-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-reservoir-loopback-v1\n";
++const M42_RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReader=1\nmanagedProjectSchema=1\ndependencyClosure=registered-git-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-v1\n";
+ 
+ fn main() -> ExitCode {
+     let mut arguments = env::args_os().skip(1);
+@@ -52,6 +55,8 @@ fn main() -> ExitCode {
+         Some("fixture-install-accept") => {
+             repository_argument(arguments).and_then(|root| fixture_install_accept(&root))
+         }
++        Some("fixture-m42-upgrade-accept") => two_path_arguments(arguments)
++            .and_then(|(repository, binary)| fixture_m42_upgrade_accept(&repository, &binary)),
+         Some("fixture-managed-recovery") => two_path_arguments(arguments)
+             .and_then(|(repository, project)| fixture_managed_recovery(&repository, &project)),
+         Some("fixture-external-accept") => repository_argument(arguments)
+@@ -101,6 +106,9 @@ fn version() -> Result<(), String> {
+     println!("lean-toolchain={LEAN_TOOLCHAIN}");
+     println!("lean-compiler-commit={LEAN_COMPILER_COMMIT}");
+     println!("lake-version={LAKE_VERSION}");
++    println!("lock-readers=leanbun-lock-v1,reservoir-bindings-v1");
++    println!("active-generation-readers=1,2");
++    println!("managed-project-schema=1");
+     println!("target={}-{}", env::consts::ARCH, env::consts::OS);
+     Ok(())
+ }
+@@ -233,6 +241,24 @@ fn fixture_regress(repository: &Path, fixture: &str) -> Result<(), String> {
+         println!("retention-policy=retain-all-v1");
+         println!("automatic-deletion=disabled");
+         return Ok(());
++    } else if fixture == "reservoir-loopback" {
++        let report = run_reservoir_loopback_regression_v1(&repository).map_err(managed_error)?;
++        println!("reservoir-loopback-regression-status=passed");
++        println!("run-id={}", report.run_id);
++        println!("fixture-sha256={}", report.fixture_sha256);
++        println!("old-lock-identity={}", report.old_lock_identity);
++        println!("new-lock-identity={}", report.new_lock_identity);
++        println!("old-binding-identity={}", report.old_binding_identity);
++        println!("new-binding-identity={}", report.new_binding_identity);
++        println!("authorization-identity={}", report.authorization_identity);
++        println!("audit-record-count={}", report.audit_record_count);
++        println!("registry-read-count={}", report.registry_read_count);
++        println!(
++            "frozen-replay-registry-reads={}",
++            report.frozen_replay_registry_reads
++        );
++        println!("rollback=old-exact-lock-and-companion");
++        return Ok(());
+     } else {
+         return Err("fixture-regress names an unregistered fixture".to_owned());
+     }
+@@ -551,6 +577,87 @@ fn fixture_install_accept(repository: &Path) -> Result<(), String> {
+     Ok(())
+ }
+ 
++fn fixture_m42_upgrade_accept(repository: &Path, m42_binary: &Path) -> Result<(), String> {
++    doctor(repository)?;
++    let repository = canonical_repository(repository)?;
++    let m42_binary = m42_binary
++        .canonicalize()
++        .map_err(|error| format!("cannot canonicalize M42 binary: {error}"))?;
++    require_hash(&m42_binary, M42_BINARY_SHA256, "M42 release binary")?;
++    let protected = [
++        "test/fixtures/m31-lock/canonical-golden.tsv",
++        "test/fixtures/m31-lock/model-cases.tsv",
++        "RUST_CONCURRENT_HISTORY_REGRESSION_M42.adoc",
++    ];
++    let protected_before = protected
++        .iter()
++        .map(|path| hash_file(&repository.join(path)))
++        .collect::<Result<Vec<_>, _>>()?;
++
++    let root = repository.join(".leanbun-dev-rust/release-fixture/m48-m42-upgrade-acceptance");
++    if root.exists() {
++        return Err("M48 M42 upgrade acceptance root already exists".to_owned());
++    }
++    fs::create_dir_all(&root)
++        .map_err(|error| format!("cannot create M48 upgrade acceptance root: {error}"))?;
++    let cleanup = Cleanup(root.clone());
++    let old_version = root.join("versions").join(M42_RELEASE_VERSION);
++    fs::create_dir_all(&old_version)
++        .map_err(|error| format!("cannot seed M42 version directory: {error}"))?;
++    fs::copy(&m42_binary, old_version.join("leanbun"))
++        .map_err(|error| format!("cannot seed exact M42 binary: {error}"))?;
++    fs::write(old_version.join("config.v1"), M42_RELEASE_CONFIG)
++        .map_err(|error| format!("cannot seed M42 release config: {error}"))?;
++    sync_file(&old_version.join("leanbun"))?;
++    sync_file(&old_version.join("config.v1"))?;
++    sync_directory(&old_version)?;
++    atomic_write(&root, "active", &format!("{M42_RELEASE_VERSION}\n"))?;
++
++    install_release(&repository, &root, false)?;
++    if read_record(&root.join("active"))? != RELEASE_VERSION
++        || read_record(&root.join("previous"))? != M42_RELEASE_VERSION
++        || hash_file(&old_version.join("leanbun"))?.to_string() != M42_BINARY_SHA256
++    {
++        return Err("M48 upgrade did not retain the exact M42 release".to_owned());
++    }
++    rollback_install(&repository, &root)?;
++    if read_record(&root.join("active"))? != M42_RELEASE_VERSION
++        || read_record(&root.join("previous"))? != RELEASE_VERSION
++        || !root
++            .join("versions")
++            .join(RELEASE_VERSION)
++            .join("leanbun")
++            .is_file()
++    {
++        return Err("M48 rollback did not restore M42 while retaining M48".to_owned());
++    }
++    let old_output = Command::new(old_version.join("leanbun"))
++        .arg("version")
++        .output()
++        .map_err(|error| format!("cannot execute restored M42 binary: {error}"))?;
++    let old_stdout = String::from_utf8(old_output.stdout)
++        .map_err(|_| "restored M42 version output is not UTF-8".to_owned())?;
++    if !old_output.status.success() || old_stdout.lines().next() != Some("leanbun 0.11.0-m42-dev") {
++        return Err("restored M42 binary did not execute as 0.11.0-m42-dev".to_owned());
++    }
++    for (path, before) in protected.iter().zip(protected_before) {
++        if hash_file(&repository.join(path))? != before {
++            return Err(format!(
++                "upgrade or rollback rewrote retained evidence: {path}"
++            ));
++        }
++    }
++    println!("m42-upgrade-acceptance-status=passed");
++    println!("source-version={M42_RELEASE_VERSION}");
++    println!("source-binary-sha256={M42_BINARY_SHA256}");
++    println!("upgrade-version={RELEASE_VERSION}");
++    println!("rollback-active-version={M42_RELEASE_VERSION}");
++    println!("restored-m42-execution=passed");
++    println!("retained-evidence=unchanged");
++    drop(cleanup);
++    Ok(())
++}
++
+ fn install_release(repository: &Path, root: &Path, inject_fault: bool) -> Result<(), String> {
+     doctor(repository)?;
+     let repository = canonical_repository(repository)?;
+@@ -787,6 +894,9 @@ fn export_evidence(repository: &Path) -> Result<(), String> {
+     println!("bunUpstreamTree={BUN_UPSTREAM_TREE}");
+     println!("leanCompilerCommit={LEAN_COMPILER_COMMIT}");
+     println!("lakeVersion={LAKE_VERSION}");
++    println!("lockReaders=leanbun-lock-v1,reservoir-bindings-v1");
++    println!("activeGenerationReaders=1,2");
++    println!("managedProjectSchema=1");
+     println!("target={}-{}", env::consts::ARCH, env::consts::OS);
+     println!("binarySha256={}", hash_file(&executable)?);
+     println!("repository={}", repository.display());
+@@ -976,7 +1086,7 @@ fn hash_file(path: &Path) -> Result<Sha256, String> {
+ 
+ fn print_usage() {
+     eprintln!(
+-        "usage: leanbun <version|doctor|inspect|fixture-accept|fixture-regress|fixture-network-update|fixture-install-accept|fixture-managed-recovery|fixture-external-accept|export-evidence|adopt-dry-run|adopt|update|build|managed-status|recover|rollback> ..."
++        "usage: leanbun <version|doctor|inspect|fixture-accept|fixture-regress|fixture-network-update|fixture-install-accept|fixture-m42-upgrade-accept|fixture-managed-recovery|fixture-external-accept|export-evidence|adopt-dry-run|adopt|update|build|managed-status|recover|rollback> ..."
+     );
+ }
+ 
+-- 
+2.55.0

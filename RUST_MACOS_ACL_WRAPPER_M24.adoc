@@ -1,0 +1,77 @@
+= LeanBun Rust macOS ACL Wrapper and Native Mount Evidence M24
+
+== Outcome
+
+M24 已建立独立 `leanbun-macos-acl-sys` 最小 crate，并把 value-only ACL summary 与 safe `fstatfs` native mount flags 接入 M22
+`observe_macos_path_provenance_v1`。所有 native ACL 调用只读；没有 qualifier/membership、ACL mutation、path lookup、text parsing 或 spawn。
+
+`leanbun-approval-macos` 继续 `forbid(unsafe_code)`。unsafe 只存在于 sys crate 的六个小调用点，分别对应五个经过 M23 审计的 libc symbols。
+
+== Isolated native crate
+
+sys crate 只声明：
+
+* `acl_get_fd_np`；
+* `acl_get_entry`；
+* `acl_get_tag_type`；
+* `acl_get_permset_mask_np`；
+* `acl_free`。
+
+crate 启用 `deny(unsafe_op_in_unsafe_fn)`、`deny(warnings)` 与 `undocumented_unsafe_blocks`。每个 unsafe call 前都有局部 pointer/lifetime safety
+说明；opaque pointer 不进入 public API。
+
+`AclHandle` 以 `Option<NonNull<c_void>>` 独占 working storage。正常路径显式 `release` 并检查 `acl_free` 返回值；enumeration error 后仍先
+release；panic fallback 由 `Drop` 释放。pointer 在 native free 前即从 handle 取走，避免 double free。
+
+== Conservative summary
+
+public `observe_fd_acl_v1(BorrowedFd)` 只返回 value types：presence、entry/allow/deny counts、mutation allow mask、unknown allow mask 与 decision。
+
+* null getter 根据 errno 分类 absent/unsupported/error；
+* entry enumeration 使用 first/next，硬限制 128；
+* unknown tag、null entry、native error、free failure 全部返回 error；
+* ALLOW mutation mask 非零得到 `DeniedMutationAllowEntry`；
+* ALLOW unknown permission bits 非零得到 `DeniedUnknownAllowPermission`；
+* 其余得到 `NoMutationAllowEntry`。
+
+DENY entries 不会抵消 ALLOW entries；qualifier 不读取。该策略只会保守多拒绝，不会把潜在 named writer 判为安全。
+
+== Native mount evidence
+
+M22 component evidence 现在同时保留：
+
+* portable `fstatvfs` fsid/flags/read-only；
+* native `fstatfs.f_flags`；
+* `MNT_RDONLY`、`MNT_NOEXEC`、`MNT_LOCAL`、`MNT_ROOTFS`、`MNT_IGNORE_OWNERSHIP` typed booleans。
+
+native flags 与原有 stat/ctime/statvfs facts 一起在返回前重新读取；任一变化均 `ChangedDuringObservation`。
+
+ACL coverage 只有在每个 component 都成功完成 conservative scan 时才升级为 `ConservativeMutationAllowScan`。mutation/unknown ALLOW 有独立 denial；
+unsupported/native error 继续 `DeniedAclCoverageUnverified`。即使 ACL 全 clear，仍只得到
+`DeniedMountOrWriterContinuityUnverified`，不能直接成为执行许可。
+
+== Production observation
+
+2026-07-24 新 observer 对当前生产 Lake 的 10 个 components 实测：
+
+* ACL 均为 `NoMutationAllowEntry`、entry count 0，coverage=`ConservativeMutationAllowScan`；
+* external APFS 从 mount root 到 leaf 的 native flags 均含 `MNT_IGNORE_OWNERSHIP`；
+* 同一路径链 owner UID 501、effective write `Allowed`、不是 read-only；
+* 最终 decision 仍为 `DeniedUserOwnedComponent`，authority=`Withheld`。
+
+M24 还在 `.leanbun-dev-rust/tmp` 创建一次性 executable fixture，通过系统 `chmod +a` 注入
+`everyone allow write,delete`。observer 对 leaf 得到 entry count 1、`DeniedMutationAllowEntry`；fixture 随即以单文件删除和 `rmdir` 清理，残留为零。
+
+== Verification boundary
+
+Rust tests覆盖 mask/unknown-bit classifier、真实 open FD summary、user-owned/symlink/mode path cases，以及排除更强路径拒绝后的 ACL-specific denial。
+Bun oracle 固定 workspace membership、sys crate lint、五个 symbol、六个 documented unsafe call sites、RAII release、ACL/native mount integration，并
+拒绝 mutation/qualifier/text/process APIs。
+
+== 下一门
+
+M25 已完成，见 xref:RUST_RESERVATION_BOUND_PATH_ELIGIBILITY_M25.adoc[LeanBun Rust Reservation-Bound Path Eligibility M25]：它把 M19 exact
+executable/lineage 与 fresh M22+M24 component evidence 合取，输出具体 denial 并保持 authority withheld；不创建 child process，也不消费或删除
+reservation slot。
+
+前置 native boundary 见 xref:RUST_MACOS_ACL_NATIVE_BOUNDARY_M23.adoc[LeanBun Rust macOS ACL Native Boundary M23]。

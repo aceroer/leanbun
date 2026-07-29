@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "0.1.0-m38",
+  "releaseClass": "repository-fixture-development",
+  "bunUpstream": {
+    "remote": "https://github.com/oven-sh/bun.git",
+    "commit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+    "tree": "81a25490c3c5aeb4271a200a96943239b686404b",
+    "forkBranch": "codex/leanbun-m38",
+    "trackedPatchSha256": "a70932f9e550276efc1a3cdfa0f64efb94e54d329211165d7e50ca052e52c069",
+    "lolHtmlCommit": "77127cd2b8545998756e8d64e36ee2313c4bb312",
+    "lolHtmlTree": "fb6365a7acdfd8cb0bc1836853142181a471fcc7"
+  },
+  "leanBunSource": {
+    "commit": null,
+    "commitStatus": "unavailable-unborn-main-repository",
+    "canonicalSourceListSha256": "3a2b8fcbec325ba0eaba5b5c3f74131180ee7f22db67796560bfc355d860b28d",
+    "sourceListMethod": "historical development snapshot; source list included then-visible rust/target artifacts and is not commit-grade provenance"
+  },
+  "toolchain": {
+    "rustc": "1.96.0 ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96",
+    "cargo": "1.96.0 30a34c6821b57de0aaec83a901aca39f88f6778c",
+    "target": "aarch64-apple-darwin",
+    "leanToolchain": "leanprover/lean4:v4.32.0",
+    "leanCompilerCommit": "8c9756b28d64dab099da31a4c09229a9e6a2ef35",
+    "lakeVersion": "5.0.0-src+8c9756b"
+  },
+  "build": {
+    "command": "cargo build --manifest-path .leanbun-dev-rust/release/bun-fork/Cargo.toml --release --package leanbun",
+    "profile": "release",
+    "lto": "fat",
+    "codegenUnits": 1,
+    "panic": "abort",
+    "bunForkCargoLockSha256": "f8ee47fe251b7aa8dac0f6ad1edb84f4d74eedb6c704954047e846bd8cabb310",
+    "leanBunCargoLockSha256": "cf9374a633f40298995e5da65ab6edfab4d95140bb17b35a1b226148f3770ca4"
+  },
+  "binary": {
+    "path": ".leanbun-dev-rust/release-fixture/package-0.1.0-m38/versions/0.1.0-m38/leanbun",
+    "installedPackagePath": ".leanbun-dev-rust/release-fixture/package-0.1.0-m38",
+    "sha256": "d652c50ecc39407ccd6d39f338d10648e2fad714c7a1298edd19614dedae6969",
+    "sizeBytes": 1184808,
+    "format": "Mach-O thin arm64",
+    "codeSignature": "adhoc-linker-signed",
+    "cdHash": "51cf382290c3b9b7c1f3d328d68c0786aa4ccade",
+    "teamIdentifier": null,
+    "notarization": "not-submitted",
+    "gatekeeper": "rejected-unsigned-development"
+  },
+  "runtimeExclusions": [
+    "typescript-host",
+    "python",
+    "xpc",
+    "launch-daemon",
+    "external-daemon",
+    "jsc-cpp-bun-runtime"
+  ],
+  "support": {
+    "platform": "macOS arm64",
+    "machineModel": "single-machine",
+    "userModel": "single-user",
+    "projectModel": "repository-registered-fixtures-only",
+    "externalProductionAdoption": "withheld-pending-explicit-authorization"
+  }
+}

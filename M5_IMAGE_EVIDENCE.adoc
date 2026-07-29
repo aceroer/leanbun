@@ -1,0 +1,80 @@
+= LeanBun M5 Canonical Image Evidence
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第二阶段已实现只读 canonical image evidence。它重算 provider source、build-relevant config 和可选
+artifact tree 的真实文件摘要，生成 ImageIdentity 与 image ID；当前不写 sealed attestation，不写项目
+binding，也不执行 Lake。
+
+[source,shell]
+----
+leanbun image evidence --artifacts=skip
+leanbun image evidence --artifacts=full
+----
+
+`skip` 只完成 source/config/dependency identity；`full` 另读取全部 dependency `.lake/build` 文件字节。
+
+== Canonical hash v1
+
+所有记录按 owner 与 UTF-8 相对路径原始字节排序；摘要记录包含相对路径、类型、permission mode、size 与
+真实文件 SHA-256。绝对安装路径、inode、device、mtime/ctime 不进入 identity，因此同字节的安全 clone
+可复用同一身份。
+
+Source policy `leanbun-source-tree-v1`：
+
+* 排除 `.git` 和 `.lake` 整棵目录；
+* 排除 `.DS_Store`；
+* symlink 只记录 link target，不跟随；
+* 使用 `O_NOFOLLOW`，打开前后复核 realpath、inode/device、size 和 mtime。
+
+Config policy `leanbun-build-config-v1` 显式记录 provider toolchain、canonical registry SHA-256，以及每包的
+`lean-toolchain`、`lake-manifest.json`、`lakefile.lean`、`lakefile.toml`；缺失文件本身也是规范记录。
+location-specific override SHA-256 不进入 ImageIdentity；它仍由 sealed attestation 单独绑定，因此开发 COW
+clone 与生产目录可共享身份，但不能混淆各自实际 override 证据。
+
+Artifact policy `leanbun-artifact-tree-v1` 覆盖每个登记包 `.lake/build` 下的全部普通文件，而不只
+`.olean`；只排除 `.DS_Store`、临时 lock、SQLite WAL/SHM。`.hash` 的真实字节会进入整树摘要，但其内容
+不被当作其他文件的认证替代品。缺失 package build root 进入 hash，同时产生风险诊断。
+
+== 正式隔离九包证据
+
+在禁网、禁 Lake、只读 provider sandbox 中运行，未写 attestation：
+
+[cols="1,2"]
+|===
+|Image ID |`f96a870796339f594c527940b43b4a7c1941e8180e9b6f449a917d2f5aff5ff1`
+|Source tree |`1a3ea443b0eedc360262af98fe2a162e37e9f6689da4f3b8dc17aceb6ac2a0fc`
+|Source entries/files |11177 / 9776
+|Source bytes |113350971
+|Config tree |`a0cff750bb444c7189a99372f8b640bb4c0dbad23ae0219d6a6a0663f9c181e1`
+|Config present/missing |27 / 9
+|Dependency tree |`0f1c7c64712d06d67184c435c5a766c2fc6b8585671ee4e15418f7de398f927d`
+|Artifact tree |`82c17f8c55668dd2a10040ed53eaebe742e8d06422a67f25c3968a71203abc12`
+|Artifact entries/files |114937 / 112425
+|Artifact bytes |6820362325
+|Missing artifact roots |`Cli`
+|Full report SHA-256 |`6e7c265ba4f504d72d666f6d6449c35121ae45d904070b71c530e410658cfef5`
+|===
+
+开发 COW provider 与生产 provider 分别运行 source/config 模式后，规范化身份字段逐字节相同，SHA-256
+都是 `f8355882cd9c1d2ed7b4d475fb220d8468fb0a0137121014b007f38bd1d5baef`。这验证了绝对
+override 路径不污染 ImageIdentity；两次运行仍各自检查实际 override 文件和包路径。
+
+Image ID 不含 artifact tree：相同源码/配置可在构件重建后保持镜像身份；sealed attestation 必须另绑定该
+次实际 artifact tree hash。合成测试已验证修改 `.olean` 会改变 artifact tree，但不会改变 image ID。
+
+== 下一执行门
+
+Attestation seal transaction 已实现并完成正式九包封存，详见
+xref:M5_ATTESTATION_SEAL.adoc[M5 Atomic Attestation Seal]；project bind 也已实现，详见
+xref:M5_PROJECT_BIND.adoc[M5 Atomic Project Bind]；build-time re-verification 也已实现，详见
+xref:M5_BUILD_REVERIFICATION.adoc[M5 Build-Time Attestation Re-verification]；build sandbox 探针也已通过，
+详见 xref:M5_BUILD_SANDBOX.adoc[M5 Build Sandbox]；无依赖 Lake probe 也已通过，详见
+xref:M5_LAKE_BUILD_PROBE.adoc[M5 Sandboxed Lake Build Probe]；绑定 Mathlib fixture 的完整事务也已通过，详见
+xref:M5_CONTROLLED_BUILD.adoc[M5 Controlled Mathlib Build Probe]；原子 execution record 也已通过，详见
+xref:M5_EXECUTION_RECORD.adoc[M5 Controlled Build Execution Record]；显式恢复也已通过，详见
+xref:M5_EXECUTION_RECOVERY.adoc[M5 Stale Running Execution Recovery]；timeout/signal 终态化也已通过，详见
+xref:M5_TIMEOUT_SIGNAL.adoc[M5 Timeout and Signal Finalization]。project/image 锁也已通过，详见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。下一步研究重复构建复用；正式项目构建仍关闭。

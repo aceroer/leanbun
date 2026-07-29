@@ -1,0 +1,55 @@
+= LeanBun Rust Trusted Fresh Plan M15
+
+== Outcome
+
+M15 已在 `leanbun-approval-macos` 建立 adapter-owned fresh Lake update plan derivation。公开入口
+`derive_trusted_fresh_lake_update_plan_v1` 不接受调用方构造的 `LakeCommandPlanV1`，而是稳定读取当前 project/provider evidence，重新建立
+inventory、drift report 与 targeted update plan，再与 M14 sealed executable observation 合为 `TrustedFreshLakeUpdatePlanV1`。
+
+M13 公开 proof API 现在只接受这个 sealed bundle；调用方不能分别注入 fresh plan、executable facts 或 observation timestamp。成功结果仍是
+`FreshFactsReverified` / `PlanExecutionAuthorityV1::Withheld`，不是 execution grant。
+
+== Fresh evidence input
+
+适配器重新读取并验证：
+
+* managed toolchain root 与 project root 的 canonical directory identity；
+* 当前 `lean-toolchain`、`lake-manifest.json` 与可选 `.lake/package-overrides.json`；
+* 配置存在时的 provider registry、override 和 package-root containment；
+* approval request 中的 canonical project path 与 package selection；
+* M14 已密封的固定 `bin/lake` observation。
+
+provider location 是路径配置，不是可信事实；实际内容、path containment 与稳定性仍由 `leanbun-evidence` reader 验证。project canonical path 必须
+与原 request 完全一致，target packages 只从原 request 继承。
+
+== Conservative checkout boundary
+
+M15 不运行 Git、Lake、process 或 network，也不读取 Lake 内部锁和 cache。fresh inventory 有意用空 checkout observation 集重建，因此每个
+checkout 都是 `Unobserved`，不会把目录存在或旧观察冒充为当前 revision/dirty proof。
+
+这意味着：只有原 request 也基于同一 conservative inventory 时，fresh snapshot 才可能通过 M13；若原 request 依赖 `Matched` 等更强 checkout
+证据，fresh preflight 会因 snapshot 不同而 fail closed。取得真实 Git checkout 证据不是 M15 的隐含能力，必须作为以后独立审计门处理。
+
+== Sealed boundary
+
+`TrustedFreshLakeUpdatePlanV1` 同时持有 freshly derived plan 与 M14 sealed executable observation，只暴露只读 getter，字段保持
+crate-private。M13 按值消费 bundle 后才重做 preflight/time ordering，并继续 withholding authority。
+
+M15 不生成 grant、不写 replay registry、不执行 `lake update`、不开放 CLI dispatch，也不修改任何生产 project/provider/toolchain。
+
+== Verification
+
+Rust tests 覆盖：provider-bound evidence 可重派生完全相同的 unobserved reviewed plan；project manifest 漂移先被 provider/project pair
+拒绝；M14 observer -> M15 sealed bundle -> M13 public proof 的整条公开链成功，但 authority 仍为 `Withheld`。
+
+Bun boundary oracle 固定 evidence/package dependencies、stable readers、空 checkout observations、request package binding、sealed M13 input，
+并继续拒绝 subprocess、environment、deletion、unsafe 与 `lake update`。
+
+== 后续证据边界
+
+M16 已建立 sealed execution-candidate capsule，见
+xref:RUST_SEALED_EXECUTION_CANDIDATE_M16.adoc[LeanBun Rust Sealed Execution Candidate M16]。exact fresh plan、M13 proof 与 challenge expiry
+现保持在同一不可伪造对象中；它仍然 withheld，不生成 grant，也不调用 Lake。
+
+前置 executable observer 见 xref:RUST_TRUSTED_LAKE_EXECUTABLE_M14.adoc[LeanBun Rust Trusted Lake Executable M14]，fresh proof 见
+xref:RUST_APPROVAL_FRESH_REVERIFICATION_M13.adoc[LeanBun Rust Approval Fresh Reverification M13]。

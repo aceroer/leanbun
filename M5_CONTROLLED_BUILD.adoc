@@ -1,0 +1,55 @@
+= LeanBun M5 Controlled Mathlib Build Probe
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第八阶段已在 `.leanbun-dev` 的绑定 Mathlib fixture 中完成首个不可分割受控构建事务：
+
+[source,shell]
+----
+leanbun build controlled-probe <bound-dev-project> <approved-target>
+----
+
+该入口强制项目位于开发根；正式项目构建入口仍未开放。
+
+== 事务
+
+. 验证 binding、target allowlist 与 sealed attestation；
+. 重算 6.82 GB dependency source/config/artifact evidence；
+. 在同一进程中建立 Seatbelt，只允许项目 `.lake/build`、`.lake/config` 与 `.leanbun/tmp` 写入；
+. 执行固定 Elan `lake` proxy 和批准 target；
+. 再次哈希 112425 个 dependency artifact 文件；
+. 复核项目非写区、provider inspection、binding SHA 与 attestation SHA。
+
+首轮严格 profile 因 Lake 需要项目 `.lake/config` 而受控失败；其他所有证据均稳定。该目录只包含 Lake
+生成的 `lakefile.olean` 与 trace，因此精确加入项目本地 allowlist；未放宽项目根或依赖目录。
+
+== 验收证据
+
+[cols="1,2"]
+|===
+|Status / execution |`passed` / `completed`
+|Verification |`approved`
+|Lake exit |`0`
+|Target |`LeanBunMathlibFixture`
+|Profile SHA-256 |`255ec9b06df3b427ce41a8b4835c8635091cf67b16ca793f50aafbc81e754c29`
+|Dependency artifact before |`82c17f8c55668dd2a10040ed53eaebe742e8d06422a67f25c3968a71203abc12`
+|Dependency artifact after |同上
+|Dependency artifact count |112425
+|Project protected records |stable
+|Binding / attestation |stable / stable
+|Report SHA-256 |`89dd6fffbb35df9529afb8cab31fff3398e4b3a36fd56449975d086dee729cec`
+|===
+
+诊断只有既有 `Cli` missing warning、`ATTESTATION_REVERIFIED` 与 `CONTROLLED_BUILD_PASSED`。正式 provider
+没有发生构件、Git、registry 或 override 漂移。
+
+== 下一执行门
+
+短生命周期 execution record 已实现并通过 Mathlib fixture，详见
+xref:M5_EXECUTION_RECORD.adoc[M5 Controlled Build Execution Record]；显式恢复也已通过，详见
+xref:M5_EXECUTION_RECOVERY.adoc[M5 Stale Running Execution Recovery]；timeout/signal 终态化也已通过，详见
+xref:M5_TIMEOUT_SIGNAL.adoc[M5 Timeout and Signal Finalization]。project/image 排他锁也已实现，详见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。下一步研究重复构建复用；
+正式项目构建仍关闭。

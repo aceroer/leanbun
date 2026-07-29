@@ -1,0 +1,53 @@
+= LeanBun Rust Trusted Lake Executable M14
+:toc: left
+:sectnums:
+
+== 结论
+
+M14 已在 `leanbun-approval-macos` 建立 adapter-owned trusted Lake executable observer。它只从调用方给定的 managed toolchain root
+读取固定 `bin/lake`，生成外部不可构造、不可复制的 sealed observation。M13 公开 API 现在只接受该 sealed value，不再接受裸
+`LakeExecutableObservationV1` 或调用方自报 observation time。
+
+本门不执行 `lake --version`，不生成 grant、不接 CLI，也不调用任何子进程。
+
+== Fixed capability path
+
+observer 要求 absolute managed toolchain root，并把其 canonical root 下的 `bin/lake` 与 reviewed plan executable path 精确比较。随后用
+exact rustix safe API 分三段打开：root directory、直接 `bin` directory、直接 `lake` file。每一段使用 `O_NOFOLLOW|O_CLOEXEC`；目录
+另带 `O_DIRECTORY`。因此 symlinked final file 或 symlinked `bin` component 都不能作为可信入口。
+
+root、bin 与 Lake file 必须由 effective UID 所有，且不能 group/world writable。Lake 必须是非空 regular executable。该检查固定
+POSIX owner/mode 边界；本门不声称验证 ACL、code signing、notarization、TCC 或 mount trust。
+
+== Bounded binary observation
+
+Lake binary 使用 64 KiB 固定 chunk 做无缓存流式 SHA-256，不要求 UTF-8，不把整个 binary 放入内存。硬上限为 256 MiB；初始 size
+超限或读取过程中增长超限都 fail closed。
+
+读取完成后，observer 重新打开 root path、FD-relative `bin` 与 FD-relative `lake`，并比较 device、inode、mode、owner、size、mtime、
+ctime 及实际 byte count。canonical root 也再次解析。路径替换、内容/metadata drift 或读取期间变化统一拒绝。
+
+== Reviewed identity gate
+
+稳定读取所得 SHA、byte length、Unix mode、regular/symlink-free facts 必须与 reviewed plan 完全一致；plan 本身还必须通过固定 Lake update
+contract 且 authority 为 `Withheld`。版本字符串沿用已经由 plan SHA 绑定的 supported version；observer 不通过执行 binary 重新询问
+版本，避免把 observation 门变成代码执行门。
+
+成功时 observation timestamp 由 adapter 在稳定读取后自己取得。M13 按值消费 sealed observation，并继续要求它发生在 approval
+consumption 之后且不超过既有五秒 gate。
+
+== Verification
+
+macOS 实际文件系统测试覆盖：direct stable binary 成功；symlink、group/world writable directory、content drift、读取期间 path
+replacement 与 256 MiB 超限 sparse binary 分别拒绝。测试使用隔离 synthetic toolchain，没有读取或修改生产 Lake。
+
+Bun boundary oracle 固定 exact rustix/evidence dependencies、分段 `openat`、bounded streaming SHA、identity re-open、sealed proof input、
+no subprocess、no environment、no deletion、no unsafe 与 no `lake update`。
+
+== 后续证据边界
+
+M15 已关闭 fresh-plan provenance，见 xref:RUST_TRUSTED_FRESH_PLAN_M15.adoc[LeanBun Rust Trusted Fresh Plan M15]。当前
+project/provider evidence 被重新读取，checkout 保守标为 `Unobserved`，fresh plan 与本门 observation 合成 sealed bundle 后才进入 M13。
+仍不生成 execution grant 或调用 Lake。
+
+前置 proof 见 xref:RUST_APPROVAL_FRESH_REVERIFICATION_M13.adoc[LeanBun Rust Approval Fresh Reverification M13]。

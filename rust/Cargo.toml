@@ -1,20 +1,37 @@
 [workspace]
 resolver = "3"
 members = [
+  "crates/leanbun-approval-macos",
+  "crates/leanbun-codec",
   "crates/leanbun-core",
   "crates/leanbun-evidence",
-  "crates/leanbun-package",
   "crates/leanbun-lake-bridge",
+  "crates/leanbun-inventory-legacy",
+  "crates/leanbun-lock",
+  "crates/leanbun-macos-acl-sys",
+  "crates/leanbun-plan",
+  "crates/leanbun-resolver",
+  "crates/leanbun-state",
+  "crates/leanbun-store",
+  "crates/leanbun-generation",
+  "crates/leanbun-build",
+  "crates/leanbun-managed",
+]
+default-members = [
+  "crates/leanbun-codec",
+  "crates/leanbun-core",
+  "crates/leanbun-evidence",
+  "crates/leanbun-lake-bridge",
+  "crates/leanbun-lock",
   "crates/leanbun-resolver",
   "crates/leanbun-store",
   "crates/leanbun-generation",
   "crates/leanbun-build",
   "crates/leanbun-managed",
-  "crates/leanbun-cli",
 ]
 
 [workspace.package]
-version = "0.11.0"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.96.0"
 license = "Apache-2.0"
