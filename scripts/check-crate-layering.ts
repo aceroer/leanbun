@@ -355,7 +355,7 @@ async function loadCurrentCargoMetadata(): Promise<unknown> {
     cmd: [cargo, "metadata", "--manifest-path", rustManifest, "--no-deps", "--format-version", "1"],
     cwd: repository,
     env: {
-      PATH: "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+      PATH: process.env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin",
       CARGO_NET_OFFLINE: "true",
       LC_ALL: "C.UTF-8",
       LANG: "C.UTF-8",
