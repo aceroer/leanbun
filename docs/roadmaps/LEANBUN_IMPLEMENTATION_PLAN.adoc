@@ -1,0 +1,481 @@
+= LeanBun 三方文档汇总实施方案
+:toc: left
+:sectnums:
+
+== 文档状态
+
+IMPORTANT: M30 已将主线冻结为 Bun-managed / Lake-executed / Lean-compiled，见
+xref:../architecture/BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[LeanBun Bun-Managed Lean Package Takeover M30]。Bun 接管 resolved lock、package store、事务、锁、恢复、
+发布和差分；Lake 保留配置/target/build semantics，Lean 保留编译/kernel。早期 M5 transaction/recovery 重新成为可复用证据，但不得原样接管
+Lake 私有 cache state。
+
+[cols="1,3"]
+|===
+|状态 |M38 repository-fixture development release 已完成；单一 Rust binary 已通过 source/update/build/recovery/install/rollback gates，正式项目写入与公开签名发行仍关闭
+|本机 Bun |`1.3.14+0d9b296af`
+|本机 Lean |`4.32.0`，commit `8c9756b28d64dab099da31a4c09229a9e6a2ef35`
+|本机 Lake |`5.0.0-src+8c9756b`
+|正式 Mathlib |`v4.32.0`，commit `81a5d257c8e410db227a6665ed08f64fea08e997`
+|第一交付物 |无副作用的 `leanbun inspect <project>`
+|===
+
+本文汇总 Bun、Lean/Lake 与 Mathlib 三方文档，把控制规范转换为模块、调用协议、阶段和验收门。M30 只完成接管设计；实际更新、store publication、
+依赖构建和 active binding 仍需后续逐门开放。
+
+Bun 的本地常用参考已固定在 xref:../reference/bun-v1.3.14/README.adoc[Bun 1.3.14 技术参考]，来源与
+本机验证等级见 xref:../reference/bun-v1.3.14/SOURCES.adoc[来源与验证矩阵]。
+
+== 三方文档合并后的工程结论
+
+=== Bun 提供实现能力，但默认行为必须收紧
+
+Bun 1.3.14 可以直接运行 TypeScript；`Bun.file` 适合惰性文件读取，目录与 `realpath` 等操作可用
+`node:fs` 兼容层；`Bun.CryptoHasher("sha256")` 可增量计算真实文件摘要；`Bun.spawn` 可用参数数组、
+独立 `cwd`、环境、pipe、timeout 和 signal 管理子进程；`bun:sqlite` 提供同步 prepared statement、
+transaction 与 WAL；`bun:test` 支持 TypeScript、超时、mock、随机顺序和并发控制。
+
+对应的官方文档入口为：
+
+* https://bun.com/docs/runtime/file-io[Bun File I/O]；
+* https://bun.com/docs/runtime/hashing[Bun Hashing]；
+* https://bun.com/docs/runtime/child-process[Bun Spawn]；
+* https://bun.com/docs/runtime/sqlite[Bun SQLite]；
+* https://bun.com/docs/test[Bun Test Runner]；
+* https://bun.com/docs/bundler/executables[Bun Single-file Executable]。
+
+但 Bun CLI 帮助同时确认：runtime 默认可自动安装缺失包，并自动读取 `.env`。LeanBun 是权限控制器，
+不能在启动时隐式引入网络、包或环境。因此开发期固定入口为：
+
+[source,shell]
+----
+bun --no-install --no-env-file run src/cli.ts ...
+----
+
+P1 不引入 npm 依赖，只使用 Bun 和 Node 兼容内建模块。Bun revision 作为报告与发布 provenance 的
+一部分，而不只记录 `1.3.14` 版本号。
+
+=== Lean/Lake 决定“不能把什么当查询 API”
+
+Lake workspace 由可执行的 `lakefile.lean` 或 TOML 配置、manifest、materialized packages 与构件组成。
+加载 Lean 配置可能创建 `.lake/lakefile.olean`、trace 和锁；manifest 缺失时，workspace loader 还会
+materialize 依赖。`lake query` 会构建 target，`lake env` 会加载 workspace，`lake update` 会改 manifest
+并改变 checkout。
+
+所以 P1 不调用 Lake 来理解 Lake。它只解析 Lake 的外部证据文件、检查 Git checkout 和观察已有构件。
+Lake CLI 只在后续已授权的构建或 staging 事务中调用，Lake 内部 `Lake.*` Lean definitions 不成为 Bun
+程序的 ABI。
+
+=== Mathlib 决定“缓存命中不等于认证”
+
+Mathlib cache key 合入 toolchain、Lean compiler hash、lakefile、manifest、源码与 imports；`.ltar`
+可恢复 `.olean`、`.ilean`、`.trace`、`.c` 和 `.hash`。这能避免重复编译，却不能独立证明活动镜像的
+现存字节未漂移。
+
+`lake exe cache get` 同时会下载和解压，因而是写操作。在中心 package override 架构下，它可能写共享
+dependency checkout 的 `.lake/build`，必须进入候选镜像 transaction 与完整 `ImageIdentity` 锁。
+`get!`、`clean*`、`pack*`、`put*` 和 `commit*` 不属于普通项目能力。
+
+== 总体架构
+
+[source,text]
+----
+CLI
+  -> Application services
+       -> Policy engine
+       -> Project inspector
+            -> Filesystem evidence adapter
+            -> Manifest/override parser
+            -> Git evidence adapter
+            -> Artifact observer/hasher
+            -> Dependency-library provider
+       -> External package manager
+            -> Package inventory and drift report
+            -> Dry-run Lake command plan
+            -> Explicitly authorized process adapter
+            -> Post-command evidence verification
+----
+
+依赖方向固定为 `cli -> application -> domain <- adapters`。domain 不导入 Bun、SQLite、Lake 或具体共享库
+路径，使策略状态机能用纯数据测试。
+
+=== 模块布局
+
+[source,text]
+----
+src/
+  cli.ts
+  application/
+    inspect-project.ts
+    doctor-project.ts
+  domain/
+    model.ts
+    diagnostics.ts
+    policy.ts
+    identity.ts
+  adapters/
+    filesystem.ts
+    manifest.ts
+    git.ts
+    runtime.ts
+    artifacts.ts
+    dependency-library.ts
+    process.ts
+    sqlite.ts                 # P2 起启用
+  reporting/
+    json.ts
+    text.ts
+test/
+  fixtures/
+  unit/
+  integration/
+----
+
+P1 的 `process.ts` 仅开放绝对路径的 `git rev-parse/status` 与受管 `lean/lake --version`；其他命令即使
+传入正确字符串，也应在 policy 层拒绝。
+
+== 核心内部 API
+
+[source,typescript]
+----
+export interface InspectRequest {
+  project: string;
+  provider?: "dependency-library";
+  hashMode: "none" | "metadata" | "sha256";
+}
+
+export interface InspectReport {
+  schemaVersion: 1;
+  mode: "filesystem-only";
+  project: ProjectEvidence;
+  runtime: RuntimeEvidence;
+  manifest: ManifestEvidence;
+  overrides: OverrideEvidence;
+  packages: PackageEvidence[];
+  artifacts: ArtifactEvidence;
+  diagnostics: Diagnostic[];
+}
+
+export interface EvidenceReader {
+  readText(path: CanonicalPath): Promise<Observed<string>>;
+  readJson(path: CanonicalPath): Promise<Observed<unknown>>;
+  hashFile(path: CanonicalPath): Promise<Observed<Sha256>>;
+  listTree(root: CanonicalPath, policy: WalkPolicy): AsyncIterable<FileEvidence>;
+}
+
+export interface CommandRunner {
+  run(invocation: ApprovedInvocation): Promise<CommandResult>;
+}
+
+export interface DependencyProvider {
+  describe(): Promise<ProviderEvidence>;
+  match(manifest: ManifestEvidence, overrides: OverrideEvidence): ProviderMatch;
+}
+----
+
+`Observed<T>` 必须同时包含采集时刻、来源 realpath、结果或错误、稳定性标志。错误不能折叠成空数组，
+否则“读取失败”会被误报成“没有依赖/构件”。
+
+== P1 文件与摘要协议
+
+=== 路径
+
+. CLI 接收路径后先绝对化，再 `realpath`；
+. 对项目根、dependency library 根和每个 package 根分别建立允许域；
+. 每次跟随 symlink 后重新做 containment check；
+. 使用 `lstat` 区分链接本身，禁止用字符串前缀代替路径分量判断；
+. 对 manifest/override 中的 path entry，越界不是普通缺失，而是 `PATH_ESCAPES_ALLOWED_ROOT`。
+
+`Bun.file.exists()` 存在检查后竞态，不能用“先 exists、再 read”建立安全结论。实现直接读取并分类捕获
+错误；需要 metadata 时用打开后的 file descriptor 做 `fstat`。
+
+=== 文件读取
+
+* 小型配置文件设定字节上限后用 `Bun.file(path).text()`；
+* JSON 先按 UTF-8 文本读取、计算原始字节 SHA-256，再 `JSON.parse`；
+* manifest 未知字段保留到 `raw`，高于可支持的 major schema 直接报告不兼容；
+* 目录遍历使用 `node:fs/promises`，排序后输出，以保证报告稳定；
+* P1 绝不调用 `Bun.write`、`mkdir`、`unlink` 或 rename 于被检查项目。
+
+=== 真实文件摘要
+
+摘要使用 `Bun.CryptoHasher("sha256")`，从已打开 descriptor 分块读取。读取前后各做一次 `fstat`；若
+size、mtime、inode 或 device 改变，结果标为 `unstable` 并不得写入 attestation。`.hash` 只作为被观察
+的 Lake 文件，不作为摘要输入的替代品。
+
+目录/镜像摘要采用规范记录流，而非把整树载入内存：
+
+[source,text]
+----
+record = pathByteLength || relativePathBytes || fileType || mode || size || sha256(fileBytes)
+treeHash = sha256(concat(records sorted by raw relative-path bytes))
+----
+
+规范明确排除 `.git`、临时锁、SQLite WAL/SHM 和平台生成的 metadata；排除表本身进入 identity 的
+`schemaVersion`，避免规则改变后仍得到同名镜像。
+
+== 子进程调用协议
+
+使用异步 `Bun.spawn({cmd: string[], cwd, env, stdin, stdout, stderr, timeout, killSignal})`，不使用
+`$` shell、`bun exec` 或 `sh -c`。command、args 和 cwd 在 policy 批准后才构造 `ApprovedInvocation`。
+
+=== 环境
+
+不展开继承 `process.env`。环境由固定白名单组成：
+
+* 受管 `PATH`；
+* 登记的 `ELAN_HOME`、`MATHLIB_CACHE_DIR`；
+* 必要的系统临时目录、locale 与动态库路径；
+* transaction/permit 的非秘密标识。
+
+`.env` 自动加载在 LeanBun 主进程入口被 `--no-env-file` 关闭。项目的环境变量不能反向覆盖工具链根、
+cache 根或 policy。
+
+=== 输出和终止
+
+异步 `Bun.spawn` 没有 `spawnSync.maxBuffer` 那样的内建有界结果对象，所以 stdout/stderr 必须流式读取：
+
+* 分别设置最大字节数，超过即先 `SIGTERM`，宽限期后 `SIGKILL`；
+* 同时读取两条 pipe，避免单边背压死锁；
+* 设置 wall-clock timeout 与 `AbortSignal`；
+* 记录 exit code、signal、是否超限、起止时间和 resource usage；
+* audit 默认保存摘要与截断片段，不无限保存完整输出。
+
+P1 的允许映射只有：
+
+[cols="2,3,2",options="header"]
+|===
+|类别 |命令形状 |默认权限
+
+|Git revision
+|`/usr/bin/git -C <approved-package> rev-parse HEAD`
+|只读允许
+
+|Git dirty state
+|`/usr/bin/git -C <approved-package> status --porcelain=v1 --untracked-files=normal`
+|只读允许
+
+|Runtime version
+|受管绝对路径 `lean --version`、`lake --version`、`bun --revision`
+|只读允许
+
+|Lake workspace
+|`lake env/query/lean/serve/build/update/...`
+|P1 全部拒绝
+|===
+
+== SQLite、锁与事务方案
+
+P1 不创建数据库；报告直接写 stdout，只有用户明确指定输出目标时未来才允许原子写报告。
+
+P2 起使用 `bun:sqlite`：
+
+* 数据库位于 LeanBun state 根，不位于项目或封存镜像；
+* 启用 foreign keys、busy timeout 与 WAL；
+* prepared statements 绑定参数；
+* schema migration 是显式 transaction；
+* macOS 的 `-wal` / `-shm` 可能持久存在，备份、迁移和清理把三者视作一个状态单元。
+
+完整镜像锁使用两层：先原子 `mkdir` 获取以 image ID 命名的 lock directory，再以短暂
+`BEGIN IMMEDIATE` 创建或接管 lease。不能为了整个构建长期占用 SQLite write transaction；heartbeat
+使用短事务更新，filesystem lock 提供进程间排他。所有入口按 image ID 字节序获取多把锁，避免死锁。
+
+lease 接管条件同时要求：过期、原持有进程身份不再匹配、filesystem lock 可安全接管。只看到时间过期
+不允许删除另一活进程的锁。
+
+== 分阶段实施
+
+=== M0：Bun 基线与项目骨架
+
+交付：
+
+* `package.json`、`tsconfig.json`、最小 `bunfig.toml`；
+* 固定 Bun `1.3.14+0d9b296af` 的 provenance 检查；
+* `src/cli.ts`、domain types、诊断码与 test fixtures；
+* 默认启动脚本固定 `--no-install --no-env-file`。
+
+验收：无第三方 npm 包；离线可运行；错误 Bun revision 明确拒绝或进入 unsupported 状态。
+
+=== M1：纯文件项目输入
+
+交付：路径安全层、`lean-toolchain`/manifest/override parser、稳定 JSON report。
+
+验收：在没有 `.lake` 的 fixture 上运行后仍没有 `.lake`；malformed/oversized JSON、symlink escape、
+path dependency 和新 schema 均有确定诊断。
+
+=== M2：本机 dependency provider
+
+交付：读取共享库 registry、canonical override、九个中心 package realpath/Git `HEAD`/dirty state；生成
+provider match，不调用现有 `install`。
+
+验收：当前 `lean4-v4.32.0_mathlib-81a5d257c8e4` 全匹配；任一 revision、路径或 override 漂移均定位
+到具体 package 与字段。
+
+=== M3：构件观察与原因分类
+
+交付：枚举 `.olean`、`.ilean`、`.trace`、`.hash`、`.ltar`，可选 SHA-256；输出重编译风险原因。
+
+首版诊断至少包括：
+
+* `TOOLCHAIN_MISMATCH`；
+* `MANIFEST_PROVIDER_MISMATCH`；
+* `PACKAGE_REVISION_MISMATCH`；
+* `PACKAGE_DIRTY`；
+* `OVERRIDE_MISSING` / `OVERRIDE_DRIFTED`；
+* `DEPENDENCY_ARTIFACT_MISSING`；
+* `TRACE_MISSING`；
+* `HASH_FILE_UNVERIFIED`；
+* `EVIDENCE_CHANGED_DURING_READ`；
+* `LAKE_EXECUTION_NOT_ATTEMPTED`。
+
+最后一项很重要：P1 只能报告“静态证据表明可能重编译”，不能声称已经精确模拟 Lake build graph。
+
+=== M4：真实项目只读验收
+
+选择一个已登记、版本匹配的下游 Lean 项目：
+
+. 记录项目完整 metadata 快照；
+. 运行 `leanbun inspect`；
+. 再次记录并比较；
+. 确认没有文件创建、内容/mtime 变化、网络访问或 Lake 进程；
+. 将报告与共享库 `manage_lake_packages.py describe/verify` 的只读结果交叉验证。
+
+真实项目通过前，不开始 `build` wrapper。
+
+=== M5：受控项目构建
+
+仅在 binding/identity/attestation 设计实现后开放 approved project targets。构建前后监视所有依赖根，
+只要 dependency build 目录出现写入，就终止并产生 permit request；不自动重试为依赖源码编译。
+
+当前已完成绑定开发 fixture 的完整重验、Seatbelt 构建、构建后证据复核及 `running -> completed/failed`
+原子 execution record、协调 PID/cwd 进程审计后的显式 stale-running recovery、timeout/signal 进程组
+终态化，以及覆盖执行与后验重验的 project/image build concurrency lock。下一门槛是可验证的 repeated-build
+reuse。内容寻址 evidence、只读候选检查、lock 内显式 reuse transaction 与 crash/signal recovery 已通过。
+按照安全决策，下一小门槛改为独立 Rust core workspace 与 golden tests，暂不设计统一 Bun 调度。跨项目复用
+与正式项目 target 尚未开放。
+
+=== M6：外部更新计划与核验
+
+生成可审阅的 `lake update`/公开 cache 命令计划；经显式授权后只调用 Lake/Mathlib 公共 CLI，并比较调用前后的
+manifest、checkout 与构件证据。LeanBun 不自行解析依赖、不写 `.lake`、不实现 seal/activate/rollback、lease、
+cache publication 或 recovery。
+
+Rust `PackageInventoryV1` 与 `DependencyDriftReportV1` 的 M0 已完成，见
+xref:../milestones/RUST_PACKAGE_INVENTORY_M0.adoc[LeanBun Rust Package Inventory M0]。当前下一小门是只生成不执行的
+`LakeCommandPlanV1`；该门现已完成，见 xref:../milestones/RUST_LAKE_COMMAND_PLAN_M0.adoc[LeanBun Rust Lake Command Plan M0]。
+固定本地 Lake update 的参数与副作用 contract fixture 已完成，见
+xref:../milestones/RUST_LAKE_UPDATE_CONTRACT_M1.adoc[LeanBun Rust Lake Update Contract M1]。确定性的
+`LakeCommandPlanReportV1` 也已完成，见
+xref:../milestones/RUST_LAKE_COMMAND_PLAN_REPORT_M2.adoc[LeanBun Rust Lake Command Plan Report M2]。pending、withheld 的 approval
+request 也已完成，见 xref:../milestones/RUST_LAKE_APPROVAL_REQUEST_M3.adoc[LeanBun Rust Lake Approval Request M3]。下一小门为
+inventory/drift 建立 snapshot digest 并向上绑定；该门现已完成，见
+xref:../milestones/RUST_PACKAGE_INVENTORY_SNAPSHOT_M4.adoc[LeanBun Rust Package Inventory Snapshot M4]。下一小门是纯只读 preflight；
+该门现已完成，见 xref:../milestones/RUST_LAKE_COMMAND_PREFLIGHT_M5.adoc[LeanBun Rust Lake Command Preflight M5]。下一小门只建立
+外部 explicit grant 的 strict decoder/verifier；该门现已完成，见
+xref:../milestones/RUST_LAKE_APPROVAL_GRANT_CONTRACT_M6.adoc[LeanBun Rust Lake Approval Grant Contract M6]。下一小门先审计并建立
+trusted interactive approval ingress；challenge core 与 adapter security contract 已完成，见
+xref:../milestones/RUST_TRUSTED_APPROVAL_INGRESS_M7.adoc[LeanBun Rust Trusted Approval Ingress M7]。下一小门建立只读
+`leanbun-approval-macos` terminal observation adapter；该门现已完成，见
+xref:../milestones/RUST_MACOS_TERMINAL_OBSERVATION_M8.adoc[LeanBun Rust macOS Terminal Observation M8]。下一小门固定 safe macOS
+ownership/foreground proof API；该门现已完成，见
+xref:../milestones/RUST_MACOS_TERMINAL_PROOF_M9.adoc[LeanBun Rust macOS Terminal Proof M9]。下一小门建立 OS CSPRNG nonce 与只显示不读取的
+challenge presentation；该门现已完成，见
+xref:../milestones/RUST_MACOS_CHALLENGE_PRESENTATION_M10.adoc[LeanBun Rust macOS Challenge Presentation M10]。下一小门建立 bounded exact
+response reader contract；该门现已完成，见
+xref:../milestones/RUST_MACOS_EXACT_RESPONSE_M11.adoc[LeanBun Rust macOS Exact Response M11]。下一小门只建立 atomic single-use replay
+registry；该门现已完成，见
+xref:../milestones/RUST_MACOS_REPLAY_REGISTRY_M12.adoc[LeanBun Rust macOS Replay Registry M12]。下一小门只把 consumed record 与 fresh
+request/preflight observation 重新合取为不可执行 proof；该门现已完成，见
+xref:../milestones/RUST_APPROVAL_FRESH_REVERIFICATION_M13.adoc[LeanBun Rust Approval Fresh Reverification M13]。下一小门建立 adapter-owned
+trusted Lake executable observer；该门现已完成，见
+xref:../milestones/RUST_TRUSTED_LAKE_EXECUTABLE_M14.adoc[LeanBun Rust Trusted Lake Executable M14]。下一小门从当前 project/provider evidence 保守
+重建 inventory/drift/targeted plan，并与 sealed executable observation 合成 M13 sealed input；该门现已完成，见
+xref:../milestones/RUST_TRUSTED_FRESH_PLAN_M15.adoc[LeanBun Rust Trusted Fresh Plan M15]。下一小门只建立 exact plan + proof 的 sealed
+execution-candidate capsule；该门现已完成，见
+xref:../milestones/RUST_SEALED_EXECUTION_CANDIDATE_M16.adoc[LeanBun Rust Sealed Execution Candidate M16]。下一小门只建立 unexpired candidate 到
+single-command/single-consumption grant capability 的策略与类型；该门现已完成，见
+xref:../milestones/RUST_TRUSTED_EXECUTION_GRANT_M17.adoc[LeanBun Rust Trusted Execution Grant M17]。下一小门只建立 consuming pre-execution gate，
+重新观察 expiry/executable 并密封受控 environment-aware launch intent；该门现已完成，见
+xref:../milestones/RUST_PRE_EXECUTION_LAUNCH_INTENT_M18.adoc[LeanBun Rust Pre-Execution Launch Intent M18]。下一小门只建立 intent-bound durable
+`O_EXCL` launch reservation；该门现已完成，见
+xref:../milestones/RUST_DURABLE_LAUNCH_RESERVATION_M19.adoc[LeanBun Rust Durable Launch Reservation M19]。下一小门已完成 current-version
+fixed-executable handoff 审计，见 xref:../milestones/RUST_EXECUTABLE_HANDOFF_BOUNDARY_M20.adoc[LeanBun Rust Executable Handoff Boundary M20]；由于没有
+可接受的 safe FD-bound primitive，结果 fail closed。M21 path-based threat model 与 admissibility policy 也已完成，见
+xref:../milestones/RUST_PATH_LAUNCH_POLICY_M21.adoc[LeanBun Rust Path Launch Threat Model and Policy M21]；同 UID mutator 在生产攻击面，当前 user-owned
+production Lake 被拒绝。M22 read-only path provenance observer 也已完成，见
+xref:../milestones/RUST_PATH_PROVENANCE_OBSERVER_M22.adoc[LeanBun Rust macOS Path Provenance Observer M22]；当前生产 Lake 经 observer 实测为
+`DeniedUserOwnedComponent`，ACL coverage 仍只有 effective UID。M23 先审计完整 macOS ACL/native API boundary；完成前不开放 Lake process
+adapter 或 CLI dispatch。该审计现已完成，见
+xref:../milestones/RUST_MACOS_ACL_NATIVE_BOUNDARY_M23.adoc[LeanBun Rust macOS ACL Native Boundary M23]；M24 只建立独立 read-only ACL FFI wrapper 与
+safe native mount evidence；该门现已完成，见 xref:../milestones/RUST_MACOS_ACL_WRAPPER_M24.adoc[LeanBun Rust macOS ACL Wrapper and Native Mount
+Evidence M24]。M25 已把 M19 lineage 与 fresh executable/component/ACL/native-mount evidence 合成为 non-consuming withheld assessment，见
+xref:../milestones/RUST_RESERVATION_BOUND_PATH_ELIGIBILITY_M25.adoc[LeanBun Rust Reservation-Bound Path Eligibility M25]。M26 stable executable deployment
+acquisition/verification contract 已完成，见 xref:../milestones/RUST_STABLE_EXECUTABLE_DEPLOYMENT_CONTRACT_M26.adoc[LeanBun Rust Stable Executable
+Deployment Contract M26]；M27 privileged coordinator service/authorization/IPC audit 已完成，见
+xref:../milestones/RUST_PRIVILEGED_COORDINATOR_BOUNDARY_M27.adoc[LeanBun Rust Privileged Coordinator Boundary M27]。M28 principal-explicit coordinator request
+identity 已完成，见 xref:../milestones/RUST_PRINCIPAL_EXPLICIT_COORDINATOR_REQUEST_M28.adoc[LeanBun Rust Principal-Explicit Coordinator Request M28]。M29 bounded
+canonical wire envelope 与 strict decoder 已完成，见 xref:../milestones/RUST_COORDINATOR_CANONICAL_WIRE_M29.adoc[LeanBun Rust Coordinator Canonical Wire M29]。
+M30 Bun package takeover 设计已完成，见 xref:../architecture/BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[LeanBun Bun-Managed Lean Package Takeover M30]。M27--M29
+privileged/XPC 路线降为可选安全研究；M31 已完成 `LeanBunLockV1`、三类 path provenance 与唯一 `PackagePathDecisionV1` 的纯 model、canonical
+codec、排序/冲突规则、graph/decision identity 与 Bun oracle，见 xref:../milestones/RUST_BUN_PACKAGE_LOCK_M31.adoc[M31 验收记录]；M32 又完成 TOML/Lean root probe、完整
+manifest/runtime projection、actual-path comparison 与 exact Lake/Mathlib 九包 oracle，见 xref:../milestones/RUST_LAKE_DECLARATION_PROJECTION_M32.adoc[M32 验收记录]。M33 已完成
+frozen/update exact graph、Lake-compatible reverse breadth-first/root-priority/later-shadow、显式 conflict provenance 与 impact closure，见
+xref:../milestones/RUST_DETERMINISTIC_LEAN_RESOLVER_M33.adoc[M33 验收记录]。M34 已完成 bounded local fetch、download/tree integrity、安全 tar、exact Git、task dedupe、
+failure cleanup、digest-key immutable publication 与 offline reverify，见 xref:../milestones/RUST_BUN_FETCH_IMMUTABLE_STORE_M34.adoc[M34 验收记录]。M35 已完成 project lock、write-ahead state、
+immutable generation、active atomic commit、retained graph 与 exact recovery，见 xref:../milestones/RUST_ACTIVE_GENERATION_TRANSACTION_M35.adoc[M35 验收记录]；M36--M38 已按唯一 roadmap 完成 repository-fixture 工程门，M38 见 xref:../milestones/RUST_BUN_RELEASE_INTEGRATION_M38.adoc[M38 验收记录]。
+
+M31--M38 的唯一实施关键路径、每门 deliverables/exit gate/stop condition 与 v1 完成定义见
+xref:LEANBUN_BUN_TAKEOVER_ROADMAP.adoc[LeanBun Bun Package Takeover Roadmap M31--M38]。旧 M6/M7 标题保留为历史阶段名，不覆盖新编号。
+
+=== M7：单文件发布
+
+功能和策略稳定后才使用 `bun build src/cli.ts --compile` 生成单文件 CLI。发布记录 Bun runtime revision、
+目标平台、源码 commit、构建参数和二进制 SHA-256。开发期不以 compile 掩盖 runtime/version 漂移。
+
+== 测试矩阵
+
+[cols="2,2,3",options="header"]
+|===
+|层 |工具 |重点
+
+|Domain unit
+|`bun:test`
+|状态机、schema、诊断优先级、identity canonicalization
+
+|Adapter unit
+|临时目录与 fake process
+|symlink、权限错误、超大输出、timeout、signal、变化中的文件
+
+|Fixture integration
+|合成 Lake 项目
+|manifest v1.2、path/git entries、override、缺失/脏 checkout、artifact combinations
+
+|Provider integration
+|本机共享依赖库
+|九包 revision、正式 toolchain、registry/override 一致性
+
+|Non-mutation
+|前后 metadata/tree hash
+|无 `.lake` 创建、无 mtime 变化、无 Lake/cache/update 调用
+
+|Concurrency（P2+）
+|多 Bun 进程
+|单 image 单 writer、lease heartbeat、崩溃恢复、无重复依赖构建
+|===
+
+默认测试顺序是串行，涉及共享 fixture 的测试显式 `test.serial`。纯 domain 测试才允许 concurrent；另设
+固定 seed 的随机顺序运行，捕捉隐式全局状态。所有子进程测试设置短 timeout 并验证没有 orphan。
+
+== P1 完成定义
+
+只有同时满足下列条件，P1 才算完成：
+
+. 在 Bun 1.3.14 固定 revision 上离线运行；
+. 不安装依赖、不读取 `.env`、不执行 Lake、不访问网络；
+. 对当前正式 Lean/Mathlib stack 给出可复核的版本、manifest、override 与 Git 证据；
+. 对构件只陈述观察与风险，不把 cache/`.hash` 误作认证；
+. 所有路径经过 realpath 与 containment；
+. 大文件使用有界/流式读取，子进程输出与时间有上限；
+. JSON report schema 固定，诊断可机器判断，未知/未检查不会伪装为通过；
+. fixture、provider 与真实项目 non-mutation 验收全部通过。
+
+完成这一边界后，下一项工作才是 M0，而不是直接包装 `lake build`。

@@ -1,0 +1,10 @@
+= 架构决定
+
+* xref:STRICT_JSON_PLACEMENT_DECISION_M45.adoc[Strict JSON placement M45]
+* xref:RESERVOIR_BINDING_AUTHORITY_DECISION_M46A.adoc[Reservoir binding authority M46A]
+* xref:RESERVOIR_RESOLUTION_REBIND_POLICY_M46B.adoc[Reservoir resolution/rebind policy M46B]
+* xref:RESERVOIR_LOOPBACK_REGRESSION_DESIGN_M46C.adoc[Reservoir loopback regression M46C]
+* xref:HISTORICAL_CRATE_DISPOSITION_DECISION_M47.adoc[Historical crate disposition M47]
+* xref:POST_REFACTOR_DISTRIBUTION_DECISION_M48.adoc[Post-refactor distribution M48]
+
+这些决定在相应代码移动或行为实现之前固定，后续 milestone 文档负责证明实现满足决定。

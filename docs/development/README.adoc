@@ -1,0 +1,9 @@
+= 开发与测试边界
+
+* xref:DEVELOPMENT_ENVIRONMENT.adoc[隔离开发环境]
+* xref:../../TEST_PROJECT_BOUNDARY.adoc[测试项目边界]
+* xref:../../test/fixtures/README.adoc[登记 fixture]
+* xref:../../architecture/README.adoc[Machine-readable architecture contracts]
+
+开发测试、故障注入和 milestone acceptance 只能使用本仓库登记 fixture。生产 provider 是只读输入，
+开发副本、cache、state 和 temporary files 必须留在仓库隔离根中。

@@ -1,0 +1,83 @@
+= LeanBun Reservoir Policy and Generation Binding M46 Phase B
+:toc: left
+:sectnums:
+
+== Completion status
+
+M46 Phase B pure policy and generation authority are complete as `0.17.0-m46b-dev`. The outcome precedence and rebind scope were recorded before implementation in
+xref:../decisions/RESERVOIR_RESOLUTION_REBIND_POLICY_M46B.adoc[LeanBun Reservoir Resolution and Rebind Policy M46 Phase B].
+
+This phase consumes M46A's immutable companion. It still performs no public registry query, persistent publication or external-project mutation. Phase C will place the same models behind repository-owned loopback and durable fixture state.
+
+== Typed resolution outcomes
+
+`evaluate_reservoir_binding_v1` now distinguishes:
+
+* `FirstResolutionPending`;
+* `StableBinding`;
+* `AmbiguousCandidates`;
+* `MetadataDrift`;
+* `VersionRebound`;
+* `DisappearedBinding`;
+* `ContentMismatch`;
+* `ExplicitRebindAccepted`.
+
+The evaluator is pure and bounded. Registry/package/requested-version scope mismatch is rejected rather than mislabeled as ordinary drift. A first observation can only become pending. A same-version commit change remains `VersionRebound` unless an exact rebind claim is supplied.
+
+== Explicit rebind claim
+
+`ReservoirRebindAuthorizationV1` identity-binds the registry, package, requested version, old/new commits, newly observed metadata, active binding identity and proposed binding identity. It requires a changed commit.
+
+The evaluator rejects stale metadata, changed proposal identity, wrong active identity, stable-binding use, ambiguous observations and first-binding use. `ExplicitRebindAccepted` is still a pure decision result, not a persistent user approval token; Phase C/later mutation entry must bind it to an independently authorized transaction.
+
+== Generation authority
+
+`LeanBunGenerationV1::new` remains the compatibility constructor for graphs without Reservoir requests. `new_with_reservoir_bindings` adds an explicit companion input.
+
+Generation validation now uses the M33 request kind and enforces:
+
+* no companion on a non-Reservoir graph;
+* mandatory companion for any Reservoir graph;
+* an explicit requested version for every Reservoir package;
+* exact equality of companion and graph package sets;
+* version, resolved URL, exact commit, download integrity, source tree and selected-source equality across graph/lock/companion.
+
+Non-Reservoir generation uses the unchanged `leanbun-generation-v1` metadata and V1 identity domain. Reservoir generation uses `leanbun-generation-v2`, records `reservoir-bindings-sha256`, and includes that identity under a V2 generation identity domain. This makes adjacency insufficient: a different companion necessarily produces a different generation.
+
+== Compatibility gate
+
+The lock V1 source, Cargo graph and Cargo.lock remain unchanged:
+
+----
+f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c  rust/crates/leanbun-lock/src/lock_v1.rs
+962dd3e93fa46d39e943c265cc12f1a9efab38ddbc90a2c84f8b5703830e2dfa  architecture/m45/cargo-dependencies.tsv
+f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07  rust/Cargo.lock
+----
+
+Existing M31 Bun golden, M35 publication/recovery/rollback, registered managed fixture and M42 histories all pass without semantic change.
+
+== Validation
+
+The completed gate produced:
+
+* M46B policy tests: 4 passed;
+* M46B generation binding tests: 3 passed;
+* Rust workspace: 195 passed, 0 failed, one provider test intentionally ignored by default;
+* explicit initialized-provider test: 1 passed;
+* workspace format and clippy with warnings denied: passed;
+* Bun/Lean suite: 103 passed, 0 failed, 882 expectation calls;
+* architecture suite: 10 passed, 16 expectation calls;
+* current graph checker: 15 workspace crates and 6 mainline roots.
+
+Implementation identities:
+
+----
+18e5b5517238b186d604d35d4b2212ab7c165070f5b9e5aaaa3a9bdbd484bf79  rust/crates/leanbun-resolver/src/reservoir_policy_v1.rs
+b0053535295cc08d15ac286d9f625c6d8742100bd286d61ce63c17db0c6ac2f6  rust/crates/leanbun-resolver/tests/m46b_reservoir_policy.rs
+36a945fcabd46c2a1e4a98cd298e7346dc9756cc698dc5f141da5b9360441e94  rust/crates/leanbun-generation/src/model.rs
+85c234c2fd071007d8f555a33e336e91910eb2757af1a119ff58de062cb11994  RESERVOIR_RESOLUTION_REBIND_POLICY_M46B.adoc
+----
+
+== Remaining boundary
+
+M46 Phase C must use only registered mock/loopback fixtures to add durable pending/audit records and exercise stable repeat, rebound, oscillation, metadata/content drift, disappearance, explicit rebind, frozen offline replay and rollback. Arbitrary public Reservoir discovery remains closed.

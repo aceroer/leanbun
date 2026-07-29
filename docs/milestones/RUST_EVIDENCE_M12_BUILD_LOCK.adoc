@@ -1,0 +1,64 @@
+= LeanBun Rust Evidence M12: Strict Build Lock Reader
+:toc: left
+:sectnums:
+
+== 结论
+
+Rust `leanbun-evidence` 已实现 `BuildExecutionLockV1` strict typed decoder、Bun-compatible `build_lock_key` 与只读
+`read_build_execution_lock`。reader 以 typed SHA-256 定位 `build-locks/<key>.lock`，稳定读取后同时发布文件证据与
+typed lock。
+
+M12 不创建、获取、续期、释放、删除或恢复锁，不扫描 coordinator 进程，也不把“锁文件有效”解释为构建许可。
+
+== Identity conjunction
+
+lock 根对象必须恰有 v1 的十个字段，使用 `schemaVersion = 1` 与
+`recordType = "build-execution-lock"`。decoder 绑定：
+
+* requested key、文件名 key 与 document key 三方一致；
+* key 等于 project/image pair 的 Bun-compatible 派生 SHA-256；
+* lowercase UUID v4 execution identity；
+* canonical absolute projectPath 与 path-only ProjectId；
+* typed ImageId 和 valid BuildTarget；
+* 正 JavaScript safe integer coordinator PID；
+* canonical millisecond UTC acquiredAt。
+
+key material 精确复现 Bun `JSON.stringify` 字段顺序：
+
+[source,json]
+----
+{"schema":"leanbun-build-lock-v1","projectId":"<projectId>","imageId":"<imageId>"}
+----
+
+project path 最大 4096 bytes，并拒绝 control、trailing slash、重复 separator、`.` 与 `..` segment。unknown fields、
+非整数 PID、宽松日期与非规范 identity 全部 fail closed。
+
+== Filesystem boundary
+
+canonical state root 下的 `build-locks` 必须是直接目录，symlinked store 在 lock path 构造前拒绝。lock 必须是直接
+regular file、最大 32 KiB、权限精确为 `0444`，并经过 canonical containment、有限读取、同 inode 稳定性和
+TOCTOU 检查。
+
+reader 没有 store-creation 分支；缺失 store/lock 只返回 evidence missing。它不调用现有 Bun acquire/release API，
+因此不会改变 state root。
+
+== Differential and filesystem tests
+
+共享 `rust/golden/build-lock-cases.tsv` 覆盖有效锁，以及 unknown field、requested key drift、derived key drift、
+project identity drift、非法 target、zero/fractional PID 与宽松 timestamp。Bun 独立 strict oracle 与 Rust decoder
+对九组案例给出相同结果。
+
+Rust 文件系统测试另验证 Bun key compatibility、`0444` 稳定重复读取、可写 lock 拒绝和 symlinked store 拒绝。
+
+== 边界与下一门
+
+IMPORTANT: 后续 writer 路线已被
+xref:../architecture/LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]取消。M12 reader 仅保留为历史兼容
+证据，不用于接管或恢复 Lake 内部 lock。
+
+M12 完成历史 Bun lock schema 的只读兼容门，但不授权任何 writer。后续不开放 atomic lock publication；主线改为
+外部 package inventory、dependency drift 与 Lake command planning。
+
+并发锁原协议见 xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Build Concurrency Lock]；恢复边界见
+xref:M5_REUSE_RECOVERY.adoc[M5 Reuse Signal and Recovery]；Rust 迁移顺序见
+xref:../roadmaps/RUST_MIGRATION_PLAN.adoc[LeanBun Rust Safety Migration Plan]。

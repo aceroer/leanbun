@@ -1,0 +1,50 @@
+= LeanBun M5 Reuse Signal and Recovery
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第十六阶段把显式 reuse transaction 纳入 signal 与 stale-running recovery。Reuse 不启动 Lake，因此没有
+process group；但仍必须保护其长时间全量哈希、execution record 与 project/image lock 生命周期。
+
+== Signal 协议
+
+CLI 捕获 `SIGINT`/`SIGTERM` 并设置 AbortSignal。若信号在锁前到达，不创建任何状态；若在 `running` record
+发布后到达，不在文件哈希中间硬退出，而是在当前只读重验到达安全点后：
+
+. 记录 `REUSE_TRANSACTION_CANCELLED` 与触发信号；
+. 原子终结为 `failed`，`failureStage=reuse-verification`；
+. 释放精确所有权 lock；
+. 返回失败，不运行 Lake，不自动转入正常 build。
+
+真正的进程崩溃、`SIGKILL` 或主机中断仍可能留下 `running`。显式 `build recover` 现报告
+`executionKind=reuse`，沿用协调 PID、cwd process、binding、attestation、project protected records 和全部
+dependency artifact 审计；成功恢复只会终结为 failed，并额外产生 `REUSE_EXECUTION_RECOVERED`。
+
+== 验收
+
+[cols="1,2"]
+|===
+|Active-lock request |`failed` / `not-attempted` / `BUILD_LOCK_BUSY`
+|Active-lock record count |11 -> 11
+|Active-lock report SHA-256 |`8ed3beb265d02ed4af9b4a81252cbfa30661a2c1a4c05534979827e6900d22e3`
+|Signal execution |`15f79d6e-b3ea-4277-8db2-b5e08355c2db`
+|Signal |`SIGTERM`
+|Signal terminal record |`failed` / `89f1ded4b04f5da3114ebe90d255e21f6a35da64b4b183981f88c440bff9f847`
+|Signal lock |released
+|Signal report SHA-256 |`10e66befe72de6780c4aa1fadf2da2afaac90594687748de3bc736729d4629e2`
+|Orphan execution |`deadbeef-dead-4bee-8bad-feed00000003`
+|Coordinator / cwd |absent / clear
+|Recovery evidence |stable
+|Recovery terminal record |`failed` / `f066a25ff774fa533f758f065ea63aa538af8255cd641c62fdaedad8394bf987`
+|Recovery lock |released
+|Recovery report SHA-256 |`50badc05b4a9ee4b772b78c259f081085362fe47f43263d37ba8cb70922c9bbe`
+|===
+
+Unit tests另覆盖 active coordinator 对 reuse running record 的拒绝，以及 `reused` terminal 已发布但锁尚未释放
+的窗口；后者只补做锁释放，不改写 reused 终态。
+
+== 下一执行门
+
+按照新的安全方向，下一主门转为 Rust 迁移基础，而不是继续扩张 Bun 版统一调度。迁移计划见
+xref:../roadmaps/RUST_MIGRATION_PLAN.adoc[LeanBun Rust Safety Migration Plan]。

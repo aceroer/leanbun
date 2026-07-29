@@ -1,0 +1,72 @@
+= LeanBun Rust State M0: Pure Lock Ownership Model
+:toc: left
+:sectnums:
+
+IMPORTANT: 本文记录的是已完成但冻结的安全实验。根据
+xref:../architecture/LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]，该模型不接入 CLI、不继续实现
+filesystem writer，也不用于解释、接管或恢复 Lake 内部状态。
+
+== 结论
+
+Cargo workspace 已加入零三方依赖的 `leanbun-state`。M0 只实现 project/image build lock 的纯内存观察、所有权、
+acquire/release 决策与 publication contract；crate 不导入 `std::fs`、不持有路径、不创建目录，也不执行任何系统
+调用。
+
+filesystem mutation authority 在公开 contract 中固定为 `Withheld`，state-root scope 固定为
+`NewlyCreatedIsolatedRootOnly`。因此 M0 不能接管现有 `.leanbun-dev/state`，更不能触碰生产依赖或真实项目。
+
+== Ownership
+
+`BuildLockOwnershipV1` 只包含 release 所需的四元组：
+
+* derived lock key；
+* execution ID；
+* project ID；
+* image ID。
+
+构造时必须满足 `key = build_lock_key(projectId, imageId)`。类型字段私有，只能由检查构造器或已严格读取的
+`BuildExecutionLockV1` 形成；target、PID、时间和 path 仍属于 lock document evidence，不参与 release ownership。
+
+== Pure transition table
+
+[cols="1,1,2,1"]
+|===
+|Operation |Observation |Decision |Mutation
+
+|acquire |absent |`PublishNew` intent |none in M0
+|acquire |held by any execution |`Busy(owner)` |none
+|release |absent |`AlreadyReleased` |none
+|release |exact owner |`RemoveOwned` intent |none in M0
+|release |different execution |`BUILD_LOCK_CONFLICT` |none
+|either |internally inconsistent key |`BUILD_LOCK_FAILED/CONFLICT` |none
+|===
+
+同一 project/image 的 target 不进入 key，因此不同 target 仍互斥。`Busy` 不提供 takeover；lock age 不参与任何
+transition。
+
+== Publication contract
+
+M0 把未来 writer 必须实现的顺序编码为 enum slice，而不是执行它。
+
+Acquire 顺序：direct-contained store、exclusive/no-follow create、canonical v1 write、file sync、mode `0444`、再次
+file sync、directory sync、strict readback。
+
+Release 顺序：direct-contained store、strict readback/exact ownership、unlink exact observed lock、directory sync。
+
+固定不变量包括：不替换既有锁、不删除非自有锁、失败清理只能删除本次新建锁、成功前严格回读、每次目录变更
+后同步。future writer 不能通过改变步骤顺序获得 M0 compatibility。
+
+== Verification
+
+Rust 七个 unit tests 覆盖 absent acquire、same/other owner busy、exact release、ownership conflict、idempotent absent
+release、invalid key 与 publication order。共享 `build-lock-transition-cases.tsv` 的六组决策同时由 Rust state model
+和 Bun 独立 ownership oracle 消费。
+
+== 下一门
+
+原定 `leanbun-state` M1 与 filesystem writer 已取消。下一主线是外部 package inventory、dependency drift report 与
+只生成不执行的 Lake command plan；所有解析、checkout、`.lake` lock/cache 与构建状态继续由 Lake 自己管理。
+
+只读 lock schema 见 xref:RUST_EVIDENCE_M12_BUILD_LOCK.adoc[LeanBun Rust Evidence M12]；原并发协议见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Build Concurrency Lock]；完整迁移顺序见
+xref:../roadmaps/RUST_MIGRATION_PLAN.adoc[LeanBun Rust Safety Migration Plan]。

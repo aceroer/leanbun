@@ -1,0 +1,56 @@
+= LeanBun Rust Coordinator Canonical Wire M29
+
+== Outcome
+
+M29 已在 `leanbun-approval-macos` 建立 `encode_macos_coordinator_request_wire_v1` 与
+`decode_macos_coordinator_request_wire_v1`。它为 M28 request 定义唯一、bounded、可跨语言复核的 binary envelope；不是 XPC transport、Authorization
+proof、daemon ledger entry 或 execution capability。
+
+decode 成功后的 request decision 仍为 `PendingCoordinatorVerification`，`execution_authority` 仍为 `Withheld`。本门没有连接 XPC、读取 audit token、
+externalize/internalize Authorization、注册 service、安装 helper、创建 ledger 或 spawn Lake。
+
+== Canonical envelope
+
+wire 由以下部分顺序拼接：
+
+* 固定 magic：`leanbun-macos-coordinator-wire-v1\0`；
+* 16-bit big-endian field count，固定为 21；
+* 每个字段由 16-bit big-endian field ID、32-bit big-endian byte length 与 raw bytes 组成；
+* field ID 必须从 1 到 21 严格连续，因而 unknown、duplicate、missing 与 out-of-order 都不是第二种合法表示；
+* 总 envelope 上限为 4096 bytes，单字段上限为 256 bytes；
+* schema、operation、Authorization right、peer/threat principal、六项 lineage、nonce、issued/expiry 与 M28 request SHA 全部进入 envelope。
+
+字符串只接受 UTF-8，并继续经过 M28 constructor 的长度/字符约束；UID、GID、ASID 使用 32-bit big-endian，时间使用 64-bit big-endian，digest
+必须恰为 32 bytes，supplementary groups 是无额外 padding 的 32-bit GID 序列。
+
+== Strict decoder
+
+decoder 在分配 request 对象前限制总长、field count、每字段长度及 cursor bounds，并要求完整消费输入。任何 invalid magic/count、截断、trailing
+bytes、字段乱序、超限字段、错误 UTF-8/整数/digest 长度或违反 M28 principal/time/lineage 约束的输入都返回 typed rejection。
+
+decoder 不直接信任 wire 中的 request SHA：它使用公开 M28 constructors 重建 peer、threat principal 与 request，重新计算 M28 identity，最后与第 21
+字段做 fixed-size equality check。identity drift 返回 `RequestIdentityMismatch`，不会产生 request。
+
+== Authorization and transport boundary
+
+session-bound `AuthorizationExternalForm` 不进入 canonical envelope，也不出现在 M29 runtime source。未来 transport 必须把它作为在线、connection-bound
+材料单独提交；future coordinator 仍需从 authenticated XPC connection 得到真实 peer/audit-token evidence，internalize Authorization 并检查固定 right，
+不能把 M29 peer claim 当作已认证事实。
+
+== Verification boundary
+
+Rust tests覆盖 canonical round-trip/re-encode、duplicate/unknown/out-of-order、trailing、truncation、oversize 与 identity drift。Rust 与 Bun 对固定 21-field
+wire 的 SHA-256 golden 精确一致：
+
+`a9bc33d754e8dbd2ba8f03da85756c9f0fbea445c70b1af5c9228a6cd2c1ae1f`
+
+M29 runtime source 继续进入 process/environment/unsafe/delete/`lake update` 禁止扫描。测试只在 `.leanbun-dev` 与 `.leanbun-dev-rust` 隔离根中运行。
+
+== 主线调整
+
+M30 已根据 LeanBun 的 package-management 定位切回 Bun package takeover，见
+xref:../architecture/BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[LeanBun Bun-Managed Lean Package Takeover M30]。本文件的 coordinator wire 保留为可选 privileged/remote
+transport 研究，不继续建立 daemon ledger，也不阻塞主线。
+
+前置 request identity 见
+xref:RUST_PRINCIPAL_EXPLICIT_COORDINATOR_REQUEST_M28.adoc[LeanBun Rust Principal-Explicit Coordinator Request M28]。

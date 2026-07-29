@@ -1,0 +1,27 @@
+= Machine-readable architecture contracts
+
+This directory contains inputs consumed by repository checks. Human-readable authority and rationale
+live in xref:../docs/architecture/README.adoc[`docs/architecture/`].
+
+[cols="1,3",options="header"]
+|===
+|Directory |Contract
+
+|`m43/`
+|Initial Cargo dependency graph, protected pre-refactor digests and public API census.
+
+|`m44a/`, `m44b/`
+|Dependency graphs after lock and inventory separation.
+
+|`m45/`
+|Dependency graph after strict codec placement.
+
+|`m46a/`, `m46b/`, `m46c/`
+|Reservoir public API additions by phase.
+
+|`m47/`
+|Default-member set and historical-crate disposition.
+|===
+
+Do not update an old baseline to make a new implementation pass. Add a new versioned contract or
+change the checker under an explicitly documented milestone.

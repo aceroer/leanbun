@@ -10,6 +10,7 @@
     "check": "./scripts/dev check",
     "check:historical": "./scripts/dev historical-check",
     "check:architecture": "./scripts/check-crate-layering",
+    "check:docs": "./scripts/check-docs",
     "check:public-source": "./scripts/check-public-source"
   }
 }

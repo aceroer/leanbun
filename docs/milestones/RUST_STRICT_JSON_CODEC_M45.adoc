@@ -1,0 +1,90 @@
+= LeanBun Strict JSON Codec Extraction M45
+:toc: left
+:sectnums:
+
+== Completion status
+
+M45 is complete as `0.15.0-m45-dev`. The placement audit was recorded before movement in
+xref:../decisions/STRICT_JSON_PLACEMENT_DECISION_M45.adoc[LeanBun Strict JSON Placement Decision M45]. Its selected boundary has now been implemented and validated.
+
+This is a mechanical ownership change. It does not add Reservoir authority, change lock bytes, resolve packages, publish caches or authorize an external project mutation.
+
+== Implemented boundary
+
+`leanbun-codec` is a new platform-neutral crate depending only on `leanbun-core`. It owns:
+
+* `StrictJson` and `JsonNumber`;
+* the bounded strict parser and its depth/node limits;
+* `StrictJsonError`, preserving `JSON_MALFORMED` and the prior byte-positioned message.
+
+`leanbun-evidence` depends directly on codec and retains:
+
+* stable bounded file reads and SHA-256;
+* canonical path containment and Unix file identity checks;
+* `StableJsonFile` and `read_strict_json`;
+* conversion from `StrictJsonError` to `EvidenceError`.
+
+Evidence temporarily re-exports the pure symbols for source compatibility. Direct parser consumers in `leanbun-lake-bridge`, `leanbun-managed` and `leanbun-plan` now import `leanbun-codec` explicitly.
+
+== Lock and lifecycle isolation
+
+The reviewed 15-crate graph is frozen at `architecture/m45/cargo-dependencies.tsv`. Its SHA-256 is:
+
+----
+962dd3e93fa46d39e943c265cc12f1a9efab38ddbc90a2c84f8b5703830e2dfa
+----
+
+Automated layering checks require codec to remain below evidence and policy, require each current non-evidence parser consumer to hold a direct codec edge, and reject a codec-to-evidence reverse edge. Existing checks still require:
+
+* `leanbun-lock` to depend only on `leanbun-core`;
+* every mainline root to depend directly on lock;
+* no mainline closure to reach inventory legacy, plan, state or approval crates;
+* evidence to avoid resolver/store/generation/build/managed policy dependencies.
+
+The M45 Cargo lock SHA-256 is:
+
+----
+f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07
+----
+
+== Decoder compatibility gate
+
+The pure parser retained the full grammar, lexical number preservation, duplicate-key rejection, trailing-content rejection, Unicode surrogate validation, and deterministic depth/node limits.
+
+The Lake root-probe regression now names all five M45 boundary cases and requires every one to retain `LakeBridgeErrorKind::MalformedProbeOutput`:
+
+* malformed JSON;
+* unknown fields;
+* duplicate keys;
+* trailing content;
+* oversized bounded fields.
+
+Stable evidence oversized-file behavior remains independently covered by the evidence reader tests. Moving the parser therefore did not merge byte acquisition policy with in-memory syntax policy.
+
+== Validation
+
+The completed gate produced:
+
+* Rust workspace: 184 passed, 0 failed, one provider test intentionally ignored by the default run;
+* explicit initialized-provider test: 1 passed;
+* workspace `cargo fmt --check` and clippy with warnings denied: passed;
+* Bun/Lean suite: 103 passed, 0 failed, 882 expectation calls;
+* architecture suite: 10 passed, 16 expectation calls;
+* current workspace checker: `workspace-crates=15`, `mainline-roots=6`;
+* `git diff --check`: passed.
+
+The extracted codec source SHA-256 is:
+
+----
+0bc155bc441dd0415e8151f2aee91f37917a622d752585833ae982dc1e0e954d
+----
+
+The evidence stable-JSON adapter source SHA-256 is:
+
+----
+ea2b49acf004ef85e043305be8ccb61b047ffc2cade308240b88639dbecf7c08
+----
+
+== Remaining boundary
+
+M46 must separately choose a versioned Reservoir binding format and compatibility route. M45 neither assumes JSON nor silently extends `LeanBunLockV1`. If M46 chooses strict JSON for a pure binding document, it may depend directly on codec without acquiring evidence filesystem policy.

@@ -1,0 +1,302 @@
+= LeanBun Bun-Managed Lean Package Takeover M30
+:toc: left
+:sectnums:
+
+== Outcome
+
+M30 冻结 LeanBun 主线为 *Bun-managed / Lake-executed / Lean-compiled*：Bun 接管 Lean package 生命周期中容易失控的解析记录、来源获取、完整性、
+不可变缓存、事务、互斥、并发、失败恢复、发布和前后差分；Lake 保留 package 配置语义、target/build graph 与 Lean 编译调度；Lean 保留 elaborator、
+compiler 与 kernel。
+
+这不是“在 Lake 外面再调用一次 `lake update`”，也不是重写 Lean/Lake。LeanBun 复用 Lake 源码规定的 package model 和冲突顺序，以 Bun package
+manager 的 lock/integrity/network/store 机制替换 Lake 中直接 clone、checkout、clean、目录删除和就地 manifest 写入的脆弱执行部分。
+
+M27--M29 的 privileged daemon/XPC 路线降为可选安全研究，不再阻塞主线。M30 不实现 XPC、Authorization、root helper 或 daemon，也不调用
+`lake update`，不修改正式项目和生产依赖库。
+
+== Authority boundary
+
+[cols="2,2,4",options="header"]
+|===
+|对象 |权威方 |含义
+
+|`lakefile.lean` / `lakefile.toml`
+|项目 + Lake
+|声明用户请求的 root dependencies、targets、facets 和 Lean build semantics；LeanBun 不解释任意 Lean 程序语义。
+
+|`lean-toolchain`
+|项目
+|选择 exact Lean/Lake toolchain；普通 package update 不得静默改变。
+
+|`leanbun.lock`
+|Bun / LeanBun
+|resolved package closure、exact revision、source/subdir、dependency edges 与完整性摘要的唯一发布权威。
+
+|Bun Lean package store
+|Bun / LeanBun
+|按内容身份保存已验证 package bytes；对象发布后不可原地更新。
+
+|`lake-manifest.json`
+|LeanBun projection
+|从 `leanbun.lock` 生成、供固定 Lake 版本读取的兼容投影；不是第二份解析权威。
+
+|`.lake/package-overrides.json`
+|项目输入
+|可选的 workspace-local override request；在 managed mode 中只能成为 Bun path resolution 的候选/约束，不能直接决定实际加载路径。
+
+|Bun runtime packages projection
+|Bun / LeanBun
+|由 active generation 生成的完整 locked closure，通过 Lake `--packages` 进入最后一层 override；这是 Lake 唯一收到的 final-path projection。
+
+|`.lake/build` / Lake trace/cache
+|Lake
+|构建结果与增量状态；LeanBun 监督、摘要、复用和发布，但不模拟 Lake cache key。
+
+|Lean output
+|Lean
+|编译、elaboration 与 kernel checking 的最终结果，Bun 不替代。
+
+|LeanBun transaction record
+|Bun / LeanBun
+|记录 prepare/fetch/project/build/verify/publish/terminal 状态，不冒充 Lake state。
+|===
+
+权威关系只有一条：`project intent -> leanbun.lock -> immutable store -> Lake projections -> Lake build`。manifest、override 或 store 事实与 active lock
+不一致时必须拒绝，不从漂移结果反向猜测新 lock。
+
+== Exact Lake compatibility surface
+
+M30 基于本机 Lean `4.32.0` / Lake `5.0.0-src+8c9756b` 源码锁定以下行为：
+
+[cols="2,2,4",options="header"]
+|===
+|源码 |SHA-256 |LeanBun 使用的事实
+
+|`Lake/Load/Manifest.lean`
+|`8b01bdff19b7e4cba470755f8d308a9d77d7402486c409e8105e26fee524a43e`
+|Manifest v1.2；`PackageEntry` 只有 path/git source，并绑定 name、scope、inherited、config/manifest file、revision 与 subdir。
+
+|`Lake/Load/Materialize.lean`
+|`3b031d66f31afb202a8022cfbae05ac402f39d7f92831e85f7057c360ed9439c`
+|Lake 的 materialization 是 path resolve 或 Git clone/checkout/clean；Bun store 替换这些可变 I/O，保持最终 `MaterializedDep` 语义。
+
+|`Lake/Load/Resolve.lean`
+|`b1cce0ebebbcd620906750760a1c6b5ff50b26e18caba946888f48b391390516`
+|复用未更新 manifest entry；root requires 优先、later require shadow earlier；manifest 后加载 package overrides；write manifest 后才运行 post-update hooks。
+
+|`Lake/Load/Workspace.lean`
+|`dd23a173478243833d443dae8ffd28695f9a9b0ca00dd03ee88d039d1f6dd129`
+|`loadWorkspaceRoot` 只加载 root config；`loadWorkspace` 在 manifest 缺失时会隐式 update，因此受管构建必须提供完整投影并禁止该 fallback。
+
+|`Lake/CLI/Build.lean`
+|`54c0be50b874fbe993831628f7b86d30cebf4e4bfbcbb9cc394c3015597dd652`
+|`buildSpecs` 和 target parser 继续归 Lake；LeanBun 只给出固定 target allowlist 并监督调用。
+
+|`Lake/CLI/Main.lean`
+|`4b95ab56b87319c0a1e2b55d0d31e3c077977a376020c326579d0802b9399010`
+|每个 `--packages` 文件被 append 到 runtime `packageOverrides`，随后作为 `materializeDeps` 的第三层输入；managed mode 只允许 Bun 生成这一层。
+|===
+
+最关键的接管缝是 `Workspace.materializeDeps`：Lake 依次把 manifest entries、`.lake/package-overrides.json`、runtime `packageOverrides` 插入同一个
+`NameMap`，同名项由后写入者静默覆盖。这个顺序只是一段实现顺序，不足以作为 package path authority。LeanBun 不把三层继续当作并列事实，而是在
+调用 Lake 前完成独立、可审计的 path decision，再用 Bun-only runtime projection 让 Lake 使用已经确定的唯一 package graph。
+
+`lakefile.lean` 是可执行配置，不由 Bun 自写 parser 猜测。LeanBun 在无网络、只读输入、独立 staging root 中使用 exact toolchain 的
+`loadWorkspaceRoot`-based probe 导出 root dependency declarations；TOML 与 Lean 配置最后必须归一到同一个 bounded declaration schema。probe 不是
+resolver，也不得 materialize dependency。
+
+== Canonical path provenance decision
+
+M30 把 Lake 的三层输入显式建模为：
+
+[cols="2,2,4",options="header"]
+|===
+|provenance |Lake 当前行为 |Bun managed-mode 语义
+
+|`Manifest`
+|第一层，同名 entry 可被后两层覆盖
+|声明/locked compatibility evidence；提供 source kind、URL/revision/subdir，不直接提供 final path。
+
+|`WorkspaceOverride`
+|第二层，静默覆盖 manifest
+|用户的 local-development/source request；必须 canonicalize、containment-check、tree-hash，并进入 update transaction 才能改变 lock。
+
+|`RuntimeOverride`
+|第三层，多个 `--packages` 按 CLI 顺序 append，最后同名项获胜
+|只允许一个 Bun-generated full-closure projection；用户或其他调用方提供的 runtime override 在 managed mode 一律拒绝。
+|===
+
+Bun 的确定性算法固定为：
+
+. 以 `(scope UTF-8 bytes, package name UTF-8 bytes)` 排序整个 package closure；
+. 分别解析三类 provenance，同一 provenance 内出现重复 package key 立即拒绝，不采用 last-wins；
+. manifest 缺失、source kind/revision 与 lock 不相容、workspace override 未进入当前 transaction，均产生 typed conflict；
+. 对 Git/Reservoir package，final path 必须是 active lock 指向的 immutable Bun store object；
+. 对显式 path package，v1 默认快照进 store；以后若开放 live-development mode，必须单独标记、绑定 tree digest，并在每次 build 前拒绝 drift；
+. 为每包生成唯一 `PackagePathDecisionV1`，绑定全部候选 provenance digest、selected source identity、canonical final path、store object/tree SHA 与 generation；
+. 只有所有 locked packages 恰好各有一个 decision、没有额外 package、所有 final paths 位于允许 store/generation root 内，才生成 runtime projection；
+. 调用 Lake 时不接受额外 `--packages`，并在 load 后比较实际 workspace package paths 与 decision set；任何偏差拒绝 build publication。
+
+portable `leanbun.lock` 不保存机器绝对路径，只保存 selected source/store object identity。location-specific canonical final path 和
+`pathDecisionSha256` 进入 active generation record。这样相同 lock 可在另一台机器重定位 store，但每次实际构建仍绑定 Bun 最终选择的路径。
+
+== Bun package-manager reuse surface
+
+参考的 Bun Rust upstream snapshot 固定为 commit `892b1dabc69e2a0a973244f772b84967c73ccad5`：
+
+[cols="2,2,4",options="header"]
+|===
+|源码 |SHA-256 |Lean package adapter 复用的机制
+
+|`src/install/lockfile.rs`
+|`301d83a1ebaca26e58ae7717adef77a20079dd69feb8db11d49265481cded2d4`
+|format version、load result、graph verification、canonical text publication、meta hash 与 frozen comparison 的组织方式。
+
+|`src/install/integrity.rs`
+|`4c50d494a0bbbfeafc1aec279c5d34d32a845bad3c27c1820e57a36adba5e103`
+|typed integrity、strongest supported digest、downloaded bytes verification 与 streaming digest。
+
+|`src/install/NetworkTask.rs`
+|`3af63b932306db11e375a5eddf8a80744dedb4ce657f7d36f879a3dfa927f459`
+|manifest/tarball/git task 分类、dedupe、terminal failure 标记、bounded retry 与 completion scheduling。
+
+|`src/install/isolated_install/Store.rs`
+|`5552e0fb3699d91c08b304eb3275af4542d3835d765a78c3d64f303569f2efa3`
+|isolated store、stable entry identity、workspace/path linking 和确定性 ordering。
+|===
+
+这些 Bun internal modules 不是稳定 public crate API。M31 已先抽取独立、窄且纯的 Rust package model；M34 再建立 `lean_pm` adapter，M38 集成回锁定 Bun fork。
+LeanBun core 不直接依赖整个 npm `PackageManager`。npm semver、peer dependency、lifecycle scripts 和 `node_modules` hoisting 不进入 Lean graph。
+
+== `LeanBunLockV1`
+
+`leanbun.lock` 使用独立、版本化、canonical text schema，不能与 `bun.lock` 混写。最小字段为：
+
+[source,text]
+----
+LeanBunLockV1
+  schemaVersion = 1
+  leanToolchain
+  leanCompilerGithash
+  lakeVersion
+  rootConfigSha256
+  rootDeclarationSha256
+  packages[]
+    name / scope
+    requested source
+    resolved source kind
+    canonical URL or contained path token
+    exact Git revision
+    optional subDir
+    downloadIntegrity
+    sourceTreeSha256
+    configSha256 / manifestSha256
+    dependencies[]
+    provenanceDigests[]
+    selectedSourceIdentity
+  graphSha256
+----
+
+规则：
+
+* packages 与 dependency edges 按 UTF-8 bytes canonical sort，name/scope 全图唯一；
+* Git resolution 必须是 exact commit，branch/tag 只保留为 requested input；
+* absolute store path、mtime、inode、download mirror 与临时目录不进入 lock identity；
+* path package 必须在显式允许根内，并以 source tree digest 绑定，不能仅锁绝对路径；
+* graph 记录 Lake 的 root-priority / later-shadow conflict result，并保留选择来源以供诊断；
+* toolchain change 是独立显式事务，不由 dependency update 顺带发生；
+* post-update hook 默认拒绝；以后只能作为单独、可审阅、sandboxed lifecycle capability 开放。
+
+== Store and projections
+
+Bun Lean store 分为三层：
+
+. download blob：绑定来源响应与强完整性摘要，可重试、去重；
+. unpacked immutable tree：绑定 normalized relative path、type、mode、size 与 file SHA-256；
+. build image：绑定 lock graph、toolchain、target platform、build config 与 Lake output tree。
+
+下载完成不等于 package published。只有 extraction 无 path escape/symlink escape、tree hash 完成、config/manifest 可稳定读取后，临时对象才能以 digest key
+原子进入 store。同 digest 已存在时只做字节/metadata revalidation，不覆盖。
+
+每次 transaction 从 active lock 生成完整 `lake-manifest.json` 与 Bun runtime packages projection：manifest 保留 Lake 所需的原始 git/path
+declaration 与 exact revisions；runtime projection 把同名 closure 全部改投 Bun 已选择的 contained final paths。workspace
+`.lake/package-overrides.json` 只作为已锁定输入参与 provenance decision，不作为最终投影。各投影 SHA 与 `PackagePathDecisionV1` set digest 进入 LeanBun
+generation record，但不修改 schema 塞入 Lake 不认识的 authority 字段。
+
+== Transaction and crash model
+
+M30 固定以下状态机：
+
+[source,text]
+----
+Observed
+  -> Locked
+  -> DeclarationsLoaded
+  -> Resolved
+  -> Fetched
+  -> Projected
+  -> Built
+  -> Verified
+  -> Published
+
+any nonterminal state -> Failed
+----
+
+事务顺序：
+
+. 稳定读取 project config、toolchain、active lock/binding，获取 project-key 排他锁；
+. 在 staging root 运行只读 config probe，得到 bounded root declarations；
+. Bun resolver 复用 active lock，按显式 update set 解析 exact closure；
+. 并发 fetch 进入临时 store slots，逐包校验并原子发布 immutable objects；
+. 生成 lock candidate、manifest、每包 path decision 与 Bun-only full runtime projection，四者交叉验证；
+. 在 staging project、禁网环境和固定 toolchain 下运行 Lake build；
+. 比较输入、resolved graph、package trees、manifest/projection、实际 workspace package paths、target result 与 artifact evidence；
+. 先 durable 写 terminal generation 内容，最后单独原子发布 active generation record；
+. active record 发布后才返回成功并释放锁。
+
+active generation record 是唯一 commit point。manifest/runtime projection/path decisions/build image 都是可重建派生物：崩溃发生在 commit point 前，旧 active generation 仍有效；
+崩溃发生在 commit point 后，新 generation 已包含完整 durable hashes。若派生文件处于新旧混合状态，普通 build fail closed，recovery 依据 active
+generation 重投影，而不是猜测哪个文件更新得更晚。
+
+失败不立即删除 staging、partial download 或 crash record；它们先保留为审计证据，后续显式 GC 只能删除未被任何 active/retained generation 引用的对象。
+
+== Concurrency and cache policy
+
+v1 只支持单机、单用户：
+
+* project lock 串行化同一项目的 resolve/publish；
+* package digest slot 使并发项目共享一次 fetch/extract，terminal failure 不被静默重新排队；
+* build-image key 去重相同 lock/toolchain/platform/target 构建；
+* 网络与 extraction 使用 bounded worker pools，Lake build 并发仍由 Lake 自己调度；
+* 不建立 distributed lock、daemon、root store 或后台自动 recovery；
+* 普通 build 默认 frozen/offline；只有显式 package update transaction 可以联网并生成新 lock。
+
+== Non-goals and safety boundary
+
+M30 明确不做：
+
+* 不实现 Lean elaborator、compiler、kernel、Lake target/facet scheduler 或 cache-key 算法；
+* 不把 Lean package 当作 npm package，不运行 npm lifecycle/hoisting/peer resolution；
+* 不允许 Lake 在正式项目中隐式 update、clone、clean 或改变 toolchain；
+* 不直接复用未经审计的 Bun unsafe/FFI internal crate 作为 LeanBun core API；
+* 不引入 XPC、Authorization、LaunchDaemon、root helper 或生产路径 immutable 假设；
+* 不在 M30 写 `leanbun.lock`、manifest、override、store、`.lake` 或正式项目。
+
+当前威胁边界是受管单用户事务完整性，不声称抵抗已经控制同一用户账户的恶意进程。安全性来自 bounded inputs、immutable store、hash binding、
+exclusive publication 与前后核验，不来自 root privilege。
+
+== Acceptance and next gate
+
+M30 的验收物是本设计、Lake/Bun exact-source hashes 与上位路线同步；现有 Rust/Bun/Lean 测试必须保持不变，生产依赖和真实项目仍只读。
+
+M31 已完成 `LeanBunLockV1`、三类 `PackagePathProvenanceV1` 与唯一 `PackagePathDecisionV1` 的纯 Rust model、canonical encoder/strict decoder、排序/
+冲突规则、graph/decision identity 与 Bun golden oracle，见
+xref:../milestones/RUST_BUN_PACKAGE_LOCK_M31.adoc[LeanBun Rust Lock and Final-Path Decision Model M31]。M31 未联网、未 materialize、未写 manifest/projection、未运行 Lake；
+M32 已在隔离 fixture 建立 root declaration probe、manifest/runtime projection、actual-path comparison 与 exact Lake/Mathlib oracle，见
+xref:../milestones/RUST_LAKE_DECLARATION_PROJECTION_M32.adoc[LeanBun Rust Lake Declaration and Projection Bridge M32]；M33 又建立 frozen/update deterministic resolver、exact graph、
+shadow/conflict provenance 与 impact closure，见 xref:../milestones/RUST_DETERMINISTIC_LEAN_RESOLVER_M33.adoc[LeanBun Rust Deterministic Lean Resolver M33]；M34 local mock fetch/integrity/immutable store 已完成，见
+xref:../milestones/RUST_BUN_FETCH_IMMUTABLE_STORE_M34.adoc[LeanBun Rust Bun Fetch and Immutable Store M34]。M35 active generation transaction/recovery 已完成，见
+xref:../milestones/RUST_ACTIVE_GENERATION_TRANSACTION_M35.adoc[LeanBun Rust Active Generation Transaction M35]；下一门为 M36 supervised offline Lake build/build-image reuse。
+
+M31--M38 的完整关键路径、每门写入权限与 exit gate 见
+xref:../roadmaps/LEANBUN_BUN_TAKEOVER_ROADMAP.adoc[LeanBun Bun Package Takeover Roadmap M31--M38]。

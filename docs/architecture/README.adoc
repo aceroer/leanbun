@@ -1,0 +1,10 @@
+= 架构与权威边界
+
+* xref:BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[Bun-managed Lean package takeover]
+* xref:LEANBUN_UPDATE_AND_COMPILE_AUTHORITY.adoc[更新与编译权威]
+* xref:LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[外部包管理边界]
+* xref:LEANBUN_LEAN_LAKE_API_BOUNDARY.adoc[Lean/Lake API boundary]
+* xref:LEANBUN_RUST_CRATE_LAYERING_INTENT.adoc[Rust crate layering intent]
+* xref:BUN_RUST_UPSTREAM_LIBRARY.adoc[Bun Rust upstream library boundary]
+
+这些文档定义“谁有权决定什么”。实现状态与验收证据分别放在 `roadmaps/` 和 `milestones/`。
