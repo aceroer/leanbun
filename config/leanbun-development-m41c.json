@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "version": "0.6.0-m41-dev",
+  "class": "commit-backed-unsigned-development-distribution",
+  "releaseTag": "leanbun-v0.6.0-m41-dev",
+  "leanBunSource": {
+    "commit": "3acd6484ef841c87e44346533bb4bacdd1b4ee3e",
+    "tree": "0c7039763fc219122808a7b7ac30669a765dfe75",
+    "commitScope": "source-baseline-before-provenance-closure",
+    "sourceFileCount": 132,
+    "sourceListSha256": "680c915e8bbaba9e74ad94239c8635a82cb90b02a526691eedd75219accbb33b"
+  },
+  "bunFork": {
+    "branch": "codex/leanbun-m38",
+    "tag": "leanbun-bun-fork-m41",
+    "commit": "2e342796efd2e30dfb441a5cbd8b24004bf5fe95",
+    "tree": "d05120af0b737218342eba137ea32d71d646df5d",
+    "upstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+    "upstreamTree": "81a25490c3c5aeb4271a200a96943239b686404b",
+    "cargoLockSha256": "47f4e874c284ae44ab348eb703cb43a363cbcb95f9933b52b971134ad24eb39e"
+  },
+  "toolchain": {
+    "rustc": "1.96.0 ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96",
+    "cargo": "1.96.0 30a34c682",
+    "target": "aarch64-apple-darwin",
+    "leanToolchain": "leanprover/lean4:v4.32.0",
+    "leanCompilerCommit": "8c9756b28d64dab099da31a4c09229a9e6a2ef35",
+    "lakeVersion": "5.0.0-src+8c9756b"
+  },
+  "binary": {
+    "buildPath": ".leanbun-dev-rust/release/bun-fork/target/release/leanbun",
+    "installedPath": ".leanbun-dev-rust/release-fixture/package-0.6.0-m41/versions/0.6.0-m41-dev/leanbun",
+    "installedActiveVersion": "0.6.0-m41-dev",
+    "sha256": "bb2b346a70e29c92ee99f5c6260fc2fd3a3972c29442687378ea307c42470d57",
+    "sizeBytes": 1653656,
+    "format": "Mach-O thin arm64",
+    "signature": "adhoc-linker-signed",
+    "cdHash": "59305861644911ccd3c02bbef48377feb03c5e8f",
+    "teamIdentifier": null,
+    "notarization": "not-submitted",
+    "gatekeeper": "rejected-exit-3"
+  },
+  "releaseReplay": {
+    "installTransaction": "passed",
+    "installedVersion": "passed",
+    "installedDoctor": "passed",
+    "installedExportEvidence": "passed",
+    "buildAndInstalledBinaryMatch": true,
+    "rustDefaultTests": 180,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "bunTests": 93,
+    "bunExpectCalls": 866,
+    "rustClippy": "passed",
+    "bunForkClippy": "passed",
+    "asciidoc": "passed"
+  },
+  "signingBoundary": {
+    "validCodesigningIdentities": 0,
+    "notaryKeychainProfile": "absent",
+    "developerIdSigning": "not-performed",
+    "notarySubmission": "not-performed",
+    "stapling": "not-performed",
+    "productionDistribution": "closed-pending-external-signing-authority"
+  }
+}

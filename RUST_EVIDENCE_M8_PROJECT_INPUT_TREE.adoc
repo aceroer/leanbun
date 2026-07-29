@@ -1,0 +1,75 @@
+= LeanBun Rust Evidence M8: Read-only Project Input Tree
+:toc: left
+:sectnums:
+
+== 结论
+
+Rust `leanbun-evidence` 已实现只读 `hash_project_input_tree`。它对 canonical project root 生成与 Bun
+`project-input-tree-v1` 相同的普通目录/文件摘要，并返回 schema、tree hash、entry/file/byte count。
+
+该入口不创建 `.leanbun`、不运行 Lake/Lean/Git、不修改 mode，也不发布 state。Bun 继续是独立行为 oracle；
+Rust 没有调用 Bun，也没有引入第三方 crate。
+
+== Canonical record stream
+
+摘要输入严格沿用 Bun v1 JSON-lines：
+
+. 首行固定为 `{"schema":"leanbun-project-input-tree-v1"}` 加换行；
+. root 以 owner `project`、path `.` 的 directory record 纳入；
+. 其余条目按 UTF-8 path bytes 排序；
+. directory record 绑定 owner、relative path、type、Unix mode；
+. file record 进一步绑定 byte size 与真实文件 SHA-256；
+. JSON field order、数字表示和 string escape 均固定，记录以换行分隔。
+
+mode 使用 `st_mode & 07777`，所以可执行位或权限变化会改变摘要；mtime/ctime 不写入 canonical record，单纯时间戳
+变化不会改变稳定内容摘要。
+
+== 排除规则
+
+与 Bun `projectInputTreePolicy` 一致：
+
+* 任意名为 `.git` 或 `.lake` 的目录整棵排除；
+* 仅 relative path 精确为 `.leanbun/tmp` 的目录整棵排除；
+* 任意名为 `.DS_Store` 的普通文件排除；
+* `.leanbun/binding.json` 等非临时控制输入仍进入摘要。
+
+排除发生在内容读取前。被排除目录内的构建结果、Git 状态和临时日志变化不影响 project input tree。
+
+== Rust 安全门
+
+Rust 授权入口比 Bun 通用 tree walker 更窄：
+
+* 只接受 canonical project directory 内的直接普通目录和普通文件；
+* symlink 在跟随前以 `PATH_ESCAPES_ALLOWED_ROOT` 拒绝，内部 symlink 也不降级为可信输入；
+* socket/device/FIFO 等特殊条目以 `EVIDENCE_NOT_REGULAR_FILE` 拒绝；
+* 非 UTF-8 文件名拒绝，避免跨运行时 path encoding 歧义；
+* 文件经同一 descriptor 流式 SHA-256，并比较 open 前后 path、device、inode、mode、size、mtime、ctime；
+* read 后再次 canonical containment，替换、增长、缩短或 metadata 漂移均拒绝；
+* 首次收集和摘要完成后再次核对所有纳入条目的身份；目录 ctime 漂移使遍历期间的新增/删除也被拒绝；
+* 上限为 500000 entries、单文件 1 GiB、合计普通文件 8 GiB，超限统一拒绝。
+
+这些拒绝规则不改变普通文件树的 Bun-compatible digest；它们限定哪些文件系统对象有资格成为 Rust 证据。
+
+== 共享差分验收
+
+`rust/golden/project-input-tree.tsv` 描述一个显式 mode 的隔离项目，包含 UTF-8 Lean 文件、可执行脚本、
+`.leanbun/binding.json`，以及 `.git`、`.lake`、`.leanbun/tmp`、`.DS_Store` 排除样本。
+
+Bun 和 Rust 分别从该描述创建临时树，均得到：
+
+* tree hash：`c85118b2aaa87b39fe9bcf031e1c1015e0a2086625c1458684ba1c1f2fe037b2`；
+* 9 entries；
+* 5 files；
+* 117 bytes。
+
+Rust 另验证源码变化改变摘要、生成目录变化不改变摘要、遍历中新增条目被拒绝、symlink 与 Unix socket 被拒绝；仓库内 dependency-free
+与九包 Mathlib 两个 Lean fixture 也完成重复只读遍历，并得到各自不同的稳定 tree hash。
+
+== 边界与下一门
+
+M8 证明的是一次稳定遍历所得的 project input tree evidence。它尚未把 M7 control-input identity 与 M8 tree hash
+合成为构建许可，也未读取已有 binding/attestation，更没有 writer。
+
+下一门只读 `ProjectBindingV1` strict typed reader 已完成，见 `RUST_EVIDENCE_M9_PROJECT_BINDING.adoc`：复用稳定
+JSON 层，约束 canonical projectPath/ProjectId、SHA 字段、排序且唯一的 allowedTargets 和时间字段，并与 Bun
+fixture 差分。仍未开放 Rust writer。

@@ -1,0 +1,7 @@
+target_crate	symbol	current_source
+leanbun-lock	MAX_RESERVOIR_BINDINGS_V1	rust/crates/leanbun-lock/src/reservoir_binding_v1.rs
+leanbun-lock	ReservoirRegistryIdentityV1	rust/crates/leanbun-lock/src/reservoir_binding_v1.rs
+leanbun-lock	ReservoirBindingV1	rust/crates/leanbun-lock/src/reservoir_binding_v1.rs
+leanbun-lock	ReservoirBindingDocumentV1	rust/crates/leanbun-lock/src/reservoir_binding_v1.rs
+leanbun-lock	ReservoirBindingV1Error	rust/crates/leanbun-lock/src/reservoir_binding_v1.rs
+leanbun-lock	ReservoirBindingV1ErrorKind	rust/crates/leanbun-lock/src/reservoir_binding_v1.rs

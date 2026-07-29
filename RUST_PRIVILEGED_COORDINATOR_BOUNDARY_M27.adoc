@@ -1,0 +1,95 @@
+= LeanBun Rust Privileged Coordinator Boundary M27
+
+== Outcome
+
+M27 已建立纯数据 `macos_privileged_coordinator_contract_v1`。本机现代 macOS 提供两个可继续审计的 primitive：
+
+* `SMAppService` LaunchDaemon 可作为 privileged host candidate；
+* privileged XPC Mach service 加 peer code-signing requirement 可作为 authenticated transport candidate。
+
+但二者只解决“进程在哪里运行”和“消息从哪个签名 peer 来”，不会自动建立 LeanBun request authority。现有 M19/M25 还存在 capability transport 与
+threat-principal mismatch，因此总决策固定为 `DeniedCoordinatorProtocolNotEstablished`，execution authority 仍 `Withheld`。
+
+本门没有注册/卸载 service、创建 launchd plist、请求 admin approval、生成 Authorization right、建立 XPC connection、安装 helper 或 spawn Lake。
+
+== Exact local API audit
+
+审计基于本机 macOS SDK 26.5 headers 与 `launchd.plist(5)`：
+
+[cols="2,3,2",options="header"]
+|===
+|接口 |本机证据 |M27 结论
+
+|`SMAppService.daemon`
+|app 必须 code signed；包含 LaunchDaemon 的 app 必须 notarized；注册后需 admin 在 System Settings 批准才可 bootstrap。daemon plist 与 executable
+更新后必须重新注册。
+|`HostCandidate`，不是静默安装权。
+
+|`SMJobBless`
+|SDK 明确从 macOS 13 起 deprecated，推荐 `SMAppService`。
+|`DeniedDeprecated`。
+
+|`AuthorizationExecuteWithPrivileges`
+|Security header 明确 deprecated，不应继续使用，应改为 launchd-launched helper/ServiceManagement。
+|`DeniedDeprecated`。
+
+|Authorization external form
+|`AuthorizationMakeExternalForm` 只用于 online inter-process transmission；header 明确不应存储，authorization 受 session/process/time 限制。
+|必须在 daemon 内检查 exact named right，并绑定 authenticated peer、request identity、nonce 与 deadline；单独 blob 不足。
+
+|Privileged XPC Mach service
+|`XPC_CONNECTION_MACH_SERVICE_PRIVILEGED` 连接 privileged bootstrap；`xpc_connection_set_peer_code_signing_requirement` 会丢弃不满足 requirement
+的 listener request。
+|`TransportCandidate`；只读 euid/pid 不足以代替 code identity。
+
+|launchd program
+|`Program`/`BundleProgram` 最终映射到 `execv` path，`ProgramArguments` 映射到 `execvp` argv。
+|launchd 启动 helper 本身仍是 path-based；helper bundle/install path 必须由 ServiceManagement 与 privileged ownership 保护。
+|===
+
+== Current pipeline incompatibility
+
+=== M19 capability cannot become an IPC document
+
+`TrustedLakeLaunchReservationV1` 刻意 non-clone、non-serializable，只存在于 user process；M19 slot 位于调用方提供的 user-owned 0700 registry。把
+reservation fields 复制成 XPC JSON 会丢失 capability semantics，而 root daemon 也不能把用户声称的 slot 当作 coordinator-owned replay proof。
+
+未来 coordinator 必须拥有自己的 bounded request decoder、replay ledger 与 durable reservation ledger；它需要重新验证完整 lineage，而不是接受
+“客户端已经 ReservedOnce”的声明。
+
+=== M25 effective UID is the wrong principal inside root daemon
+
+M22/M24/M25 当前用 `geteuid()` 做 owner 和 `accessat(EACCESS)` 判断。在普通 LeanBun 进程中它代表同 UID attacker；在 root daemon 中它变成 UID
+0：root-owned path 会被错误归入 owner-equals-effective-UID，effective access 也回答 root 的权限，而不是发起用户的 mutation capability。
+
+因此 M25 不能原样在 daemon 内运行。coordinator-side observer 必须显式接收经过 XPC peer/authentication 绑定的 unprivileged threat principal，并以
+owner/mode/group/ACL/mount evidence判断该 principal，而不是隐式读取 daemon effective UID。
+
+== Required coordinator order
+
+M27 固定后续协议的最小顺序：
+
+. signed/notarized daemon 经显式 admin approval 注册；
+. fixed privileged Mach service 在接收消息前配置 peer code-signing requirement；
+. bounded/versioned canonical request 绑定 peer、exact Authorization right、nonce 与 deadline；
+. coordinator-owned ledger 原子消费 request/replay slot；
+. daemon 获取 updater lease；read-only image route 还要获取 mount-lifecycle lease；
+. 在 lease 内，以显式 unprivileged threat principal 重做 executable hash、path/ACL/mount observation；
+. 只有全部完成后才可能 path-spawn exact child；lease 持续到 child creation 和 terminal execution record publication。
+
+这只是未来 contract 顺序。M27 没有实现其中任何 privileged side effect，也没有因此恢复 M20 所拒绝的普通 user-process spawn。
+
+== Verification boundary
+
+Rust tests固定现代 host/transport candidate、两条 deprecated rejection、UID/PID-only rejection、authorization-not-request-bound rejection 与
+M19/M25 principal/capability mismatch。Bun oracle 把 M27 runtime source 纳入禁止能力扫描，继续拒绝 process、host environment、unsafe、删除和
+`lake update`。
+
+== 下一门
+
+M28 已完成，见 xref:RUST_PRINCIPAL_EXPLICIT_COORDINATOR_REQUEST_M28.adoc[LeanBun Rust Principal-Explicit Coordinator Request M28]。它已绑定
+bounded peer/threat principal、exact authorization right、nonce/deadline、M19 lineage references 与 pending/withheld authority；仍未实现
+XPC/Authorization FFI、wire decoder、daemon ledger、helper 安装或 spawn。
+
+前置 deployment audit 见
+xref:RUST_STABLE_EXECUTABLE_DEPLOYMENT_CONTRACT_M26.adoc[LeanBun Rust Stable Executable Deployment Contract M26]。

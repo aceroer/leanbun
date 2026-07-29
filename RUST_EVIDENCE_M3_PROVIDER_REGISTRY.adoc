@@ -1,0 +1,68 @@
+= LeanBun Rust Evidence M3: Provider Registry Typed Decoder
+:toc: left
+:sectnums:
+
+== 结论
+
+`leanbun-evidence` 已建立第一个 typed schema reader：规范化 dependency provider 的 Lake registry。
+它把 M2 的稳定文件、SHA-256 与严格 JSON 组合为 `StableProviderRegistryFile`，只发布后续 provider 核验需要的
+`version`、`packagesDir`、package name 和 revision。
+
+本门仍为只读 shadow：没有接管 Bun provider adapter，没有读取生产 dependency library，没有 writer、CLI、Git、
+Lake 或 Lean 调用。
+
+== Schema 门
+
+provider registry 使用 Lake `version` 字段而不是整数 `schemaVersion`。decoder 要求三段数字版本且 major 为 1，
+并把其他 major 报为 `MANIFEST_SCHEMA_UNSUPPORTED`。
+
+根对象只允许：
+
+* `version`：不超过 256 UTF-8 bytes 的字符串；
+* `packagesDir`：非空、不超过 256 UTF-8 bytes 的字符串；
+* `packages`：最多 4096 个 package object。
+
+package 必须有非空 `name`、值为 `git` 的 `type` 和 40 位小写十六进制 `rev`。package name 在单一 registry
+内必须唯一。允许的其他 Lake 字段为 `url`、`subDir`、`scope`、`manifestFile`、`inputRev`、`inherited`、
+`configFile`；若出现，必须符合已声明类型与字符串上限。根或 package 的未知字段直接拒绝。
+
+这比当前 Bun 通用 `parseLakeDocument` 更严格。Bun parser 仍是历史行为 oracle；M3 的共享 fixture 另定义了
+Rust typed reader 的收紧契约。收紧只用于新的 Rust shadow reader，不改变现有 Bun 生产路径。
+
+== API 与稳定读取
+
+[source,rust]
+----
+pub fn parse_provider_registry(text: &str) -> Result<ProviderRegistry, EvidenceError>;
+pub fn decode_provider_registry(value: &StrictJson) -> Result<ProviderRegistry, EvidenceError>;
+pub fn read_provider_registry(
+    root: &CanonicalDirectory,
+    candidate: impl AsRef<Path>,
+) -> Result<StableProviderRegistryFile, EvidenceError>;
+----
+
+`read_provider_registry` 固定使用 4 MiB schema 上限。它先通过 M1/M2 的 canonical containment、direct regular
+file、descriptor identity、TOCTOU 和 SHA 门，再解析同一份内存 bytes。typed document 与 file digest 在同一
+结果对象中发布，调用方不能把另一次 path reopen 的 JSON 与本次摘要混合。
+
+== 验收
+
+共享 `provider-registry-cases.tsv` 由 Bun contract oracle 与 Rust decoder 共同消费，覆盖：
+
+* 最小合法 registry 与全部已知可选字段；
+* 不支持版本、缺字段、未知根/package 字段；
+* 非 Git package、非法 revision、重复 package name；
+* 已知字段的错误类型。
+
+Rust 另验证 4096 package 上限、字符串上限和稳定读取组合。本机验收测试默认忽略，只有显式请求才读取
+`.leanbun-dev/lean/registry/manifest.json`；当前九包 snapshot 已通过，mathlib revision 为
+`81a5d257c8e410db227a6665ed08f64fea08e997`。测试没有访问生产 dependency library。
+
+== 剩余边界与下一门
+
+当前 reader 尚未验证 override 文档，也未把 package revision 与 path/Git HEAD 连接。typed registry 仅证明
+文件稳定且 schema 合法，不证明 checkout、构件或来源主体。
+
+下一门是规范化 provider override 的只读 typed decoder：只允许 `version/packages`，要求唯一 package name、
+`type=path`、绝对 path 字符串及字段/数量上限；随后仅在隔离 provider root 内做 registry↔override 名称集合
+匹配，仍不执行 Git，不开放生产路径。

@@ -1,0 +1,64 @@
+= LeanBun Mathlib Regression M42 Phase C
+:toc: left
+:sectnums:
+
+== Result
+
+M42 Phase C 已在 `0.9.0-m42-dev` 将本库登记的 `mathlib-project` 九包闭包接入可重复回归：
+
+[source,shell]
+----
+leanbun fixture-regress "$LEANBUN_REPOSITORY" \
+  --fixture=mathlib-project
+----
+
+命令不接受任意项目路径，只从 `test/fixtures/mathlib-project` 建立隔离副本。它复用 Phase B 的同一受管状态机，
+依次执行 dry-run、adopt、baseline build、显式 `mathlib` update、updated build、`BeforeActiveRename` fault、
+recover、rollback 与 final build；没有为 Mathlib 创建旁路实现。
+
+== Nine-package closure
+
+每次 adoption 与 update 都必须精确报告九个 package。成功还同时要求：
+
+* baseline generation 与 rollback generation 相同，updated generation 不同；
+* 三次 build 的 project artifact 相同；
+* fault 不改变 active transaction，recover 清除 pending transaction；
+* 登记模板与隔离项目 source-input tree 不变；
+* generation state 不含 active temporary record；
+* 发布摘要前清理 run root、registry、generation、project-control 与 project-local store。
+
+项目 ID 在加入 cleanup set 前必须没有既有 controller state，因此 cleanup 只能删除本次 run 创建的 exact targets。
+M41 frozen project 和历史 regression records 均不在 cleanup 边界内。
+
+== Repeated-run evidence
+
+[cols="2,3,3,3",options="header"]
+|===
+|Run |Run ID |Project ID |Record SHA-256
+
+|1
+|`7b1eaa401ac97a40522271431157dbfc0d6fa2061c826bc14451a4661d2f298c`
+|`f859b5fc951b672b5b313a55d1ae4597ca0da882307aaee2d4f282fecf7fd39f`
+|`853903160c5ecb0b4d8b122ff0a2526da5a1f8fdc27f0d7a094ada38cae19a72`
+
+|2
+|`5b148cddf8562553bad58c19a752a1c7e52e9b941e5a6798f7f32f8797461c7f`
+|`5a7a46f4ca24c86b7f1df82e993ffebd72afebdcd3198e550121691ccb767ed6`
+|`d966d76e60c07b1454c10a5476d0b6b2c604485f91859625289de3cf6f1c9463`
+|===
+
+两份 record 的 template tree 均为
+`c58f51424acf61c4194b39b7ff6e915d6a28a7560896522f77e6906d532aa43c`，mode 均为 `0400`。
+`latest.record` 为 `0600` 并精确指向第二次 record。两次 project ID 的四类 controller/store path 均已不存在，
+managed run 目录为空。M41 dry-run 与 acceptance record SHA-256 仍分别为
+`c1603675599f69e9f9748ddf1a34a81f8bbe52a24e31f3f8405e04c8542776c7` 和
+`b476f6d14c16b1c668608469dcdeb61cff705b2beabc73ad2aa2a669a170d514`。
+
+== Validation and boundary
+
+最终验证为 Rust 默认 182 项、显式 ignored provider 1 项、Bun 93 项/866 次断言，以及 Rust workspace 与
+Bun fork `lean_pm` 定向 Clippy。release binary 是 ad-hoc signed 的 macOS arm64 development artifact；未提交 notarization。
+
+M42 Phase D 已由 xref:RUST_NEGATIVE_FIXTURE_REGRESSION_M42.adoc[Negative Fixture Regression M42 Phase D]
+登记 malformed、path escape、hash drift、cycle 与 missing package 负 fixture，并验证它们只发布独立 negative evidence，
+不污染正向 `records`/`latest.record`。下一步是 Phase E 的并发调度、失败 terminal record 与历史保留策略；真实外部项目入口继续关闭。

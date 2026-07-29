@@ -1,0 +1,379 @@
+= LeanBun 工作区
+:toc: left
+:sectnums:
+
+== 定位
+
+`leanbun/` 是 Bun-managed / Lake-executed / Lean-compiled 的 package lifecycle manager。Bun 接管 resolved lock、来源获取、完整性、不可变缓存、
+事务、锁、并发、恢复、发布与差分；Lake 保留配置/target/build semantics，Lean 保留编译与 kernel。当前权威设计见
+xref:BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[LeanBun Bun-Managed Lean Package Takeover M30]。
+
+它在 Lake 外部管理两个用户权限：
+
+* 更新许可：任何工具链、依赖锁、依赖源码和依赖镜像变更必须经过显式事务；
+* 编译许可：项目源码可以正常编译，锁定依赖不得在普通构建中被静默源码重编译。
+
+LeanBun 的直接目标是消除同一台机器上不同项目反复构建同一份 mathlib 的现象，并使每一次
+依赖更新、缓存恢复、源码回退和本地编译都有可审计依据。
+
+== 当前状态
+
+M47 已完成为 `0.19.0-m47-dev`：15 个 Rust crate 继续留在同一 workspace，但 Cargo `default-members` 只包含
+10 个 Bun-managed 主线 crate。`inventory-legacy`、`plan`、`state`、`macos-acl-sys`、`approval-macos` 均保留为
+可独立验证的历史研究/支持成员，不移动、不删除、不标 deprecated；`./scripts/dev historical-check` 显式验证它们。
+架构守卫会拒绝历史 crate 回到默认集合或主线 crate 从默认集合消失。XPC、LaunchDaemon、ACL 与 notarization 路线
+明确不是 Bun-managed 主线的构建或运行前提。见
+xref:RUST_HISTORICAL_CRATE_DISPOSITION_M47.adoc[LeanBun Historical Crate Disposition M47]。
+
+M46 Phase C 已完成为 `0.18.0-m46c-dev`：`leanbun-managed` 只接受本仓库登记的 file-loopback Reservoir
+fixture，在私有 run 命名空间内先发布 `0400` pending/audit/authorization/activation 与 exact lock/companion，之后才以
+原子 `active.record` 提交。普通 same-version rebound 已实测不能改变 active；stable repeat、old-new-old oscillation、
+metadata/content drift、disappearance、explicit rebind、new frozen replay 与 old rollback replay 均闭合。所有 frozen/rollback
+replay 保持 registry read counter 不变，未连接公网 Reservoir。见
+xref:RUST_RESERVOIR_LOOPBACK_REGRESSION_M46C.adoc[LeanBun Reservoir Loopback Regression M46 Phase C]。
+
+M46 Phase B 已完成为 `0.17.0-m46b-dev`：resolver 现以 typed outcomes 区分 first pending、stable、ambiguous、metadata
+drift、version rebound、disappeared、content mismatch 与 explicit rebind accepted；精确 rebind claim 绑定 registry、
+package/version、old/new commit、observed metadata 和 active/proposed identities。generation 从 M33 graph 识别 Reservoir
+来源，缺 companion、无明确 version 或 binding/lock/graph 事实不一致即拒绝；Reservoir generation 使用显式 V2 metadata，
+identity 强制绑定 companion。非 Reservoir V1 bytes/identity 与旧历史保持不变。见
+xref:RUST_RESERVOIR_POLICY_GENERATION_M46B.adoc[LeanBun Reservoir Policy and Generation Binding M46 Phase B]。
+
+M46 Phase A 已完成为 `0.16.0-m46a-dev`：选择独立的 `ReservoirBindingDocumentV1` companion，而不是静默扩展
+`LeanBunLockV1`。每条 binding 完整绑定 registry、package/version、metadata、resolved URL、exact commit、download、
+source tree 与 selected-source identity；document 反向绑定精确 V1 lock identity，并逐项核对锁内内容事实。旧 Git/path V1
+字节、Cargo 依赖图和 M42 历史均未改变。本阶段仅建立纯模型与 strict canonical codec，不查询 Reservoir、不发布文件、
+不进入 generation。见 xref:RUST_RESERVOIR_BINDING_MODEL_M46A.adoc[LeanBun Reservoir Binding Model M46 Phase A]。
+
+M45 已完成为 `0.15.0-m45-dev`：纯、bounded 的 `StrictJson` value/parser/error 已下沉到只依赖 `leanbun-core` 的
+`leanbun-codec`；stable read、canonical containment、文件身份、SHA-256 与 `StableJsonFile` 仍留在
+`leanbun-evidence`。Lake bridge、managed 与 plan 直接依赖 codec，`leanbun-lock` 仍只依赖 core 且 V1 canonical line codec
+未改变。Lake probe 的 malformed/unknown/duplicate/trailing/oversize 拒绝类型、Rust/Bun 全量及架构守卫均通过。
+见 xref:RUST_STRICT_JSON_CODEC_M45.adoc[LeanBun Strict JSON Codec Extraction M45]。
+
+M44 已在 Phase B 完整闭合为 `0.14.0-m44b-dev`：历史 inventory/drift/snapshot 已迁入只依赖 core/evidence 的
+`leanbun-inventory-legacy`，仅由 plan 与 approval-macos 消费；混合 `leanbun-package` 及临时 lock re-export 已从工作区移除。
+主线只看见 `leanbun-lock`。Rust/Bun 全量、canonical identities 与当前源码构建的五条 release-binary fixture replay 均通过。
+见 xref:RUST_INVENTORY_LEGACY_EXTRACTION_M44B.adoc[LeanBun Inventory Legacy Extraction M44 Phase B]。
+
+M44 Phase A 已完成为 `0.13.0-m44a-dev`：M31 lock、exact-source、path-provenance 与 Bun 最终路径决策模型已按原字节
+移入只依赖 `leanbun-core` 的 `leanbun-lock`。Lake bridge、resolver、store、generation、build 与 managed 六个主线根均直接
+依赖新 crate，主线闭包不再经过混合 `leanbun-package`；canonical lock graph/text/identity 均未改变。历史 inventory/drift
+仍暂留兼容层，等待 M44 Phase B 物理拆分。见 xref:RUST_LOCK_EXTRACTION_M44A.adoc[LeanBun Lock Crate Extraction M44 Phase A]。
+
+M43 已完成为 `0.12.0-m43-dev`：crate 分层意图、13-crate Cargo 依赖图、M31/M42 受保护摘要及未来
+`leanbun-lock`/`leanbun-inventory-legacy` API 清单已经冻结；自动守卫会拒绝主线触及历史策略层、evidence 反向依赖、
+core 上行依赖及未来 lock 的错误边界。M43 未移动 Rust 模块、Cargo package 或 canonical lock 格式。见
+xref:RUST_CRATE_LAYERING_CONTRACT_M43.adoc[LeanBun Rust Crate Layering Contract M43]。
+
+M42 Phase A、Phase B、Phase C、Phase D、Phase E 已完成。`0.7.0-m42-dev` 先为 `lake-basic` 建立可重复、run-scoped 回归入口；
+`fixture-regress` 每次分配独立 run ID，在 `generation-fixture/m42-regression/runs` 内执行既有完整 M37 构建/故障/
+恢复/回滚链。`0.8.0-m42-dev` 又以 `--fixture=lake-managed-dependency` 接入 adopt、显式单包 update、故障恢复、
+rollback 和三次 build，并清理项目副本、registry、generation、project-control 与 project-local store。`0.9.0-m42-dev`
+进一步以 `--fixture=mathlib-project` 把同一闭包推广到登记的 Mathlib 九包依赖图，并显式更新 `mathlib`。三个阶段都发布
+独立 `0400` record 与原子 `latest.record`，且 M41 records 未改变；见
+xref:RUST_FIXTURE_REGRESSION_M42.adoc[Fixture Regression M42 Phase A] 与
+xref:RUST_MANAGED_DEPENDENCY_REGRESSION_M42.adoc[Managed Dependency Regression M42 Phase B]、
+xref:RUST_MATHLIB_REGRESSION_M42.adoc[Mathlib Regression M42 Phase C]。`0.10.0-m42-dev` 又增加独立
+`negative-matrix`：malformed、path escape、真实 Store tree-digest drift、resolver cycle 与 missing package
+均必须 fail closed；它只发布 negative evidence，正向 records/latest 的内容和权限不变。见
+xref:RUST_NEGATIVE_FIXTURE_REGRESSION_M42.adoc[Negative Fixture Regression M42 Phase D]。
+`0.11.0-m42-dev` 最后以 `concurrent-history` 同时启动两个负矩阵 worker，发布真实 malformed failure terminal，
+审计 positive/negative/terminal/prior-audit 历史，并冻结 `retain-all-v1` 禁止自动删除；见
+xref:RUST_CONCURRENT_HISTORY_REGRESSION_M42.adoc[Concurrent History Regression M42 Phase E]。
+
+当前 M40 已完成，且 M41 Phase A read-only dry-run 与 Phase B 隔离候选验收均已完成，见
+xref:RUST_DEPENDENCY_MANAGED_ENTRY_M40.adoc[Dependency-Bearing Managed Entry M40 Phase A] 与
+xref:RUST_REGISTERED_GIT_CLOSURE_M40.adoc[Registered Git Closure M40 Phase B]。`0.4.0-m40-dev` 在 M39 持久
+`adopt/update/build/recover/rollback` controller 中接通 registered Git metadata、逐包 manifest 传递边、并发 immutable
+store fetch、九包 Bun final paths、实际离线 Lake build、显式 package update、derived cache、恢复与回滚。测试仍只使用
+本库 Mathlib fixture。`0.5.0-m41-dev` 新增只对 `lake-managed-dependency` 开放的 `adopt-dry-run`：生成稳定
+tree/config/toolchain/manifest/root-declaration 证据，但不创建 adoption state；见
+xref:RUST_EXTERNAL_ADOPTION_DRY_RUN_M41.adoc[External Adoption Dry-Run M41 Phase A]。`0.6.0-m41-dev` 的专用
+`fixture-external-accept` 又在隔离副本上闭合 adopt/build/explicit update/fault recovery/rollback/build，并写入
+immutable records；见 xref:RUST_EXTERNAL_FIXTURE_ACCEPTANCE_M41.adoc[External Fixture Acceptance M41 Phase B]。
+该命令没有开放通用外部 mutation CLI。M41 Phase C 已完成 commit-backed development package、安装与 replay；
+Developer ID/notarization 因本机没有身份而保持关闭，见
+xref:RUST_DISTRIBUTION_CLOSURE_M41.adoc[Distribution Closure M41 Phase C]。路线见
+xref:LEANBUN_PRODUCTION_ENTRY_ROADMAP_M39_M41.adoc[M39--M41 production entry roadmap]。M39 空依赖入口见 xref:RUST_MANAGED_PROJECT_ENTRY_M39.adoc[LeanBun Managed Project Entry M39]。M38 仓库内工程发布见
+xref:RUST_BUN_RELEASE_INTEGRATION_M38.adoc[LeanBun-enabled Bun Release Integration M38]。锁定 Bun fork 已产出无 TypeScript/Python/XPC/daemon 运行依赖的单一 Rust binary，并由该 binary 完成 source doctor、loopback 显式更新、M37 离线 build/recovery/rollback replay 和 fresh/upgrade/install recovery/rollback。当前仍是 ad-hoc signed、未 notarize、主仓库 unborn 的 fixture development release，不能作为公开签名发行版。M37 使用本仓库 `test/fixtures/lake-basic` 的隔离副本完成，见
+xref:RUST_REPOSITORY_FIXTURE_ACCEPTANCE_M37.adoc[LeanBun Repository-Local Fixture Acceptance M37]。此前 GRSC 运行因错误缩小项目边界，已降级为
+xref:RUST_LIMITED_REAL_PROJECT_ACCEPTANCE_M37.adoc[rejected external-project experiment]，不能用于 milestone 验收或 managed-mode 资格。强制规则见
+xref:TEST_PROJECT_BOUNDARY.adoc[LeanBun Test Project Boundary]。M31 lock/decision、M32 projections、M33 graph、M34 objects 与 M35 active generation 已由一个
+`Preparing -> Materialized -> Verified -> Published/Failed` 耐久事务绑定；project lock、immutable generation、active 唯一 commit point、retained graph、细粒度 crash recovery 与混合投影拒绝均已落地。
+M36 的 fixed Lake/Seatbelt/path verification/build-image reuse 已作为该事务的执行边界。此前 M5 的 image evidence、atomic seal/bind、build-time re-verification、build sandbox、绑定
+Mathlib controlled build、原子 execution record、显式 stale-running recovery、timeout/signal 进程组
+终态化、project/image 排他构建锁、repeated-build 内容寻址证据、显式复用及其 signal/recovery 已实现并重新成为 Bun-owned transaction 的可复用证据；
+正式项目构建路径关闭；开发测试和 milestone acceptance 只能使用本库登记 fixture。Rust 迁移的零依赖 core、只读 evidence path/stable-read、SHA/strict JSON、provider typed pair、稳定 project input snapshot、
+版本化 canonical identity、project input tree hash，以及 binding/attestation/execution record strict reader 已完成。`leanbun inspect` 可核对本机登记 stack，并观察项目、九包与 Mathlib cache
+中已有的 `.olean`、`.ilean`、`.trace`、`.hash`、`.ltar`。inspect 仍不修改现有 `lakefile`、
+`lean-toolchain`、`lake-manifest.json` 或 `.lake` 内容，也不执行 Lake workspace 命令。
+
+[source,shell]
+----
+./scripts/dev bun run src/cli.ts inspect <project> --provider=dependency-library
+----
+
+默认 `--artifacts=summary --hash=metadata`：完整遍历但只输出分根计数，避免当前近十万条记录膨胀报告。
+`--artifacts=full` 输出逐文件 metadata；`--hash=sha256` 自动使用 full 模式并从真实文件描述符分块计算
+摘要。Lake `.hash` 只计为未认证证据，不能替代真实文件 SHA-256。
+
+真实项目的前后完整快照、provider 交叉验证和风险边界见
+xref:M4_REAL_PROJECT_ACCEPTANCE.adoc[M4 真实项目只读验收]。
+Binding/image identity/attestation schema、授权合取条件和真实项目拒绝证据见
+xref:M5_BUILD_PREFLIGHT.adoc[M5 构建前置授权门]。
+Canonical source/config/artifact tree 规则与正式九包实测摘要见
+xref:M5_IMAGE_EVIDENCE.adoc[M5 Canonical Image Evidence]。
+原子封存协议、故障边界与正式九包 seal 见
+xref:M5_ATTESTATION_SEAL.adoc[M5 Atomic Attestation Seal]。
+项目绑定协议、隔离测试库验收与绑定后拒绝证据见
+xref:M5_PROJECT_BIND.adoc[M5 Atomic Project Bind]。
+完整构件重验协议与“验证通过但未执行”证据见
+xref:M5_BUILD_REVERIFICATION.adoc[M5 Build-Time Attestation Re-verification]。
+项目构件/临时目录写入边界与真实 Seatbelt 探针见
+xref:M5_BUILD_SANDBOX.adoc[M5 Build Sandbox]。
+无依赖实际 Lake target、前后快照与 Elan proxy 边界见
+xref:M5_LAKE_BUILD_PROBE.adoc[M5 Sandboxed Lake Build Probe]。
+绑定 Mathlib fixture 的完整重验、构建与后验复核见
+xref:M5_CONTROLLED_BUILD.adoc[M5 Controlled Mathlib Build Probe]。
+受控构建的单次状态转换、原子记录与实测证据见
+xref:M5_EXECUTION_RECORD.adoc[M5 Controlled Build Execution Record]。
+协调进程/cwd 进程审计、完整证据复核与显式恢复见
+xref:M5_EXECUTION_RECOVERY.adoc[M5 Stale Running Execution Recovery]。
+主动 deadline、外部 signal、进程组收割与后验终结见
+xref:M5_TIMEOUT_SIGNAL.adoc[M5 Timeout and Signal Finalization]。
+project/image 锁、恢复协调与真实争抢验收见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。
+项目输入/输出 identity 与真实 Mathlib reuse evidence 见
+xref:M5_REUSE_EVIDENCE.adoc[M5 Repeated-Build Reuse Evidence]。
+只读候选选择、实时重验和输出破坏拒绝证据见
+xref:M5_REUSE_CANDIDATE_CHECK.adoc[M5 Read-Only Reuse Candidate Check]。
+显式复用事务、独立 `reused` 记录与输出破坏失败链见
+xref:M5_REUSE_TRANSACTION.adoc[M5 Lock-Held Reuse Transaction]。
+Reuse signal/orphan/terminal-lock 恢复见 xref:M5_REUSE_RECOVERY.adoc[M5 Reuse Signal and Recovery]。
+Rust 安全迁移顺序与权限边界见 xref:RUST_MIGRATION_PLAN.adoc[LeanBun Rust Safety Migration Plan]。
+外部管理职责、Lake 唯一权威范围与旧内部状态路线的冻结决定见
+xref:LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]。
+首个 Rust core workspace、API 与验收见 xref:RUST_CORE_M0.adoc[LeanBun Rust Core M0]。
+Rust canonical path、有限稳定读取及 symlink/TOCTOU 门见
+xref:RUST_EVIDENCE_M1.adoc[LeanBun Rust Evidence M1]。
+SHA/JSON 依赖审计、零依赖流式摘要与严格 JSON 结构层见
+xref:RUST_EVIDENCE_M2_SHA_JSON.adoc[LeanBun Rust Evidence M2]。
+Provider registry 的严格 typed schema、共享契约与隔离九包验收见
+xref:RUST_EVIDENCE_M3_PROVIDER_REGISTRY.adoc[LeanBun Rust Evidence M3]。
+Provider override schema、registry↔override 配对与 canonical containment 见
+xref:RUST_EVIDENCE_M4_PROVIDER_PAIR.adoc[LeanBun Rust Evidence M4]。
+Project manifest typed schema、Git/path 变体与 provider revision 纯比较见
+xref:RUST_EVIDENCE_M5_PROJECT_MANIFEST.adoc[LeanBun Rust Evidence M5]。
+Toolchain/manifest/override 联合重读、path containment 与 provider-bound 分类见
+xref:RUST_EVIDENCE_M6_PROJECT_INPUT.adoc[LeanBun Rust Evidence M6]。
+Path-only ProjectId 兼容、二进制 canonical encoding 与 provider package binding identity 见
+xref:RUST_EVIDENCE_M7_PROJECT_INPUT_IDENTITY.adoc[LeanBun Rust Evidence M7]。
+只读 project source tree、稳定文件流式摘要、entry 拒绝门与 Bun 差分见
+xref:RUST_EVIDENCE_M8_PROJECT_INPUT_TREE.adoc[LeanBun Rust Evidence M8]。
+ProjectBindingV1 strict schema、canonical project authority、target/time normalization 与稳定读取见
+xref:RUST_EVIDENCE_M9_PROJECT_BINDING.adoc[LeanBun Rust Evidence M9]。
+ImageIdentity/ImageId 兼容、sealed attestation strict schema 与 artifact policy normalization 见
+xref:RUST_EVIDENCE_M10_IMAGE_ATTESTATION.adoc[LeanBun Rust Evidence M10]。
+Execution record 四态合取、policy/recovery identity、terminal outcome 与 reuse evidence 见
+xref:RUST_EVIDENCE_M11_EXECUTION_RECORD.adoc[LeanBun Rust Evidence M11]。
+Build lock 的 requested/document/derived key 合取、typed ownership identity、`0444` 模式与只读稳定门见
+xref:RUST_EVIDENCE_M12_BUILD_LOCK.adoc[LeanBun Rust Evidence M12]。
+纯内存 lock ownership/transition、隔离 root scope 与 withheld writer authority 见
+xref:RUST_STATE_M0.adoc[LeanBun Rust State M0]。
+外部 `PackageInventoryV1`、多 finding drift report 与显式 checkout observation 边界见
+xref:RUST_PACKAGE_INVENTORY_M0.adoc[LeanBun Rust Package Inventory M0]。
+固定版本 targeted `lake update` 的纯 command plan、完整 effect/risk 与 withheld execution authority 见
+xref:RUST_LAKE_COMMAND_PLAN_M0.adoc[LeanBun Rust Lake Command Plan M0]。
+固定 Lake source/reference 指纹、行级 update 事实与 plan coverage gate 见
+xref:RUST_LAKE_UPDATE_CONTRACT_M1.adoc[LeanBun Rust Lake Update Contract M1]。
+包含上游指纹、命令、环境键、effect/risk/mitigation 与 withheld authority 的 canonical review report 见
+xref:RUST_LAKE_COMMAND_PLAN_REPORT_M2.adoc[LeanBun Rust Lake Command Plan Report M2]。
+绑定 report digest、project、package、nonce 与有限时间窗的 pending approval request 见
+xref:RUST_LAKE_APPROVAL_REQUEST_M3.adoc[LeanBun Rust Lake Approval Request M3]。
+完整 inventory/drift canonical digest 及其向 plan/report/request 的 evidence binding 见
+xref:RUST_PACKAGE_INVENTORY_SNAPSHOT_M4.adoc[LeanBun Rust Package Inventory Snapshot M4]。
+fresh request/snapshot/executable identity 合取与 `ReadyForExplicitApproval` typed decision 见
+xref:RUST_LAKE_COMMAND_PREFLIGHT_M5.adoc[LeanBun Rust Lake Command Preflight M5]。
+外部 grant claim 的 strict decoder、交叉验证与不认证 principal 的边界见
+xref:RUST_LAKE_APPROVAL_GRANT_CONTRACT_M6.adoc[LeanBun Rust Lake Approval Grant Contract M6]。
+绑定 session nonce 的短时 challenge 与强制独立 macOS adapter 的安全契约见
+xref:RUST_TRUSTED_APPROVAL_INGRESS_M7.adoc[LeanBun Rust Trusted Approval Ingress M7]。
+当前进程 stdin/stderr 的只读 terminal observation 与 non-interactive fail-closed 决策见
+xref:RUST_MACOS_TERMINAL_OBSERVATION_M8.adoc[LeanBun Rust macOS Terminal Observation M8]。
+基于 exact rustix safe API 的 effective UID、foreground PGID 与 controlling-session proof 见
+xref:RUST_MACOS_TERMINAL_PROOF_M9.adoc[LeanBun Rust macOS Terminal Proof M9]。
+OS CSPRNG session binding 与只写当前 stderr、不读取 response 的 challenge presentation 见
+xref:RUST_MACOS_CHALLENGE_PRESENTATION_M10.adoc[LeanBun Rust macOS Challenge Presentation M10]。
+按值消费已展示 capability、限制 byte/UTF-8/LF/queued input 且只生成 withheld claim 的 response reader 见
+xref:RUST_MACOS_EXACT_RESPONSE_M11.adoc[LeanBun Rust macOS Exact Response M11]。
+以 private directory FD、`O_EXCL` slot 与 file/directory sync 实现 fail-closed 单次消费的 registry 见
+xref:RUST_MACOS_REPLAY_REGISTRY_M12.adoc[LeanBun Rust macOS Replay Registry M12]。
+把 sealed consumption 与 fresh plan/preflight facts 重新合取且继续 withholding authority 的 proof 见
+xref:RUST_APPROVAL_FRESH_REVERIFICATION_M13.adoc[LeanBun Rust Approval Fresh Reverification M13]。
+对固定 managed-toolchain `bin/lake` 做 adapter-owned bounded streaming SHA 与 path stability 重验的 observer 见
+xref:RUST_TRUSTED_LAKE_EXECUTABLE_M14.adoc[LeanBun Rust Trusted Lake Executable M14]。
+从当前 project/provider evidence 保守重建 inventory、drift 与 targeted plan，并把 M13 输入收紧为 sealed bundle 的实现见
+xref:RUST_TRUSTED_FRESH_PLAN_M15.adoc[LeanBun Rust Trusted Fresh Plan M15]。
+把 exact fresh plan、M13 proof 与 challenge expiry 密封为不可执行 candidate capsule 的实现见
+xref:RUST_SEALED_EXECUTION_CANDIDATE_M16.adoc[LeanBun Rust Sealed Execution Candidate M16]。
+只从未过期 sealed candidate 生成 non-clone `GrantedOnce` wrapper、但仍不启动进程的实现见
+xref:RUST_TRUSTED_EXECUTION_GRANT_M17.adoc[LeanBun Rust Trusted Execution Grant M17]。
+按值消费 grant、重验 Lake executable/expiry 并密封 private environment-aware launch intent 的实现见
+xref:RUST_PRE_EXECUTION_LAUNCH_INTENT_M18.adoc[LeanBun Rust Pre-Execution Launch Intent M18]。
+以 private directory FD、`O_EXCL` slot 和双重 sync 把 launch intent 原子预留一次的实现见
+xref:RUST_DURABLE_LAUNCH_RESERVATION_M19.adoc[LeanBun Rust Durable Launch Reservation M19]。
+macOS fixed-executable handoff 的 Rust/rustix/SDK/Bun exact-source 审计与 fail-closed contract 见
+xref:RUST_EXECUTABLE_HANDOFF_BOUNDARY_M20.adoc[LeanBun Rust Executable Handoff Boundary M20]。
+把同 UID mutator 纳入攻击面并区分 system/read-only/user-owned/test provenance 的 policy 见
+xref:RUST_PATH_LAUNCH_POLICY_M21.adoc[LeanBun Rust Path Launch Threat Model and Policy M21]。
+逐 component `NOFOLLOW`、effective-access、Darwin flags 与 mount identity 的只读 observer 见
+xref:RUST_PATH_PROVENANCE_OBSERVER_M22.adoc[LeanBun Rust macOS Path Provenance Observer M22]。
+macOS ACL opaque-pointer API、保守 mutation-mask 策略与独立 FFI crate 决策见
+xref:RUST_MACOS_ACL_NATIVE_BOUNDARY_M23.adoc[LeanBun Rust macOS ACL Native Boundary M23]。
+独立最小 ACL FFI wrapper、conservative value summary 与 native mount flags 接入见
+xref:RUST_MACOS_ACL_WRAPPER_M24.adoc[LeanBun Rust macOS ACL Wrapper and Native Mount Evidence M24]。
+reservation lineage、fresh executable rehash 与 component evidence 的只借用合取见
+xref:RUST_RESERVATION_BOUND_PATH_ELIGIBILITY_M25.adoc[LeanBun Rust Reservation-Bound Path Eligibility M25]。
+system/read-only/custom deployment acquisition 与 writer/mount continuity 的审计见
+xref:RUST_STABLE_EXECUTABLE_DEPLOYMENT_CONTRACT_M26.adoc[LeanBun Rust Stable Executable Deployment Contract M26]。
+privileged LaunchDaemon、Authorization、XPC 与现有 capability/principal mismatch 审计见
+xref:RUST_PRIVILEGED_COORDINATOR_BOUNDARY_M27.adoc[LeanBun Rust Privileged Coordinator Boundary M27]。
+显式 peer/threat principal、Authorization right、lineage、nonce/deadline 与 binary identity 见
+xref:RUST_PRINCIPAL_EXPLICIT_COORDINATOR_REQUEST_M28.adoc[LeanBun Rust Principal-Explicit Coordinator Request M28]。
+固定 21-field bounded envelope、strict decoder、identity recomputation 与 Rust/Bun wire golden 见
+xref:RUST_COORDINATOR_CANONICAL_WIRE_M29.adoc[LeanBun Rust Coordinator Canonical Wire M29]。
+Bun 接管 Lean package lifecycle 的权威状态、lock/store/projection、transaction 与 recovery 设计见
+xref:BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[LeanBun Bun-Managed Lean Package Takeover M30]。
+M31--M38 的交付物、写入权限、exit gate、风险与工程/发布完成定义见
+xref:LEANBUN_BUN_TAKEOVER_ROADMAP.adoc[LeanBun Bun Package Takeover Roadmap M31--M38]。
+Rust crate 分层重构的意图、`evidence` 共享基础设施定位、package 新旧模型物理隔离顺序及 `StrictJson` 落点审计门见
+xref:LEANBUN_RUST_CRATE_LAYERING_INTENT.adoc[LeanBun Rust Crate Layering Intent]。
+M45 的先行审计、placement decision 与完成证据分别见
+xref:STRICT_JSON_PLACEMENT_DECISION_M45.adoc[LeanBun Strict JSON Placement Decision M45] 和
+xref:RUST_STRICT_JSON_CODEC_M45.adoc[LeanBun Strict JSON Codec Extraction M45]。
+Reservoir companion schema、first-registration freeze/recheck 规则及 M46A 纯模型见
+xref:RESERVOIR_BINDING_AUTHORITY_DECISION_M46A.adoc[LeanBun Reservoir Binding Authority Decision M46 Phase A] 和
+xref:RUST_RESERVOIR_BINDING_MODEL_M46A.adoc[LeanBun Reservoir Binding Model M46 Phase A]。
+Phase B outcome precedence、rebind scope 与 generation 双向绑定见
+xref:RESERVOIR_RESOLUTION_REBIND_POLICY_M46B.adoc[LeanBun Reservoir Resolution and Rebind Policy M46 Phase B] 和
+xref:RUST_RESERVOIR_POLICY_GENERATION_M46B.adoc[LeanBun Reservoir Policy and Generation Binding M46 Phase B]。
+Phase C 的 file-loopback、耐久记录顺序与完成证据见
+xref:RESERVOIR_LOOPBACK_REGRESSION_DESIGN_M46C.adoc[LeanBun Reservoir Loopback Regression Design M46 Phase C] 和
+xref:RUST_RESERVOIR_LOOPBACK_REGRESSION_M46C.adoc[LeanBun Reservoir Loopback Regression M46 Phase C]。
+从 `0.11.0-m42-dev` 向 crate 隔离、codec/evidence 分层、Reservoir binding/rebind 防护及重构后发布闭包推进的版本路线见
+xref:LEANBUN_VERSION_ROADMAP_M43_M48.adoc[LeanBun Version Roadmap M43--M48]。
+项目内锁定的 Rust Bun 上游源码库及使用边界见
+xref:BUN_RUST_UPSTREAM_LIBRARY.adoc[Bun Rust Upstream Source Library]。
+
+详细设计见 xref:LEANBUN_UPDATE_AND_COMPILE_AUTHORITY.adoc[更新与编译许可控制规范]。已根据本机
+Lean 4.32 / Mathlib 4.32 正式依赖库补充了 xref:LEANBUN_LEAN_LAKE_API_BOUNDARY.adoc[Lean / Lake / Mathlib 边界与调用机制]。
+三方文档汇总后的模块、阶段与验收门见
+xref:LEANBUN_IMPLEMENTATION_PLAN.adoc[LeanBun 三方文档汇总实施方案]。
+后续实现反复查阅的本地 Bun 参考位于
+xref:doc/bun-v1.3.14/README.adoc[Bun 1.3.14 技术参考]。
+隔离开发环境的布局、命令和生产边界见
+xref:DEVELOPMENT_ENVIRONMENT.adoc[LeanBun 隔离开发环境]。
+
+== 当前边界
+
+当前仍保持以下边界：
+
+* 只有 `.leanbun-dev` 内已绑定 fixture 可进入受控 Lake 探针；
+* 不迁移或删除现有 mathlib 缓存；
+* 不把现有依赖目录改为只读；
+* 不修改任何活动项目的依赖绑定；
+* 不按时间自动恢复遗留 `running` 记录；同一 project/image 并发构建会被排他锁拒绝；
+* Rust 已能只读验证 lock，但不会获取、释放、删除或恢复 lock；
+* `leanbun-state` 纯函数实验不接入 CLI、不继续实现 writer，也不解释或改变 Lake 内部状态；
+* Rust 外部包 inventory 已建立，但 checkout 未观察不会被报告为 matched，也不会触发修复；
+* Rust Lake update plan 只生成不执行，bare update 与 path/unknown package 均拒绝；
+* 固定 Lake update 契约已锁定 source hash 与行级事实，但只验证 plan，未开放 process adapter；
+* canonical plan report 已可供人工审阅，但不是许可记录，也不是执行队列；
+* approval request 仍为 `pending`/`withheld`；虽已绑定完整 inventory snapshot，但尚未通过 fresh preflight；
+* preflight 只能给出 `ReadyForExplicitApproval`，不能给出执行许可；
+* 外部 grant JSON 仍只能成为 structural claim；M19 已把可信 launch intent durable reserved once，M20 已确认当前 macOS/Rust/Bun
+  没有可接受的 safe FD-bound executable handoff；M21 又将当前 user-owned/noowners-volume 生产 Lake 分类为 mutable-path denied，因而仍
+  没有 process adapter 或 CLI dispatch；M22 已由新 observer 实测为 `DeniedUserOwnedComponent`；fresh
+  checkout 一律保守标为 `Unobserved`，不会运行 Git 发现；M23 完成 ACL/native API 审计并确定独立 FFI crate 边界；
+* M24 已建立独立只读 ACL wrapper 并确认生产 volume `MNT_IGNORE_OWNERSHIP`；当前路径仍是
+  `DeniedUserOwnedComponent`，没有 process adapter 或 CLI dispatch；
+* M25 已建立 non-consuming reservation-bound assessment；fresh rehash/path observation 的所有结果仍为 typed denial +
+  `Withheld`，reservation slot 不会被读取、修改或删除；
+* M26 确认 sealed system binary 不能作为自定义 Lake acquisition route；root-owned install 与 privileged read-only image 仍需外部 privileged
+  coordinator，user-mounted image 与 user-owned toolchain 继续拒绝；
+* M27 确认 `SMAppService` daemon 与 signed-peer XPC 只是 host/transport candidates；现有 M19 capability 不可直接 IPC 化，M25 在 root daemon
+  中使用了错误的 implicit effective UID，因此 coordinator protocol 尚未建立；
+* M28 已建立 principal-explicit pending request identity；M29 已建立固定 21-field canonical envelope 与 strict decoder，并通过 Rust/Bun wire
+  golden；该 privileged/XPC 路线现为可选安全研究，不再阻塞 Bun package takeover 主线；
+* M30 已冻结 Bun-managed / Lake-executed / Lean-compiled 权威边界；`leanbun.lock` 是 resolved graph 权威；Bun 对 manifest、workspace override、
+  runtime override 三类 provenance 显式排序、拒绝重复/冲突并为每包确定唯一 final path，Lake 只接收 Bun-only runtime projection；
+* M31 lock/final-path model 与 M32 Lake bridge 已完成；隔离 fixture 可只读归一 TOML/Lean declarations、生成完整 manifest/runtime projections、由 exact Lake 解析并比较
+  Mathlib 九包实际路径；
+* M33 pure resolver 已完成：只消费 supplied metadata，按 Lake reverse breadth-first/root-priority/later-shadow 规则生成 exact graph，并对 frozen/update pin、shadow/conflict、
+  cycle/depth/toolchain/source drift fail closed；
+* M34 immutable store 已完成：只对 `.leanbun-dev-rust/store-fixture` 开放受限 writer，本地 mock fetch、完整性、安全解包、并发 dedupe、故障清理、只读对象发布与离线重验已通过；该门自身不发布 active generation；
+* M35 active generation 已完成：只对 `.leanbun-dev-rust/generation-fixture` 开放 writer，以 active record 为唯一 commit point，所有 commit 前后 crash 均按确切记录恢复，旧 generation 与 store 引用只保留不自动删除；
+* M36 supervised offline build 已完成：固定 Lake/profile SHA、参数/环境/target/deadline/output，Seatbelt 禁网，实际 `LEAN_PATH` 与 Bun 路径集合精确比较，dependency-free/Mathlib fixture 离线构建，build-image 排他/复用/漂移/崩溃恢复通过；
+* M37 repository-local acceptance 已完成：`lake-basic` 的固定隔离副本通过 precommit 故障恢复、实际路径观察、Lake nonzero、两轮构建、build-image publish/reuse 和 retained-generation 原子 rollback；
+* M38 repository-fixture development release 已完成：`src/lean_pm` 是锁定 Bun fork 的 Rust workspace member，单 binary 已通过 source incompatibility rejection、loopback network update、M37 replay、fresh/upgrade、install crash recovery 和 rollback；公开签名/notarization 仍关闭；
+* M39 已完成：private generation state 与显式 managed project source 分离，`adopt/update/build/recover/rollback` 进入持久 controller；
+* M40 已完成：local path 与 registered Git dependency graph 均进入同一 controller；Mathlib 九包真实传递边、并发 store、Bun final paths、cache seed、离线 build、recovery 与 rollback 已由本库 fixture 验证；外部项目仍未采用；
+* M41 Phase A 已完成：本库小型 path-dependency fixture 通过只读 `adopt-dry-run`，采用前 tree/config/toolchain/manifest
+  与 Lake root declaration 已固定；没有 adoption record、Store、generation 或项目 `.lake`；
+* M41 Phase B 已完成：同一小型 fixture 的隔离副本通过 durable dry-run record、adopt、三次 frozen build、显式单包
+  update、precommit fault recovery 和 rollback；源码输入未变，依赖源码内没有 `.lake`，两份验收记录为 `0400`；
+* M41 Phase C development closure 已完成：LeanBun/Bun fork 均有可引用提交，versioned install 与 installed-binary
+  doctor/export replay 通过；本机没有 Developer ID 和 notary profile，故 Gatekeeper 拒绝是预期边界，不是签名发行成功；
+* M42 Phase A 已完成：`lake-basic` 可由 `fixture-regress` 重复运行；每次保留 immutable summary、清理 run-scoped
+  execution copy，并由 mutable `latest.record` 指向最近一次已完成记录；
+* M42 Phase B 已完成：`lake-managed-dependency` 可重复执行 adopt/build/explicit update/fault/recover/rollback/build，
+  每次结束清理全部 project-scoped controller state 和 local store；
+* M42 Phase C 已完成：`mathlib-project` 九包完整闭包可重复执行同一事务链；两次运行均保持登记模板不变、
+  恢复后无 active temp，并清理项目副本、controller state 与 project-local store；
+* M42 Phase D 已完成：五类登记负 fixture 可由独立矩阵重复验证；负记录与正记录命名空间分离，Store scratch
+  精确清理，正向 `records`/`latest.record` 未改变；
+* M42 Phase E 已完成：两个 barrier-synchronized worker 可并发发布，latest 接受任一完整原子获胜者；真实 parser
+  failure 写入 terminal record，历史审计与 `retain-all-v1` 两轮闭合，M42 路线全部完成；
+* M46 Phase C 已完成：登记的 file-loopback 将 first resolution 固定为 pending-before-active，普通 rebound 只写证据；
+  exact authorization 后才可 rebind，消失、冻结重放和 rollback 均不增加 registry read counter；公网 discovery 仍关闭；
+* GRSC 旁路实验已回滚并降级：其证据保留，但因没有先审计完整项目树，不能算 M37；对应 Cargo external-project binary target 已关闭；
+* 主线将由 Bun 管理 resolved graph、package fetch/store、final paths、generation transaction、cache publication 与 recovery；Lake 只保留
+  config/target/build semantics，Lean 保留编译/kernel；这些写能力将按 M31--M38 roadmap 逐门开放；
+* 隔离开发 fixture 已可执行 supervised Lake build 与同 key verified reuse；dependency image 可以跨 fixture 共享，但 project output 必须另行绑定 project-input identity；
+* 不声称已开放正式项目构建；任何外部 production adoption 都需要与测试完全分离的显式授权。
+
+== Rust 源码构建与历史验证
+
+clean clone 的默认 Rust 源码检查不读取生产 provider、Keychain、Developer ID 或 notarization 配置：
+
+[source,shell]
+----
+cd rust
+cargo test
+cargo clippy --all-targets -- -D warnings
+----
+
+仓库隔离 wrapper 的主线与历史入口分别为：
+
+[source,shell]
+----
+./scripts/rust-dev check
+./scripts/dev historical-check
+----
+
+`./scripts/dev check` 额外运行本机登记的 Bun/Lean integration，因此需要先从
+`config/leanbun-local-provider.example.json` 建立 Git 忽略的
+`config/leanbun-local-provider.json`。该机器配置不是源码构建依赖，也不会进入公开仓库。
+
+== M48 source-only development release
+
+M48 已以 `0.20.0-m48-dev` 完成重构后源码发行闭包。LeanBun 源码基线与 Bun fork adapter 使用配对
+commit/tree；公开库内保存七段脱敏 patch，可从锁定 Bun upstream 重放到相同最终 tree。clean checkout
+已通过 Bun/Lean、主线 Rust、历史 Rust、显式 provider、六条二进制 fixture replay 和真实
+M42→M48→M42 回滚。
+
+构建步骤见 xref:doc/LEANBUN_SOURCE_INSTALL_M48.adoc[M48 source-only installation]；完整摘要见
+xref:RUST_POST_REFACTOR_DISTRIBUTION_M48.adoc[M48 distribution closure] 和
+xref:config/leanbun-release-m48.json[M48 provenance manifest]。该版本是未签名 development source
+release，不声称 notarization、Gatekeeper、公共 Reservoir discovery 或外部项目 adoption。

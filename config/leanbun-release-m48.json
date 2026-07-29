@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "0.20.0-m48-dev",
+  "sourceBaseline": {
+    "commit": "debeef126d8fb42a3bc463dda87d9991206ec48c",
+    "tree": "929ca22faae8d0403c5387a339b1f3638e6361dd",
+    "cargoLockSha256": "f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07"
+  },
+  "bun": {
+    "upstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+    "upstreamTree": "81a25490c3c5aeb4271a200a96943239b686404b",
+    "pairedForkCommit": "b5a75e921c10b912c10885207e49ef102ed9e874",
+    "pairedForkTree": "d390a478a2ec5462b627e8e4e627fa583c223073",
+    "cargoLockSha256": "45ea4cc5c2075086ae9c8477a5e45309ee0928d9b11313ffd4bf85d2fff8bffb",
+    "redactedPatchSeriesSha256": "6dec1d63014f366b121333cd421eef3c9825dfcc79be8e299706578921a08fc9",
+    "patchReplayTree": "d390a478a2ec5462b627e8e4e627fa583c223073",
+    "lolhtmlCommit": "77127cd2b8545998756e8d64e36ee2313c4bb312",
+    "lolhtmlTree": "fb6365a7acdfd8cb0bc1836853142181a471fcc7"
+  },
+  "toolchain": {
+    "rustc": "1.96.0 (ac68faa20 2026-05-25) (Homebrew)",
+    "cargo": "1.96.0 (30a34c682 2026-05-25) (Homebrew)",
+    "host": "aarch64-apple-darwin",
+    "llvm": "22.1.6"
+  },
+  "binary": {
+    "target": "aarch64-macos",
+    "size": 1923656,
+    "sha256": "7ae0ee81016a9782a4d1618aeace888a382f0ed495682a140443b9612e068b85",
+    "signatureStatus": "unsigned-development",
+    "notarizationStatus": "not-submitted"
+  },
+  "readers": {
+    "lock": ["leanbun-lock-v1", "reservoir-bindings-v1"],
+    "activeGeneration": [1, 2],
+    "managedProjectSchema": [1]
+  },
+  "regression": {
+    "bunLeanLogicalTests": 208,
+    "bunLeanAssertions": 1770,
+    "mainlineRustPassed": 117,
+    "mainlineRustIgnored": 1,
+    "historicalRustPassed": 79,
+    "explicitProviderPassed": 1,
+    "lakeBasicRecordSha256": "9261924bef8b7d1682d4f72ddb50050ee6c2d042090dbe640f369a40337f67c8",
+    "reservoirResultSha256": "060c5fb2680625fedab4d4c1e450fa944993418f5ee13b548808bf02005f47ad"
+  },
+  "upgrade": {
+    "fromVersion": "0.11.0-m42-dev",
+    "fromBinarySha256": "f6416817e2c893b311245c65f2a54668b0a633e028de1fe31e05701322670359",
+    "rollbackExecutedOldBinary": true,
+    "retainedEvidenceUnchanged": true
+  }
+}

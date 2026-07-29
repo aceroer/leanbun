@@ -1,0 +1,53 @@
+= LeanBun Rust Lake Command Plan Report M2
+:toc: left
+:sectnums:
+
+== 结论
+
+`leanbun-plan` 已加入纯内存 `LakeCommandPlanReportV1`。它只接受通过
+`verify_lake_update_plan_contract_v1` 的 `LakeCommandPlanV1`，生成确定性、可由人和其他实现复核的 canonical JSON；
+不会写文件、读取生产依赖、调用进程或授予 execution authority。
+
+报告的 `executionAuthority` 固定为 `withheld`。生成报告不等于批准或执行命令。
+
+== 报告内容
+
+报告按固定字段顺序公开：
+
+* schema、report type、Lake version 和 command family；
+* M1 contract schema 以及六个上游 source SHA-256；
+* M4 inventory/drift snapshot SHA-256；
+* canonical executable、SHA/length/mode/file facts、参数数组和 canonical cwd；
+* 仅包含键名的 environment allowlist；
+* permission class、network policy、排序后的 effects 与 risks；
+* 从 M1 fact table 派生的 mitigations；
+* withheld execution authority。
+
+参数保持执行顺序，不经过 shell 拼接。environment、effect 和 risk 使用确定性排序。路径若不是有效 UTF-8，报告
+失败关闭，避免以 lossy display 误导审阅者。
+
+== Canonical JSON contract
+
+`to_canonical_json` 使用固定键顺序、紧凑 JSON 和与 `JSON.stringify` 一致的字符串转义。共享 golden
+`rust/golden/lake-command-plan-report.json` 固定一个 targeted mathlib update 报告；Rust 从真实 typed plan 生成报告，
+规范化临时 fixture path 后要求字节完全相等，Bun 则重新 parse/stringify 同一文件并核对关键安全字段。
+
+golden 只是 report contract，不是待执行队列，不包含许可令牌，也不会被 CLI 自动发现。
+
+== Verification
+
+Rust 测试先生成 `--keep-toolchain update mathlib` 的 withheld plan，再通过 M1 gate 和 report renderer。Bun oracle
+验证 canonical bytes、参数数组、environment keys、七项 effect、风险、四项 mitigation、六个 source hash 和 withheld
+authority。
+
+测试只使用隔离临时目录中的假 executable path token；未执行该文件，也未运行 `lake update`。
+
+== 后续门
+
+纯 `LakeCommandApprovalRequestV1` 已完成：它对 canonical report 计算内容摘要，并绑定 project、package、Lake version、
+network requirement 和 expiry/nonce，见
+xref:RUST_LAKE_APPROVAL_REQUEST_M3.adoc[LeanBun Rust Lake Approval Request M3]。它仍只表达待批准范围，不产生许可、
+不接入 CLI、不 spawn Lake。下一门补齐 inventory/drift snapshot digest 后才进入只读 preflight。
+
+上游 plan 见 xref:RUST_LAKE_COMMAND_PLAN_M0.adoc[LeanBun Rust Lake Command Plan M0]；契约事实见
+xref:RUST_LAKE_UPDATE_CONTRACT_M1.adoc[LeanBun Rust Lake Update Contract M1]。

@@ -1,0 +1,65 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+RUST_WORKSPACE="$REPO_DIR/rust"
+RUST_DEV_ROOT="$REPO_DIR/.leanbun-dev-rust"
+CARGO_BIN="/opt/homebrew/bin/cargo"
+RUSTC_BIN="/opt/homebrew/bin/rustc"
+
+mkdir -p "$RUST_DEV_ROOT/cargo-home" "$RUST_DEV_ROOT/target" "$RUST_DEV_ROOT/tmp"
+
+run_cargo() {
+  (
+    cd "$RUST_WORKSPACE"
+    /usr/bin/env -i \
+      PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+      CARGO_HOME="$RUST_DEV_ROOT/cargo-home" \
+      CARGO_TARGET_DIR="$RUST_DEV_ROOT/target" \
+      CARGO_NET_OFFLINE=true \
+      RUSTC="$RUSTC_BIN" \
+      TMPDIR="$RUST_DEV_ROOT/tmp" \
+      LC_ALL="C.UTF-8" \
+      LANG="C.UTF-8" \
+      "$CARGO_BIN" "$@"
+  )
+}
+
+case "${1:-check}" in
+  test)
+    shift
+    run_cargo test "$@"
+    ;;
+  check)
+    shift
+    run_cargo fmt --all --check
+    run_cargo clippy --all-targets -- -D warnings
+    run_cargo test "$@"
+    ;;
+  historical-check)
+    shift
+    run_cargo clippy \
+      -p leanbun-inventory-legacy \
+      -p leanbun-plan \
+      -p leanbun-state \
+      -p leanbun-macos-acl-sys \
+      -p leanbun-approval-macos \
+      --all-targets -- -D warnings
+    run_cargo test \
+      -p leanbun-inventory-legacy \
+      -p leanbun-plan \
+      -p leanbun-state \
+      -p leanbun-macos-acl-sys \
+      -p leanbun-approval-macos \
+      "$@"
+    ;;
+  fmt)
+    shift
+    run_cargo fmt --all "$@"
+    ;;
+  *)
+    echo "usage: ./scripts/rust-dev [check|historical-check|test|fmt]" >&2
+    exit 64
+    ;;
+esac

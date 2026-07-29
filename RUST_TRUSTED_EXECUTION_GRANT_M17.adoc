@@ -1,0 +1,58 @@
+= LeanBun Rust Trusted Execution Grant M17
+
+== Outcome
+
+M17 已在 `leanbun-approval-macos` 建立可信、进程内线性的 `TrustedLakeExecutionGrantV1`。公开入口
+`grant_trusted_lake_execution_once_v1` 只接受按值传入的 M16 `TrustedLakeExecutionCandidateV1`；成功 decision 与 wrapper authority 均为
+`GrantedOnce`。
+
+这是第一种可信 execution capability，但本门没有 process consumer，因此没有运行 Lake。旧 M6 外部 JSON grant 仍只是
+`StructurallyValidExternalClaim`，其 authority 仍为 `Withheld`，不能转换成 M17 capability。
+
+== Candidate revalidation
+
+grant factory 在内部读取当前 Unix time，并在提升 wrapper authority 前重新核验：
+
+* candidate schema、`ExactPlanAndProofSealed` decision 与原 `Withheld` authority；
+* exact plan 仍通过 Lake update contract；
+* canonical plan-report SHA 与 M13 proof 一致；
+* plan/proof 的 inventory snapshot 与 executable SHA 一致；
+* proof decision 是 `FreshFactsReverified` 且 authority 仍为 `Withheld`；
+* candidate identity 可从 proof 与 expiry 原样重算；
+* expiry 晚于 proof verification time；
+* current grant time 不早于 proof verification，且严格早于 expiry。
+
+任何 identity、plan、proof、clock rollback 或 expiry 异常均 fail closed，不产生 grant。
+
+== Linear capability
+
+`TrustedLakeExecutionGrantV1` 不实现 `Clone` 或 serialization，并原样拥有整个 M16 candidate，因此只携带一个 exact executable、arguments、
+cwd 和 environment allowlist。以后 process adapter 必须按值消费 grant；只持有 plan、proof、candidate hash 或旧 M6 JSON claim 均不足以执行。
+
+grant identity 绑定 candidate SHA、proof SHA、plan-report SHA、grant time、expiry 与 `granted-once` authority。plan 自身仍保持
+`PlanExecutionAuthorityV1::Withheld`；只有不可外部构造的 wrapper 表示一次执行能力，避免普通 plan 意外变成可执行对象。
+
+Rust move semantics 只提供本进程内的线性所有权。M12 durable replay registry 继续保证用户确认不能被跨进程重复消费；未来 process
+adapter 还必须明确 spawn 前后的 durable execution record，不能把 move semantics 当作 crash recovery。
+
+== Security boundary
+
+M17 不读取环境变量、不组装环境值、不重新打开 executable、不写 filesystem、不调用 process/Git/Lake、不接入 CLI，也不提供 grant
+JSON writer/reader。外部文本永远不能构造 `TrustedLakeExecutionGrantV1`。
+
+== Verification
+
+Rust public-pipeline tests 覆盖 M14 -> M15 -> M13 -> M16 -> M17：grant 持有与 reviewed plan 完全相同的 command，authority 只在
+non-clone wrapper 上成为 `GrantedOnce`；clock rollback 与 `now >= expiry` 分别 typed reject。
+
+Bun boundary oracle 固定 candidate/plan/proof digest 重验、current-time gate、non-clone capability、distinct trusted authority，并继续拒绝
+subprocess、environment、deletion、unsafe 与 `lake update`。
+
+== 后续执行边界
+
+M18 已建立 consuming pre-execution gate，见
+xref:RUST_PRE_EXECUTION_LAUNCH_INTENT_M18.adoc[LeanBun Rust Pre-Execution Launch Intent M18]。它按值消费 grant，重验 expiry 与固定 Lake
+executable，并从 private canonical directories 组装 sealed environment-aware launch intent；仍不调用 process，也不接入 CLI。
+
+前置 capsule 见 xref:RUST_SEALED_EXECUTION_CANDIDATE_M16.adoc[LeanBun Rust Sealed Execution Candidate M16]；外部 claim 边界见
+xref:RUST_LAKE_APPROVAL_GRANT_CONTRACT_M6.adoc[LeanBun Rust Lake Approval Grant Contract M6]。

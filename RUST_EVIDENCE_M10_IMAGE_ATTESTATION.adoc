@@ -1,0 +1,73 @@
+= LeanBun Rust Evidence M10: Strict Image Attestation Reader
+:toc: left
+:sectnums:
+
+== 结论
+
+Rust `leanbun-evidence` 已实现 `ImageIdentityV1`、`ImageAttestationV1`、Bun-compatible `image_id` 和只读
+`read_image_attestation`。reader 以调用者提供的 typed `ImageId` 定位 `attestations/<image-id>.json`，稳定读取后
+同时发布原文件 SHA-256 与 typed attestation。
+
+M10 不创建 attestation store、不封存或修复 image、不重算实际依赖/构件树、不授予构建许可，也没有 writer。
+
+== Exact schemas
+
+Attestation root 只允许：
+
+* `schemaVersion = 1`、`imageId`、`providerId`、`status = "sealed"`；
+* `identity`、`provider`；
+* `dependencyTreeHash`、`artifactTreeHash`、`artifactCount`；
+* `artifactPolicy`、`sealedAt`。
+
+Image identity 只允许 Bun v1 的七个 identity 字段及 `schemaVersion = 1`。provider 只允许 registry/override
+两份 SHA-256；artifact policy 只允许 `missingRoots`。所有层级拒绝 unknown field，strict JSON 层继续拒绝
+duplicate key、trailing value、非法 Unicode 和资源超限。文件上限为 1 MiB。
+
+所有 SHA-256 必须 lowercase hexadecimal；Lean compiler 与 Mathlib revision 必须是 40 位 lowercase Git revision。
+toolchain、target platform、provider ID 必须非空、最多 256 UTF-8 bytes 且没有控制字符。
+
+== Image identity consistency
+
+Rust `image_id` 精确复现 Bun：按固定字段顺序构造紧凑 JSON，再对 UTF-8 bytes 做 SHA-256。共享 identity 得到：
+
+`bd31ac0053f1686a9d757f1781d8ada79df51a62d5067efa5d05a2a96591ddf9`
+
+reader 同时要求：
+
+* 请求的 typed ImageId、文件名对应 ID、文档 `imageId` 三者一致；
+* 从 typed identity 重算的 ImageId 与请求一致；
+* `provider.registrySha256 = identity.canonicalManifestHash`。
+
+因此合法 SHA 文本不能冒充另一份 identity 或另一份 registry evidence。
+
+== Artifact evidence normalization
+
+dependency/artifact tree hash 均为 typed SHA-256。`artifactCount` 必须是非负 JSON integer，且不超过 JavaScript
+safe integer 上限 `9007199254740991`；小数、指数形式、负数和越界值拒绝。
+
+`missingRoots` 最多 4096 项，每项非空、最多 256 UTF-8 bytes、无控制字符，且整个数组必须唯一并按 UTF-8
+bytes 严格升序。`sealedAt` 复用 M9 canonical UTC calendar validator，只接受
+`YYYY-MM-DDTHH:mm:ss.sssZ`。
+
+== Filesystem boundary
+
+state root 必须先由调用者 canonicalize。`attestations` 必须是 state root 内的直接目录；symlinked store 在构造
+目标文件路径前拒绝。目标 JSON 本身继续受 direct regular file、canonical containment、有限读取和 TOCTOU 重读门保护。
+
+== Bun/Rust 差分
+
+共享 `rust/golden/image-attestation-cases.tsv` 覆盖有效 sealed attestation，以及 unknown field、非 sealed status、
+identity/ImageId drift、registry/identity drift、小数 artifact count、未排序 missing roots 和非规范 sealedAt。
+Bun 独立 oracle 与 Rust decoder 对八组案例给出相同结果。
+
+Rust 文件系统测试另验证稳定重复读取、requested/document/derived ImageId 合取，以及 symlinked attestation store
+在外部文件读取前被拒绝。
+
+== 边界与下一门
+
+M10 只证明封存文档内部自洽且稳定可读。它尚未把 attestation 与当前 provider、源码树、构件树重新比较，不能
+单独证明 image 仍可用。
+
+下一门 `ControlledBuildExecutionRecordV1` strict typed reader 已完成，见
+`RUST_EVIDENCE_M11_EXECUTION_RECORD.adoc`：区分 running/completed/failed/reused 的字段合取、terminal outcome 与
+reuse evidence，并绑定 requested execution ID。仍未开放 Rust writer。

@@ -1,5 +1,5 @@
 use leanbun_core::{Sha256, Sha256Hasher};
-use leanbun_package::PackageKeyV1;
+use leanbun_lock::PackageKeyV1;
 use leanbun_resolver::{LeanExactSourceV1, LeanPackageCandidateV1, LeanResolutionGraphV1};
 use std::path::{Path, PathBuf};
 use std::sync::{

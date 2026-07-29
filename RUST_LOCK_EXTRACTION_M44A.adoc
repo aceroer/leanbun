@@ -1,0 +1,81 @@
+= LeanBun Lock Crate Extraction M44 Phase A
+:toc: left
+:sectnums:
+
+== Result
+
+M44 Phase A is complete as `0.13.0-m44a-dev`. The current-generation lock, exact-source and package-path decision model has been mechanically extracted from the mixed `leanbun-package` namespace into `leanbun-lock`.
+
+No lock field, parser rule, ordering rule, error precedence, digest domain, path decision or resolver behavior changed. Inventory/drift remains in `leanbun-package` for Phase B, and Reservoir and `StrictJson` semantics remain outside this milestone.
+
+== Physical boundary
+
+`leanbun-lock` contains the unchanged M31 `lock_v1.rs`, a narrow crate root and the moved M31 golden example. Its only workspace dependency is `leanbun-core`.
+
+The six mainline roots now declare and import `leanbun-lock` directly:
+
+* `leanbun-lake-bridge`;
+* `leanbun-resolver`;
+* `leanbun-store`;
+* `leanbun-generation`;
+* `leanbun-build`;
+* `leanbun-managed`.
+
+Their complete Cargo closures contain no `leanbun-package`, `leanbun-plan`, `leanbun-state`, `leanbun-approval-macos` or `leanbun-macos-acl-sys` edge. Source scanning also finds no `leanbun_package`, `PackageInventoryV1`, `DependencyDrift*`, `build_package_inventory` or `report_dependency_drift` reference under those six roots.
+
+`leanbun-package` temporarily re-exports the lock API solely for historical consumers and compatibility. Mainline use of that bridge is rejected by the dependency checker. Phase B must remove this compatibility edge while extracting `leanbun-inventory-legacy`.
+
+== Mechanical identity proof
+
+The moved `lock_v1.rs` has SHA-256 `f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c`, exactly equal to the M43 pre-refactor source digest.
+
+The moved Rust M31 example reproduces the frozen identities:
+
+[cols="1,2",options="header"]
+|===
+|Identity |SHA-256
+
+|Package graph
+|`c9fc59e7b30dd812976cdab1d048c6d898cd59346741137339d3a3c3379219e8`
+
+|Lock identity
+|`917aeb33d1c71f9cae5898def87ce73a5c12c49c31b93923dfd38ee6c8afb775`
+
+|Canonical lock text
+|`729a9af00601ab0dba7eba6b9f1230002dadd62e507e1179f97cea56a801efd3`
+|===
+
+The M31 Bun oracle independently reproduced the same graph, text and lock identities. The M31 golden and model fixture files retained their M43 hashes.
+
+== Enforced dependency gate
+
+The architecture checker now selects the M44A 14-crate graph when `leanbun-lock` exists. It requires:
+
+* `leanbun-lock` depends exactly and only on `leanbun-core`;
+* each mainline root has a direct `leanbun-lock` dependency;
+* no mainline transitive closure reaches the mixed package or historical policy crates;
+* the moved lock source still matches its M43 digest;
+* every M31/M42 protected file not intentionally changed by the crate-root compatibility re-export remains byte-identical.
+
+The one intentionally changed protected source is the old mixed `leanbun-package/src/lib.rs`: its local `lock_v1` module declaration became a compatibility re-export from `leanbun-lock`. This exception is explicit and confined to Phase A; the lock implementation itself is still verified byte-for-byte at its new path.
+
+== Validation
+
+The following passed on 2026-07-29:
+
+* architecture checker: 14 crates and six mainline roots accepted;
+* dependency policy: 8 tests, 11 assertions, 0 failures;
+* Bun suite: 101 tests, 877 assertions, 0 failures;
+* Rust formatting and workspace Clippy;
+* Rust workspace: 184 default tests, 0 failures, with one provider snapshot test explicitly ignored;
+* explicit provider snapshot: 1 test, 0 failures;
+* M31 golden example and Bun oracle identities;
+* mainline legacy-import scan.
+
+All tests used the repository's isolated development state and registered fixtures. No production dependency library or external project was mutated.
+
+== Next gate
+
+M44 Phase B may now create `leanbun-inventory-legacy`, move inventory/drift and snapshot APIs into it, redirect only historical plan/approval consumers, and delete the temporary mixed `leanbun-package` bridge.
+
+Phase B remains mechanical: it must not alter inventory snapshot bytes, drift classification, lock identities, mainline behavior or M42 histories.

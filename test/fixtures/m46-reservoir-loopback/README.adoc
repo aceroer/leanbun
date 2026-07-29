@@ -1,0 +1,9 @@
+= M46 Reservoir File-Loopback Fixture
+
+This directory is the only registry input accepted by the M46C regression controller. It is a
+repository-owned deterministic fixture, not a public Reservoir mirror and not a network client.
+
+`registry.tsv` contains four observations over one registry/package/version scope: the initially
+frozen binding, a same-version rebound, metadata-only drift, and content drift at the old commit.
+The regression models disappearance by returning no observations while retaining the old lock,
+companion and activation records.

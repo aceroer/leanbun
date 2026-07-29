@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "version": "0.10.0-m42-dev",
+  "class": "isolated-negative-fixture-regression-phase-d",
+  "leanBunSource": {
+    "commit": "79d4bee0595d188ad2f87e94d399a5f26f4c3c7b",
+    "tree": "656a9da9bcbb6223563762b7ad42bd9d77c0769d",
+    "sourceFileCount": 135,
+    "sourceListSha256": "19332fb03fab1c887bad8f7dfc786b0a97b9ce95aeca6213b5cde56713e76f03"
+  },
+  "bunFork": {
+    "branch": "codex/leanbun-m38",
+    "commit": "4b843dd210da556f8e98c08221c3dfc05fb3f8e2",
+    "tree": "648d10b242f71f5adccf29d23aebd26d8989e3db",
+    "upstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+    "upstreamTree": "81a25490c3c5aeb4271a200a96943239b686404b",
+    "cargoLockSha256": "47f4e874c284ae44ab348eb703cb43a363cbcb95f9933b52b971134ad24eb39e"
+  },
+  "binary": {
+    "path": ".leanbun-dev-rust/release/bun-fork/target/release/leanbun",
+    "sha256": "59b0186d14d9564046bc3dc187156cf76c6e9751d5cdd869cfe0dcb8fae0e421",
+    "sizeBytes": 1732232,
+    "format": "Mach-O thin arm64",
+    "signature": "adhoc-linker-signed",
+    "cdHash": "7cf854e1f9069ab3f76bf054ff456a0a41f8c91d",
+    "notarization": "not-submitted"
+  },
+  "negativeRegression": {
+    "command": "fixture-regress --fixture=negative-matrix",
+    "fixtureRoot": "test/fixtures/m42-negative",
+    "matrixTreeSha256": "99be7b47137350fa7d1fc274f54fd15eedbfca3637e31964a92be7ba2991690d",
+    "cases": [
+      {"name": "malformed-manifest", "rejection": "JSON_MALFORMED"},
+      {"name": "path-escape", "rejection": "PATH_ESCAPES_ALLOWED_ROOT"},
+      {"name": "hash-drift", "rejection": "TREE_DIGEST_MISMATCH"},
+      {"name": "cycle", "rejection": "DEPENDENCY_CYCLE"},
+      {"name": "missing-package", "rejection": "REGISTERED_CLOSURE_INCOMPLETE"}
+    ],
+    "runs": [
+      {
+        "runId": "d75d71f5cd5934d164dab6a91d38530528c343f0b76904053edad780faac58ee",
+        "recordSha256": "ca7fb76f349136a070e2d51f4fc52e7d78831c94af078aa6e5abd623c2150612"
+      },
+      {
+        "runId": "91f61aa09578ec2758e333357b0041f7ed5d44318a35ca6927eb97c2229c94f7",
+        "recordSha256": "09186517daacd964f178342c015b04fd5a30814ef55cb8d8a61d0c7cb1999f53"
+      }
+    ],
+    "negativeLatestSha256": "74f7ee6fc03ed83da057550e8fd5dd9a2c383f8575d114dbf5f4ef89814bcd36",
+    "positiveRecordCountBeforeAndAfter": 6,
+    "positiveLatestSha256BeforeAndAfter": "bf93aeeed4ee8c470f1fc1c03400fce774d4fed6253f794342f236a796b66d8f",
+    "storeScratchAfter": "empty",
+    "managedProjectState": "not-created",
+    "m41RecordsUnchanged": true
+  },
+  "validation": {
+    "rustDefaultTests": 183,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "bunTests": 93,
+    "bunExpectCalls": 866,
+    "workspaceClippy": "passed",
+    "forkLeanPmClippy": "passed"
+  },
+  "boundaries": {
+    "positiveEvidenceNamespace": "unchanged",
+    "negativeEvidenceNamespace": "separate",
+    "concurrentRegressionScheduling": "deferred-to-m42-phase-e",
+    "actualExternalProject": "not-authorized"
+  }
+}

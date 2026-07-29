@@ -1,0 +1,73 @@
+= LeanBun Rust Durable Launch Reservation M19
+
+== Outcome
+
+M19 已在 `leanbun-approval-macos` 建立 intent-bound durable launch reservation。调用方先用
+`open_trusted_lake_launch_reservation_registry_v1` 打开 private registry，再以
+`reserve_launch_intent_v1` 按值消费 M18 `TrustedLakeLaunchIntentV1`。
+
+成功时返回 non-clone `TrustedLakeLaunchReservationV1` / `ReservedOnce`；本门仍没有 process consumer，不 spawn、不运行 Lake、不接入 CLI。
+
+== Private registry
+
+registry root 必须是 absolute direct directory，由 `open(... DIRECTORY|NOFOLLOW|CLOEXEC)` 获得 directory FD，并满足：
+
+* owner 是当前 effective user；
+* mode 精确为 `0700`；
+* 后续 slot 全部相对这个已打开 FD 操作。
+
+每个 intent 使用 `<intent-sha256>.launch-reserved-v1` 作为唯一 slot。slot 以
+`openat(WRONLY|CREATE|EXCL|NOFOLLOW|CLOEXEC, 0600)` 原子创建；已存在即 `AlreadyReserved`，不读取、不覆盖、不删除。
+
+== Durable ordering
+
+reservation 依次执行：
+
+. 重算 M18 intent identity，并检查 `prepared <= reserved < expiry`；
+. 原子创建唯一 slot；
+. 写入 canonical reservation record；
+. `slot.sync_all()`；
+. `fsync(registry directory FD)`；
+. 再读取 durable time，要求 `reserved <= durable < expiry`；
+. 仅在全部成功后返回 `ReservedOnce` capability。
+
+若 slot 写入、file sync 或 directory sync 失败，结果为 `PersistenceUncertain`；若同步完成后发生 clock rollback 或已经过期，也不返回
+capability。上述情况 slot 全部保留，未来同 intent 永久 fail closed。
+
+== Reservation record
+
+0600 canonical record 绑定：intent SHA、grant SHA、candidate SHA、proof SHA、fresh executable SHA、prepared time、reserved time、expiry 与
+`reserved-once` authority。reservation SHA 是实际持久化 bytes 的 SHA-256。
+
+返回的 reservation 原样拥有 launch intent，只读暴露 exact executable、arguments、cwd、environment、times 与 hashes。它不实现 Clone 或
+serialization；以后 process consumer 必须按值消费 reservation，而不是重新接受路径或命令参数。
+
+== Crash boundary
+
+空 slot、部分 record 或 durability uncertain slot 都表示启动机会已经被占用。M19 不提供 retry、repair、delete 或 stale-time recovery；自动删除
+slot 会重新开放同一 intent 的执行权限，因此被明确禁止。
+
+M12 保证用户 response 只能消费一次，M19 进一步保证同一 sealed launch intent 在 crash 边界上只能预留一次。两者使用不同 identity 与
+registry，不可互相替代。
+
+== Security boundary
+
+M19 唯一写操作是调用方明确提供的 private reservation registry。它不修改 project、provider、toolchain、Lake cache 或生产依赖目录；不调用
+process/Git/Lake，不读取环境变量，也不删除 slot。
+
+== Verification
+
+Rust public-pipeline tests 覆盖：完整 M14 -> M19 intent 成功落盘，record SHA 对应实际 bytes 且 mode 为 0600；预置空 crash slot 拒绝；
+file/directory sync 后到达 expiry 时拒绝 capability但保留唯一 slot。
+
+Bun boundary oracle 固定 0700 directory FD、`O_EXCL|NOFOLLOW`、0600 slot、file/directory sync、post-sync expiry gate、non-clone reservation，
+并继续拒绝 subprocess、host environment、deletion、unsafe 与 `lake update`。
+
+== 下一门
+
+M20 审计已完成，见 xref:RUST_EXECUTABLE_HANDOFF_BOUNDARY_M20.adoc[LeanBun Rust Executable Handoff Boundary M20]。当前锁定
+macOS/Rust/rustix/Bun 组合没有可接受的 safe FD-bound launch primitive，因此 fail closed，不实现生产 spawn 或 CLI dispatch。M21 只建立
+path-based launch threat model 与 admissibility policy。
+
+前置 launch intent 见 xref:RUST_PRE_EXECUTION_LAUNCH_INTENT_M18.adoc[LeanBun Rust Pre-Execution Launch Intent M18]；approval replay 见
+xref:RUST_MACOS_REPLAY_REGISTRY_M12.adoc[LeanBun Rust macOS Replay Registry M12]。

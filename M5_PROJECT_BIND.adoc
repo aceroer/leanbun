@@ -1,0 +1,72 @@
+= LeanBun M5 Atomic Project Bind
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第四阶段已实现显式 project bind transaction。它把一个 canonical project path、当前 manifest、Lean
+toolchain、sealed image 和允许 target 集合封装为项目内 `.leanbun/binding.json`。当前只在隔离测试库副本
+验收；真实项目未写 binding，Lake 仍关闭。
+
+[source,shell]
+----
+leanbun project bind <project> --image=<sha256> --target=<target>...
+----
+
+target 列表必须非空、无重复、符合 build target 语法，并按 UTF-8 原始字节规范排序。M5 不提供隐式
+replace：目标已存在且 policy 不同会返回 `BINDING_WRITE_CONFLICT`。
+
+== Bind transaction v1
+
+. 以 SHA-256 模式读取项目 canonical path、manifest、toolchain、override 与 provider；
+. 要求项目 override 与 provider 完全登记匹配，provider 九包 clean/matched；
+. 读取指定 sealed attestation 并核对 schema 与 Image ID；
+. 独立重算完整 source/config/dependency/artifact evidence，逐项比对 attestation；
+. 耗时取证后再次读取项目、provider 与 attestation SHA-256，任何中途漂移均拒绝；
+. 生成 path-bound project ID、manifest hash、toolchain、provider、image 与 target allowlist；
+. 拒绝 symlink `.leanbun/`，以 `O_EXCL | O_NOFOLLOW` 获取协作锁；
+. 同目录临时写入、文件 `fsync`、mode `0444`、原子 rename、目录 `fsync`；
+. 立即稳定回读并核对 schema、SHA-256、完整 JSON 和 mode，随后清理锁。
+
+同 policy 重复执行返回 `already-bound` 并保留原始时间；不同 image、manifest、provider、project path 或
+target policy 不覆盖旧 binding。遗留锁与临时文件必须先人工审计，不自动猜测 stale。
+
+== 隔离测试库验收
+
+样本是 `test/fixtures/mathlib-project` 的临时副本，安装 production provider override 后，在禁网、禁 Lake
+sandbox 中绑定正式 sealed image：
+
+[cols="1,2"]
+|===
+|Status |`bound`
+|Image ID |`f96a870796339f594c527940b43b4a7c1941e8180e9b6f449a917d2f5aff5ff1`
+|Project ID |`d075c79e2c83ec195207e978816c641a3a5fa9a08a4ddf6d4ca05aeb333cd688`
+|Manifest SHA-256 |`66681669e88d39f22ee0acc14ea8540b76429b0aec1c35caa462d6d7ee690437`
+|Allowed target |`LeanBunMathlibFixture`
+|Binding SHA-256 |`7495aa2da63b5071faa64a8ca64a8ec28d42652c467b3715531e8375e09062fb`
+|Mode / size |`0444` / 641 bytes
+|Bind report SHA-256 |`b070176fe369b20d2273988af3aeb7e37a34af73b058cc06ccddba3ee30a0b42`
+|===
+
+写入前后除项目根目录 metadata 与 `.leanbun/` 控制记录外，其余项目记录逐字节相同，规范化 SHA-256
+均为 `5f23044c63f8299f1fba627f0752f5ffdfe95c2949662949adce80653dab7f0e`。未创建项目 `.lake/build`。
+
+== 绑定后仍拒绝构建
+
+对允许 target 运行 `build preflight` 后：binding 为 `valid`，attestation 为 `valid-unverified`，exit 为
+`3`；诊断仅为 `ATTESTATION_UNVERIFIED`、`BUILD_NOT_AUTHORIZED`、`LAKE_BUILD_NOT_ATTEMPTED`。
+Preflight report SHA-256 为 `e6716d134bebd737a8d6619cffbdbcd1c16038c3e1b58c5893a325c6ddfbc6e9`。
+
+这证明 bind 不会旁路最后一道编译门。测试结束后临时项目副本和 binding 一并删除，正式项目没有被修改。
+
+== 下一执行门
+
+Build-time attestation re-verification 已实现，详见
+xref:M5_BUILD_REVERIFICATION.adoc[M5 Build-Time Attestation Re-verification]；build sandbox 探针也已通过，
+详见 xref:M5_BUILD_SANDBOX.adoc[M5 Build Sandbox]；无依赖 Lake probe 也已通过，详见
+xref:M5_LAKE_BUILD_PROBE.adoc[M5 Sandboxed Lake Build Probe]；绑定 Mathlib fixture 的完整事务也已通过，详见
+xref:M5_CONTROLLED_BUILD.adoc[M5 Controlled Mathlib Build Probe]；原子 execution record 也已通过，详见
+xref:M5_EXECUTION_RECORD.adoc[M5 Controlled Build Execution Record]；显式恢复也已通过，详见
+xref:M5_EXECUTION_RECOVERY.adoc[M5 Stale Running Execution Recovery]；timeout/signal 终态化也已通过，详见
+xref:M5_TIMEOUT_SIGNAL.adoc[M5 Timeout and Signal Finalization]。project/image 锁也已通过，详见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。下一步研究重复构建复用；正式项目构建仍关闭。

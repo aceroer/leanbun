@@ -1,0 +1,37 @@
+= rustix 1.1.4 来源与验证矩阵
+:toc: left
+:sectnums:
+
+== 来源
+
+[cols="2,4",options="header"]
+|===
+|对象 |来源
+|官方仓库 |https://github.com/bytecodealliance/rustix
+|版本文档 |https://docs.rs/rustix/1.1.4/rustix/
+|process API |https://docs.rs/rustix/1.1.4/rustix/process/
+|termios API |https://docs.rs/rustix/1.1.4/rustix/termios/
+|crates.io |https://crates.io/crates/rustix/1.1.4
+|===
+
+== 本地 source verification
+
+[cols="2,3",options="header"]
+|===
+|文件 |SHA-256
+|`Cargo.toml` |`219f712befc2057b71e7a5b156eaff40b7239dbb69966e8475542cbcd750cef7`
+|`src/process/id.rs` |`71d82dcce9d3cad4bf4cbfa343be688146829e8d111934e16b5766e066ead36a`
+|`src/termios/tc.rs` |`34a9ba54a0207aad1aa5be7adff79708e91623e3bc5a1a2cac756d66519deafe`
+|===
+
+Git checkout 与 crates.io unpacked source 的两个 API 文件逐字相同。Cargo.lock 固定 crate checksum；项目 manifest 使用 exact
+`=1.1.4`，不接受 semver 自动漂移。
+
+== License 与信任限制
+
+上游声明 `Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT`。`v1.1.4` 是 annotated tag，但本地 `git tag -v`
+确认 tag 没有签名。因此 provenance 由 tag object、commit、Cargo registry checksum 和 relevant source hashes 合取，不能声称
+已获得签名发布证明。
+
+rustix 内部按平台使用 unsafe/libc binding；LeanBun 依赖其公开 safe API，并继续禁止自身 crate 的 unsafe code。升级必须建立新的
+版本目录、重新核对 macOS API、锁文件 checksum、source diff、许可证与 PTY/non-TTY tests。

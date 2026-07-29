@@ -1,0 +1,19 @@
+= LeanBun 本地技术文档
+:toc: left
+
+本目录保存 LeanBun 实施时需要反复查阅的版本化技术参考。这里的文档分为两类：
+
+* 本机运行时验证：记录实际二进制、revision 和经过冒烟测试的 API；
+* 官方文档摘要：保留来源 URL、查阅日期与 LeanBun 采用的边界结论。
+
+当前入口：
+
+* xref:bun-v1.3.14/README.adoc[Bun 1.3.14 技术参考]；
+* xref:bun-v1.3.14/SOURCES.adoc[Bun 官方来源与验证矩阵]；
+* xref:rustix-v1.1.4/README.adoc[rustix 1.1.4 技术参考]；
+* xref:rustix-v1.1.4/SOURCES.adoc[rustix 来源与验证矩阵]；
+* xref:getrandom-v0.4.3/README.adoc[getrandom 0.4.3 技术参考]；
+* xref:getrandom-v0.4.3/SOURCES.adoc[getrandom 来源与验证矩阵]。
+
+本地摘要不冒充 Bun 的完整上游文档。涉及升级或尚未验证的 API 时，先按 `SOURCES.adoc` 重新核对
+官方页面，再为新 Bun revision 建立独立目录；不直接覆盖旧版本记录。

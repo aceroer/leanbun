@@ -1,0 +1,84 @@
+= LeanBun Fixture Regression M42 Phase A
+:toc: left
+:sectnums:
+
+== Result
+
+M42 Phase A 已把 `lake-basic` 从一次性 milestone acceptance 扩展为可重复的日常回归入口：
+
+[source,shell]
+----
+leanbun fixture-regress "$LEANBUN_REPOSITORY"
+----
+
+该命令仍只接受一个仓库路径，不接受外部 project 参数。它复用 M37 已验证的 generation publication、precommit
+fault、recovery、intentional Lake failure、两次 supervised build、image publish/reuse 与 rollback 实现，不复制另一套构建逻辑。
+
+== Run model
+
+每次运行从时间、进程和进程内 nonce 形成独立 SHA-256 run ID。隔离执行根为：
+
+----
+.leanbun-dev-rust/generation-fixture/m42-regression/runs/<run-id>/
+----
+
+该路径仍位于 `LeanGenerationManagerV1` 的既有 `generation-fixture` writer boundary。回归完成后整个 run root 被清理；
+若路径已经存在则 fail closed，不复用未知状态。
+
+成功摘要发布到：
+
+----
+.leanbun-dev-rust/regression/
+  latest.record
+  records/<run-id>.record
+----
+
+历史 record 使用 `create_new`、file sync、`0400` chmod 和 directory sync，不能覆盖。`latest.record` 是 `0600`
+mutable pointer，通过同目录临时文件和 atomic rename 更新，并绑定最新 record SHA-256。
+
+== Repeated-run evidence
+
+[cols="2,3,3",options="header"]
+|===
+|Run |Run ID |Record SHA-256
+
+|1
+|`365e0640ed1ba94fab17c0bb3b3fc04444e2265ee24d65e01ae5bf3dbb74c8cc`
+|`0b1022b5ffd591bbf87fb41ce601f926806da88927854e3fd0c979943b3fc740`
+
+|2
+|`cce60e082f22f760a4a728f82ecf87c9fbcf8cddcebd8162767fe4537b18e017`
+|`80c62826f09d0961bda1a606b4533489dc017f0fcd60a0879feeefa2db871e74`
+|===
+
+两次运行均报告 `passed` 和 `execution-copy=cleaned`；records 均为 `0400`，runs 目录最终为空，`latest.record`
+精确指向第二次 record 及其摘要。额外 CLI 参数被拒绝。
+
+M41 dry-run record 与 acceptance record 的 SHA-256 在两次回归前后仍分别为
+`c1603675599f69e9f9748ddf1a34a81f8bbe52a24e31f3f8405e04c8542776c7` 和
+`b476f6d14c16b1c668608469dcdeb61cff705b2beabc73ad2aa2a669a170d514`。
+
+== Validation
+
+`0.7.0-m42-dev` 已通过：
+
+* Rust 默认 181 项测试和 1 项显式 ignored provider 测试；
+* Rust workspace 与 Bun fork Clippy `-D warnings`；
+* Bun 93 项测试、866 次断言；
+* 两次 release-binary `fixture-regress`；
+* record mode/digest、latest pointer、empty runs 和 M41 record non-mutation 独立复核。
+
+== Remaining M42 roadmap
+
+Phase A 只闭合 dependency-free `lake-basic` 快速回归。后续按顺序推进：
+
+. Phase B：已由 xref:RUST_MANAGED_DEPENDENCY_REGRESSION_M42.adoc[Managed Dependency Regression M42 Phase B]
+  把 `lake-managed-dependency` 的 adopt/build/explicit update/fault/recover/rollback 变成可重复 run；
+. Phase C：已由 xref:RUST_MATHLIB_REGRESSION_M42.adoc[Mathlib Regression M42 Phase C]
+  加入 `mathlib-project` 九包完整闭包回归；
+. Phase D：已由 xref:RUST_NEGATIVE_FIXTURE_REGRESSION_M42.adoc[Negative Fixture Regression M42 Phase D]
+  登记 malformed/path escape/hash drift/cycle/missing package 负 fixture；
+. Phase E：已由 xref:RUST_CONCURRENT_HISTORY_REGRESSION_M42.adoc[Concurrent History Regression M42 Phase E]
+  完成并发回归调度、失败 terminal record 与历史记录审计/保留策略。
+
+M42 路线现已闭合。任何后续 milestone 都不得修改 M41 frozen records，不得隐式放宽真实外部项目入口。

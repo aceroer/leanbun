@@ -1,0 +1,82 @@
+= LeanBun Historical Crate Disposition Decision M47
+:toc: left
+:sectnums:
+
+== Decision status
+
+This disposition is fixed before changing Cargo default membership. M44--M46 established that none
+of the six mainline roots transitively reaches the five historical crates. M47 changes build/test
+selection only; it does not move, delete, rewrite or deprecate historical source or evidence.
+
+== Mainline default closure
+
+The default Rust members are the complete Bun-managed package lifecycle closure:
+
+* `leanbun-core`;
+* `leanbun-codec`;
+* `leanbun-evidence`;
+* `leanbun-lock`;
+* `leanbun-lake-bridge`;
+* `leanbun-resolver`;
+* `leanbun-store`;
+* `leanbun-generation`;
+* `leanbun-build`;
+* `leanbun-managed`.
+
+The default `cargo test` and `cargo clippy` selection must compile exactly that closure. All fifteen
+crates remain workspace members so Cargo metadata, dependency auditing and explicit historical tests
+continue to see the retained research code.
+
+== Per-crate disposition
+
+[cols="1,2,2,2"]
+|===
+|Crate |Disposition |Current consumers |Mainline replacement boundary
+
+|`leanbun-inventory-legacy`
+|Retained historical support member; excluded from defaults; not deprecated.
+|`leanbun-plan`, `leanbun-approval-macos`.
+|Current dependency authority is `leanbun-lock` plus `leanbun-resolver`; the inventory/drift model
+remains evidence for the earlier non-executing planning route and is not API-compatible with the
+current lock model.
+
+|`leanbun-plan`
+|Retained historical research member; excluded from defaults; not deprecated.
+|`leanbun-approval-macos` only.
+|Current update decisions are expressed by resolver policy and committed by managed generation
+transactions. The old Lake command plan remains non-executing historical research.
+
+|`leanbun-state`
+|Retained isolated historical experiment; excluded from defaults; not deprecated.
+|No workspace crate.
+|Current durable state is owned by `leanbun-generation` and `leanbun-managed`; the pure acquire/release
+experiment has no writer or CLI connection.
+
+|`leanbun-macos-acl-sys`
+|Retained platform support for historical safety research; excluded from defaults; not deprecated.
+|`leanbun-approval-macos` only.
+|The Bun-managed mainline requires no privileged coordinator or ACL adapter.
+
+|`leanbun-approval-macos`
+|Retained historical macOS authorization/denial research member; excluded from defaults; not deprecated.
+|No workspace crate.
+|The mainline uses explicit package transaction authority inside `leanbun-managed`; XPC,
+`LaunchDaemon`, notarization and privileged handoff are not prerequisites for source build or use.
+|===
+
+== Verification contract
+
+`./scripts/rust-dev check` validates default members only. `./scripts/rust-dev historical-check` (also
+available as `./scripts/dev historical-check`) explicitly runs Clippy and tests for all five retained
+historical packages. The architecture guard must reject a default set that contains a historical
+crate or omits any mainline closure crate.
+
+The standard Cargo source-build entry is `cargo test` from `rust/`. It uses repository-relative path
+dependencies and public Cargo dependencies only; it must not require production credentials,
+Developer ID/notarization identity, Keychain state or an embedded personal filesystem path.
+
+== Non-actions
+
+M47 does not archive crates outside the repository, move them under a new directory, add Rust
+deprecation attributes, delete tests, change canonical formats, or weaken the all-workspace
+dependency audit. A future removal requires a separate evidence-retention decision.

@@ -1,0 +1,79 @@
+= LeanBun Rust Evidence M6: Stable Project Input Snapshot
+:toc: left
+:sectnums:
+
+== 结论
+
+`leanbun-evidence` 已把 canonical project root 下的 `lean-toolchain`、`lake-manifest.json`、可选
+`.lake/package-overrides.json` 与 path package 解析组合为一次只读 `StableProjectInput` 事务。
+
+结果只可能是：
+
+* `DependencyFree`：manifest 没有 package，且 project override 不存在；
+* `Standalone`：manifest 非空但调用方没有提供 provider snapshot；
+* `ProviderBound`：manifest/provider 声明完全匹配，且 project override 与 provider override 的 typed 内容和
+  SHA-256 同时一致。
+
+reader 本身不创建 `.lake`、不写项目、不调用 Git/Lake/Lean，也未接入 CLI 或真实项目。
+
+== Toolchain 与文件门
+
+`lean-toolchain` 固定上限为 16 KiB。trim 后必须是单个非空 ASCII identifier，只允许字母、数字及
+`._:/+-`；空值、空白分隔、多行和其他字符返回 `TOOLCHAIN_INVALID`。
+
+manifest 与 override 继续使用 4 MiB、direct regular file、canonical containment、descriptor identity、
+TOCTOU、SHA-256、strict JSON 与 typed schema 门。override 是可选输入，但 fixed candidate 始终为
+`.lake/package-overrides.json`：
+
+* 文件不存在时记录为 absent，不创建父目录；
+* 文件存在时必须通过与 provider override 相同的严格 typed decoder；
+* 空依赖项目出现 override 视为漂移；
+* provider-bound 项目缺 override 返回 `OVERRIDE_MISSING`。
+
+== Path package containment
+
+每个 manifest `type=path` 的 `dir` 都以 canonical project root 为边界：先做 lexical normalization，再
+realpath containment，并要求目标确为目录。相对 `..` 逃逸、绝对外部路径及 symlink resolved escape 均拒绝。
+
+发布前再次解析所有 path package，并要求 name/canonical directory 列表逐项不变。M6 只发布路径快照，不证明
+目录内源码 bytes 没有变化。
+
+== Provider-bound 门
+
+调用方可提供已经通过 M4 的 `StableProviderPair`。非空 manifest 必须先通过 M5 comparison；随后 project
+override 必须与 provider override：
+
+* typed version、package name 与 directory 全部相等；
+* 原始稳定文件 SHA-256 完全相等。
+
+SHA 相等是有意比 Bun canonical-JSON 比较更严格的 Rust shadow 策略：它同时拒绝未解释的格式/字段变化，防止
+typed 层当前未发布的可选字段被静默忽略。未来如需接受不同格式，必须先定义版本化 canonical encoding，不能直接
+放宽为语义猜测。
+
+== 发布前重读
+
+完成分类与路径核验后，事务重新稳定读取 toolchain、manifest 和 optional override，并重新解析 path package。
+任一 SHA、override absent/present 状态或 canonical path 列表变化，都返回
+`EVIDENCE_CHANGED_DURING_READ`，不发布混合快照。
+
+provider snapshot 本身由调用方传入；M6 不知道其来源 candidate，因此不会假装已经重新读取 provider。未来执行
+临界区必须重新运行 provider pair 与 project input 两个事务。
+
+== 验收
+
+Rust fixture 覆盖：
+
+* 空项目 `DependencyFree`；
+* contained path package `Standalone`；
+* path escape 与非法 toolchain 拒绝；
+* 单包 registry/override/project 的精确 `ProviderBound`。
+
+仓库内 `lake-basic` 与 `mathlib-project` 已进入常规完整 input snapshot，分别得到 `DependencyFree` 与
+`Standalone`。默认忽略的本机门另外创建隔离临时九包项目副本，复制 `.leanbun-dev` override 后得到
+`ProviderBound`；临时项目在测试退出时清理。生产依赖库与真实项目均未进入路径。
+
+== 下一门
+
+下一门建立纯 Rust canonical project input identity：以 canonical project path、toolchain、manifest SHA、override
+状态/SHA、provider registry/override SHA 及排序后的 package binding 生成版本化 canonical bytes 和 SHA-256。
+仍不实现 writer；先与 Bun 现有 project identity fixture 做差分。

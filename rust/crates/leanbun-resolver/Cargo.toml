@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 leanbun-core = { path = "../leanbun-core" }
 leanbun-lake-bridge = { path = "../leanbun-lake-bridge" }
-leanbun-package = { path = "../leanbun-package" }
+leanbun-lock = { path = "../leanbun-lock" }
 
 [lints]
 workspace = true

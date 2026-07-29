@@ -1,0 +1,50 @@
+= rustix 1.1.4 技术参考（LeanBun 使用子集）
+:toc: left
+:sectnums:
+
+== 文档身份
+
+[cols="1,3"]
+|===
+|对象 |值
+|crate |`rustix =1.1.4`
+|Cargo features |`std`, `process`, `termios`; `default-features = false`
+|Git tag object |`283c682a2f871189bbbe33ecb2eb8847f432536c`
+|Git commit |`c4caf5caaa7e93828a2e4a4cdba1dd0171e45717`
+|crates.io checksum |`b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190`
+|本地上游库 |`.leanbun-dev-rust/upstream/rustix`
+|平台 |macOS arm64
+|查阅与验证日期 |2026-07-24
+|===
+
+== LeanBun 使用 API
+
+`leanbun-approval-macos` 只调用：
+
+* `rustix::process::geteuid`：当前 effective UID；
+* `rustix::process::getpgrp`：当前 process group；
+* `rustix::process::getsid(None)`：当前 process session；
+* `rustix::termios::tcgetpgrp`：terminal foreground process group；
+* `rustix::termios::tcgetsid`：controlling-terminal session。
+
+所有 terminal API 直接接收 Rust `AsFd`，不传 raw fd，不在 LeanBun 内编写 unsafe FFI，不 spawn `/bin/ps`、`stat` 或
+其他 PATH 命令。
+
+== Proof 条件
+
+只有以下事实同时成立，terminal observer 才发布 `ReadyForChallengeResponse`：
+
+. stdin/stderr 是同一稳定字符设备；
+. device owner UID 等于 `geteuid`；
+. `getpgrp` 等于 `tcgetpgrp(stdin)`；
+. `getsid(None)` 等于 `tcgetsid(stdin)`；
+. proof 前后的 terminal device identity 没有漂移。
+
+该 decision 仍保持 execution authority `Withheld`，不读取 response、不生成 grant。
+
+== 本机验证
+
+普通非 TTY Codex 进程得到 `DeniedNonInteractive`。在隔离 PTY 中，owner/effective UID、process/foreground PGID 与
+process/terminal SID 三组值均一致，得到 `ReadyForChallengeResponse`，authority 仍为 `Withheld`。
+
+完整来源、hash 与信任限制见 xref:SOURCES.adoc[SOURCES.adoc]。

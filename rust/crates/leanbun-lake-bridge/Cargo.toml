@@ -12,6 +12,7 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
+leanbun-codec = { path = "../leanbun-codec" }
 leanbun-core = { path = "../leanbun-core" }
 leanbun-evidence = { path = "../leanbun-evidence" }
-leanbun-package = { path = "../leanbun-package" }
+leanbun-lock = { path = "../leanbun-lock" }

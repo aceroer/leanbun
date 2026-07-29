@@ -1,0 +1,76 @@
+= LeanBun Rust Evidence M7: Canonical Project Input Identity
+:toc: left
+:sectnums:
+
+== 结论
+
+Rust 已实现两种明确分离的项目标识：
+
+* `ProjectId`：逐字节兼容 Bun `sha256("leanbun-project-v1\0" + canonicalPath)`，只标识 canonical project
+  path；
+* `ProjectInputIdentityV1.digest`：对 M6 稳定控制输入生成的新版本化内容摘要，schema 为
+  `leanbun-project-input-identity-v1`。
+
+二者都是纯计算，无文件写入、无 CLI、无 Git/Lake/Lean 调用。`ProjectId` 不能替代 input digest，input digest
+也不伪装成既有 `ProjectId`。
+
+== Canonical binary encoding
+
+编码以 ASCII `leanbun-project-input-identity-v1` 加 NUL 开始。每个顶层字段使用：
+
+[source,text]
+----
+u16be(key byte length) || key UTF-8 || u64be(value byte length) || raw value bytes
+----
+
+字段顺序固定为：
+
+. canonical project path；
+. input state；
+. normalized toolchain 与 toolchain 文件 SHA-256；
+. manifest SHA-256；
+. optional project override SHA-256；
+. optional provider registry/override SHA-256；
+. package count；
+. 按 UTF-8 bytewise name 排序后的重复 package record。
+
+SHA 字段编码为原始 32 bytes，不使用大小写可变的 hex 文本。optional digest 缺失编码为长度 0。package record
+内部同样使用 `u64be(length)||bytes`，并以单字节区分 Git/path；Git 绑定 revision，path 绑定 canonical path。
+provider-bound Git package 还绑定 provider canonical package path。
+
+长度前缀消除了 NUL、换行、分隔符、JSON key order 和 escape 表达的歧义。任何格式变化必须使用新 schema，不能
+在 v1 名称下静默改变编码。
+
+== Authority consistency
+
+`derive_project_input_identity` 只接受 M6 的 `StableProjectInput`：
+
+* `DependencyFree` 不得含 override、provider digest 或 package；
+* `Standalone` 不得含 provider digest，Git package 不得伪带 provider path；
+* `ProviderBound` 必须重新提供同一 M4 provider evidence，project/provider override SHA 必须一致；
+* provider-bound package 只能是 revision 一致且带 canonical provider path 的 Git package；
+* path package 只能属于非 provider-bound state，必须带 canonical project-contained path 且没有 revision；
+* package name 非空、唯一，派生时缺 binding 或 revision 漂移立即拒绝。
+
+`ProjectInputIdentityMaterial`/canonical encoder 是供差分与格式验证的纯序列化 API。任意调用方自行构造 material
+只能得到某组字节的摘要，不能借此声称已取得 `StableProjectInput` 证据；授权路径必须调用 derive API。
+
+== 兼容与差分验收
+
+共享 `project-input-identity.tsv` 故意以非 bytewise 顺序列出 `mathlib` 和 `Qq`。Bun 与 Rust 分别实现编码器，
+均得到：
+
+* path-only `ProjectId`：`c32fe4e9adb318f7e52427c338c6b6c8079f12fa40b5f29423de8e7a7214e08b`；
+* input digest：`0f37f3b987d494f9944fa571723cf64a78a2c1307f9d8b6f90aa9eecdd9d1426`。
+
+Rust 另验证 authority material 混用拒绝；仓库内 dependency-free 与 standalone fixture 可重复派生稳定 identity，
+且摘要不同；隔离临时九包 `ProviderBound` 项目已成功派生包含九个 provider path binding 的 identity。
+
+== 边界与下一门
+
+M7 摘要绑定控制输入文件、provider evidence 和 package path/revision 映射，但尚未遍历项目源码。因此它不是 Bun
+`project-input-tree-v1` 的替代物，也不能证明 `*.lean` 源码未变。
+
+下一门 read-only project source tree hash 已完成，见 `RUST_EVIDENCE_M8_PROJECT_INPUT_TREE.adoc`：排除 `.git`、
+`.lake`、`.leanbun/tmp` 和 `.DS_Store`，稳定读取普通文件、拒绝越界/不支持条目，并与 Bun
+`project-input-tree-v1` fixture 差分。仍未开放 writer。

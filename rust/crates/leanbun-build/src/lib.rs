@@ -19,7 +19,7 @@ pub use reuse::{BuildImageFaultV1, BuildImageStoreV1, ReuseOutcomeV1};
 use leanbun_core::Sha256;
 use leanbun_generation::{LeanBunGenerationV1, LeanGenerationManagerV1};
 use leanbun_lake_bridge::LakeRuntimePackagesProjectionV1;
-use leanbun_package::PackagePathDecisionSetV1;
+use leanbun_lock::PackagePathDecisionSetV1;
 use leanbun_store::{LeanStoreLimitsV1, normalized_directory_tree_sha256_v1};
 use std::fs::{self, File};
 use std::io::Read;

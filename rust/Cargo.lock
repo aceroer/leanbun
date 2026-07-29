@@ -9,6 +9,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 
 [[package]]
+name = "cfg-if"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -19,100 +25,150 @@ dependencies = [
 ]
 
 [[package]]
-name = "leanbun"
-version = "0.11.0"
+name = "getrandom"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
 dependencies = [
- "leanbun-build",
+ "cfg-if",
+ "libc",
+ "r-efi",
+]
+
+[[package]]
+name = "leanbun-approval-macos"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
  "leanbun-core",
- "leanbun-generation",
- "leanbun-lake-bridge",
- "leanbun-managed",
- "leanbun-store",
+ "leanbun-evidence",
+ "leanbun-inventory-legacy",
+ "leanbun-macos-acl-sys",
+ "leanbun-plan",
  "rustix",
 ]
 
 [[package]]
 name = "leanbun-build"
-version = "0.11.0"
+version = "0.1.0"
 dependencies = [
  "leanbun-core",
  "leanbun-generation",
  "leanbun-lake-bridge",
- "leanbun-package",
+ "leanbun-lock",
  "leanbun-resolver",
  "leanbun-store",
  "rustix",
 ]
 
 [[package]]
+name = "leanbun-codec"
+version = "0.1.0"
+dependencies = [
+ "leanbun-core",
+]
+
+[[package]]
 name = "leanbun-core"
-version = "0.11.0"
+version = "0.1.0"
 
 [[package]]
 name = "leanbun-evidence"
-version = "0.11.0"
+version = "0.1.0"
 dependencies = [
+ "leanbun-codec",
  "leanbun-core",
 ]
 
 [[package]]
 name = "leanbun-generation"
-version = "0.11.0"
+version = "0.1.0"
 dependencies = [
  "leanbun-core",
  "leanbun-lake-bridge",
- "leanbun-package",
+ "leanbun-lock",
  "leanbun-resolver",
  "leanbun-store",
+]
+
+[[package]]
+name = "leanbun-inventory-legacy"
+version = "0.1.0"
+dependencies = [
+ "leanbun-core",
+ "leanbun-evidence",
 ]
 
 [[package]]
 name = "leanbun-lake-bridge"
-version = "0.11.0"
+version = "0.1.0"
 dependencies = [
+ "leanbun-codec",
  "leanbun-core",
  "leanbun-evidence",
- "leanbun-package",
+ "leanbun-lock",
 ]
 
 [[package]]
+name = "leanbun-lock"
+version = "0.1.0"
+dependencies = [
+ "leanbun-core",
+]
+
+[[package]]
+name = "leanbun-macos-acl-sys"
+version = "0.1.0"
+
+[[package]]
 name = "leanbun-managed"
-version = "0.11.0"
+version = "0.1.0"
 dependencies = [
  "leanbun-build",
+ "leanbun-codec",
  "leanbun-core",
  "leanbun-evidence",
  "leanbun-generation",
  "leanbun-lake-bridge",
- "leanbun-package",
+ "leanbun-lock",
  "leanbun-resolver",
  "leanbun-store",
 ]
 
 [[package]]
-name = "leanbun-package"
-version = "0.11.0"
+name = "leanbun-plan"
+version = "0.1.0"
+dependencies = [
+ "leanbun-codec",
+ "leanbun-core",
+ "leanbun-evidence",
+ "leanbun-inventory-legacy",
+]
+
+[[package]]
+name = "leanbun-resolver"
+version = "0.1.0"
+dependencies = [
+ "leanbun-core",
+ "leanbun-lake-bridge",
+ "leanbun-lock",
+]
+
+[[package]]
+name = "leanbun-state"
+version = "0.1.0"
 dependencies = [
  "leanbun-core",
  "leanbun-evidence",
 ]
 
 [[package]]
-name = "leanbun-resolver"
-version = "0.11.0"
-dependencies = [
- "leanbun-core",
- "leanbun-lake-bridge",
- "leanbun-package",
-]
-
-[[package]]
 name = "leanbun-store"
-version = "0.11.0"
+version = "0.1.0"
 dependencies = [
  "leanbun-core",
  "leanbun-lake-bridge",
- "leanbun-package",
+ "leanbun-lock",
  "leanbun-resolver",
 ]
 
@@ -127,6 +183,12 @@ name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
+
+[[package]]
+name = "r-efi"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rustix"

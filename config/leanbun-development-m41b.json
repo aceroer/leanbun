@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "version": "0.6.0-m41-dev",
+  "class": "external-fixture-acceptance-phase-b",
+  "bunUpstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+  "bunUpstreamTree": "81a25490c3c5aeb4271a200a96943239b686404b",
+  "forkBranch": "codex/leanbun-m38",
+  "bunForkCommit": "2e342796efd2e30dfb441a5cbd8b24004bf5fe95",
+  "bunForkTree": "d05120af0b737218342eba137ea32d71d646df5d",
+  "leanBunCommit": "3acd6484ef841c87e44346533bb4bacdd1b4ee3e",
+  "leanBunCommitStatus": "source-baseline-committed",
+  "sourceFileCount": 132,
+  "sourceListSha256": "680c915e8bbaba9e74ad94239c8635a82cb90b02a526691eedd75219accbb33b",
+  "sourceListMethod": "sha256 of sorted shasum lines from gitignore-filtered rg --files rust plus Bun fork Cargo.toml Cargo.lock and src/lean_pm",
+  "bunForkCargoLockSha256": "47f4e874c284ae44ab348eb703cb43a363cbcb95f9933b52b971134ad24eb39e",
+  "leanBunCargoLockSha256": "c95d153401acf04d7510a52f3d7098963580a6f96fcab4e7ee5ced97fa7c1c21",
+  "binary": {
+    "path": ".leanbun-dev-rust/release/bun-fork/target/release/leanbun",
+    "sha256": "bb2b346a70e29c92ee99f5c6260fc2fd3a3972c29442687378ea307c42470d57",
+    "sizeBytes": 1653656,
+    "format": "Mach-O thin arm64",
+    "signature": "adhoc",
+    "cdHash": "59305861644911ccd3c02bbef48377feb03c5e8f",
+    "notarization": "not-submitted"
+  },
+  "externalFixtureAcceptance": {
+    "command": "fixture-external-accept",
+    "template": "test/fixtures/lake-managed-dependency",
+    "isolatedCandidate": ".leanbun-dev-rust/external-acceptance-fixture/m41-small-project",
+    "status": "passed",
+    "projectId": "9aaa58051b442d171718521b01d167ba43f9f08bc30f8e4d7bc266879536b618",
+    "projectTreeSha256": "bff2599f9f37cc0f4525897a4dfe8c2d11b62a465fbeedd4120cfc98d4ff3ddb",
+    "baselineTransaction": "4891493c-628d-4962-a878-5a4fd6184c98",
+    "updatedTransaction": "857753ce-2de9-48f0-a114-09caa598081b",
+    "baselineGenerationSha256": "78d69e5ea57927b3f2222387c98f9f8b1c5106fecd85f859fb12ab51aab78b64",
+    "updatedGenerationSha256": "5b07509b43b95c8fd81bf73dd94e8fa477dd5d0a9c8e0615e2df0dcef062e952",
+    "rollbackGenerationSha256": "78d69e5ea57927b3f2222387c98f9f8b1c5106fecd85f859fb12ab51aab78b64",
+    "projectArtifactSha256": "4ff19626084c63541685565231a15eb256616b1b7e592b7e0e999ebbdf920864",
+    "explicitUpdatePackage": "managed_dep",
+    "faultRecovery": "passed",
+    "sourceInputsAfter": "matched",
+    "dependencySourceLakeDirectory": "absent",
+    "dryRunRecord": {
+      "path": ".leanbun-dev-rust/external-acceptance/records/9aaa58051b442d171718521b01d167ba43f9f08bc30f8e4d7bc266879536b618.dry-run.record",
+      "sha256": "c1603675599f69e9f9748ddf1a34a81f8bbe52a24e31f3f8405e04c8542776c7",
+      "mode": "0400"
+    },
+    "acceptanceRecord": {
+      "path": ".leanbun-dev-rust/external-acceptance/records/9aaa58051b442d171718521b01d167ba43f9f08bc30f8e4d7bc266879536b618.acceptance.record",
+      "sha256": "b476f6d14c16b1c668608469dcdeb61cff705b2beabc73ad2aa2a669a170d514",
+      "mode": "0400"
+    }
+  },
+  "validation": {
+    "rustDefaultTests": 180,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "bunTests": 93,
+    "bunExpectCalls": 866,
+    "workspaceClippy": "passed",
+    "forkClippy": "passed",
+    "genericCliAcceptanceRootProbe": "rejected-nonzero"
+  },
+  "boundaries": {
+    "actualExternalProject": "not-authorized",
+    "genericExternalMutationCli": "closed",
+    "remoteResolution": "registered-exact-revisions-only",
+    "developerIdSigning": "not-performed",
+    "notarization": "not-submitted",
+    "gatekeeper": "not-claimed",
+    "nextPhase": "m41-phase-c-distribution-closure"
+  }
+}

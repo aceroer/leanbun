@@ -1,0 +1,64 @@
+= LeanBun Reservoir Binding Authority Decision M46 Phase A
+:toc: left
+:sectnums:
+
+== Decision status
+
+This decision is recorded before implementation. M46 uses a separately versioned `ReservoirBindingDocumentV1` companion document; it does not introduce `LeanBunLockV2` and does not extend or reinterpret the canonical bytes of `LeanBunLockV1`.
+
+The companion model belongs in `leanbun-lock` because it is pure lock-adjacent identity material. It must keep that crate's existing core-only dependency boundary. It performs no filesystem, registry, network, resolver, cache, generation or activation operation.
+
+== Why a companion document
+
+The current resolver preserves a `LeanSourceRequestV1::Reservoir { version }` while selecting candidates, but `LeanBunLockV1` projects the request into `RequestedPackageSourceV1::Git`. That loses the distinction between “the user requested this Git source” and “Reservoir metadata selected this Git source for a version”. Silently adding a Reservoir variant to the strict V1 line codec would change its canonical bytes, parser and identity contract.
+
+The companion route preserves every existing Git/path V1 lock and M42 history byte-for-byte while adding an explicit authority record for only those locked packages that originated from Reservoir.
+
+== Binding schema
+
+Each `ReservoirBindingV1` binds all of:
+
+* registry identity;
+* scoped package identity;
+* explicit requested version;
+* observed package-version metadata SHA-256;
+* canonical resolved HTTPS repository URL;
+* exact lowercase 40-hex Git commit;
+* download integrity SHA-256;
+* verified source-tree SHA-256;
+* selected-source identity.
+
+Its identity is domain-separated and includes every field. A `ReservoirBindingDocumentV1` contains a non-empty, sorted, duplicate-free binding set and the exact `LeanBunLockV1::identity()` it accompanies. Construction verifies each binding against the corresponding locked package's resolved URL/commit, download integrity, source tree and selected-source identity.
+
+The document has its own strict canonical line format, parser and document identity. It is not JSON and therefore does not add a codec dependency to `leanbun-lock`.
+
+== Bidirectional authority rule
+
+The companion document binds the V1 lock identity immediately. M46 Phase B must not activate a Reservoir-backed generation unless that generation identity also binds the companion document identity. One-way adjacency, filename convention or “same directory” is not authority.
+
+Existing V1 Git/path locks with no Reservoir origin remain valid without a companion and are never rewritten merely because the new reader exists. A Reservoir-backed candidate cannot claim a companion for a lock package whose exact locked facts differ.
+
+== First registration and upstream drift
+
+“First registration freezes” is not sufficient by itself. The policy is:
+
+. first online resolution creates a pending, durable candidate containing the observed metadata digest and exact content facts;
+. registered build/test and content verification must pass before the candidate can be activated;
+. the activated binding is then frozen for offline builds;
+. later online resolve/audit rechecks upstream metadata, but a mismatch is reported as drift or version rebound and cannot overwrite the frozen binding through ordinary update;
+. explicit rebind is a separate authorization path binding registry, package, version, old/new commits and newly observed metadata.
+
+Thus an incorrectly timed first observation is reviewable before activation, while subsequent verification cannot silently rewrite history.
+
+Phase A defines only the immutable model and codec. Pending publication, typed drift outcomes, rebind authorization and generation activation belong to Phase B.
+
+== Compatibility and non-authority
+
+M46A does not:
+
+* query public Reservoir or accept arbitrary discovery;
+* convert an existing Git lock into Reservoir authority by inference;
+* change resolver update behavior;
+* publish a binding file or generation;
+* change `LeanBunLockV1`, M31 golden bytes or M42 histories;
+* authorize mutation outside registered repository fixtures.

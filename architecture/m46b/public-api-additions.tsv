@@ -1,0 +1,9 @@
+target_crate	symbol	current_source
+leanbun-resolver	MAX_RESERVOIR_OBSERVATIONS_V1	rust/crates/leanbun-resolver/src/reservoir_policy_v1.rs
+leanbun-resolver	ReservoirBindingOutcomeV1	rust/crates/leanbun-resolver/src/reservoir_policy_v1.rs
+leanbun-resolver	ReservoirPolicyErrorKindV1	rust/crates/leanbun-resolver/src/reservoir_policy_v1.rs
+leanbun-resolver	ReservoirPolicyErrorV1	rust/crates/leanbun-resolver/src/reservoir_policy_v1.rs
+leanbun-resolver	ReservoirRebindAuthorizationV1	rust/crates/leanbun-resolver/src/reservoir_policy_v1.rs
+leanbun-resolver	evaluate_reservoir_binding_v1	rust/crates/leanbun-resolver/src/reservoir_policy_v1.rs
+leanbun-generation	LeanBunGenerationV1::new_with_reservoir_bindings	rust/crates/leanbun-generation/src/model.rs
+leanbun-generation	LeanBunGenerationV1::reservoir_bindings_sha256	rust/crates/leanbun-generation/src/model.rs

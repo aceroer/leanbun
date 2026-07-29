@@ -1,0 +1,65 @@
+= LeanBun Rust Evidence M4: Provider Override and Pair Verification
+:toc: left
+:sectnums:
+
+== 结论
+
+`leanbun-evidence` 已加入规范化 provider override typed decoder，并把 registry、override 与隔离 package root
+组合成单次只读 `StableProviderPair`。结果包含两份稳定文件证据、typed documents、canonical package root，以及
+按 registry 顺序发布的 name/revision/canonical directory 绑定。
+
+本门没有接管 Bun provider adapter，没有执行 Git、Lake 或 Lean，没有 writer、CLI 或生产 dependency library
+入口。
+
+== Override schema 门
+
+根对象只允许 `version` 和 `packages`。版本必须是 major 1 的三段数字；packages 最多 4096 项。
+
+每个 package：
+
+* 必须有唯一、非空且不超过 256 UTF-8 bytes 的 `name`；
+* `type` 必须严格等于 `path`；
+* `dir` 必须是绝对路径字符串且不超过 4096 UTF-8 bytes；
+* 只允许额外字段 `manifestFile`、`inherited`、`configFile`，出现时必须类型正确；
+* 任何未知字段、重复 name、相对路径或类型漂移立即返回 schema error。
+
+decoder 只证明 JSON 声明形状。绝对路径是否可信由 pair verification 的 containment 门决定。
+
+== Pair verification
+
+`read_provider_pair` 只接受一个调用方已经 canonicalize 的 isolation root，以及相对于该根的 registry、override
+和 package root candidate：
+
+. package root 必须经过 lexical normalization、realpath containment 且确为目录；
+. registry 与 override 分别经过 direct regular file、bounded stable read、SHA-256 和 typed schema 门；
+. 两份文档的完整 version 必须一致；
+. registry 和 override package name 集合必须完全相同，缺失和多余项均拒绝；
+. 每个 override 绝对路径再次相对于 canonical package root 做 lexical+resolved containment，并要求目标为目录；
+. 完成全部路径核验后重新稳定读取 registry 与 override；任一 SHA 改变则返回
+  `EVIDENCE_CHANGED_DURING_READ`，不发布混合快照。
+
+结果仍是瞬时只读证据。返回以后目录可以变化，因此未来执行授权必须在临界区内重新验证；M4 不声称 Git HEAD、
+dirty state、源码 bytes 或 build artifacts 已认证。
+
+== 验收
+
+共享 `provider-override-cases.tsv` 由 Bun contract oracle 与 Rust decoder 共同消费，覆盖合法最小/完整已知字段、
+版本、缺字段、未知字段、错误类型、相对 path 和重复 package name。
+
+Rust fixture 另覆盖：
+
+* 匹配名称与 contained directory 成功绑定；
+* registry↔override 名称漂移拒绝；
+* 绝对但越过 package root 的目录拒绝；
+* package 数量上限；
+* registry decoder 与 pair 层可组合。
+
+默认忽略的本机验收已显式读取 `.leanbun-dev/lean` 内 registry、override 和 package-set：九个 package 全部通过，
+所有 canonical directory 均位于隔离 package root，mathlib revision 为
+`81a5d257c8e410db227a6665ed08f64fea08e997`。没有读取生产 dependency library。
+
+== 下一门
+
+下一门回到项目侧，只对隔离 fixture 实现 Lake project manifest typed decoder，并建立纯函数
+manifest↔provider registry 字段比较。它只验证声明与 provider revision 是否一致，不执行 Git，不创建 `.lake`，
+也不接触真实 Lean 项目。

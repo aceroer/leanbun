@@ -1,15 +1,16 @@
 {
-  "schema": "leanbun-public-validation-summary-v1",
-  "leanbunVersion": "0.11.0-m42-dev",
+  "schema": "leanbun-public-validation-summary-v2",
+  "leanbunVersion": "0.20.0-m48-dev",
   "platform": "macOS arm64",
   "rust": {
-    "defaultTestsPassed": 184,
+    "defaultMainlineTestsPassed": 117,
+    "historicalCrateTestsPassed": 79,
     "explicitProviderTestsPassed": 1,
     "clippyPassed": true
   },
   "bun": {
-    "testsPassed": 93,
-    "assertionsPassed": 866,
+    "testsPassed": 208,
+    "assertionsPassed": 1770,
     "upstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5"
   },
   "lean": {

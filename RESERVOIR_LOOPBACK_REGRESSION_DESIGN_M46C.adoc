@@ -1,0 +1,59 @@
+= LeanBun Registered Reservoir Loopback Regression Design M46 Phase C
+:toc: left
+:sectnums:
+
+== Decision status
+
+This design is fixed before the Phase C state-transition implementation. Phase C consumes the
+pure M46A binding companion and M46B policy. It adds no public Reservoir discovery, HTTP client,
+general project mutation entry or implicit rebind authority.
+
+== Registered file-loopback boundary
+
+The only registry input is the repository-owned
+`test/fixtures/m46-reservoir-loopback/registry.tsv`. The controller canonicalizes the LeanBun
+repository, requires `TEST_PROJECT_BOUNDARY.adoc`, parses the fixture with an exact header and
+bounded row count, and rejects duplicate labels or malformed typed facts.
+
+The loopback is deliberately file-backed. A registry-read counter records each online observation;
+frozen replay and rollback must leave that counter unchanged. Therefore the regression proves the
+network-free boundary without opening a socket or depending on public Reservoir state.
+
+== Durable transition protocol
+
+Each run receives a private directory below `.leanbun-dev-rust/reservoir-m46c/runs`. Evidence is
+published as immutable `0400` records before any active transition:
+
+. a first observation publishes a pending record and remains inactive;
+. registered fixture verification publishes the first activation record;
+. stable, rebound, oscillation, metadata drift, content drift and disappearance each publish an
+  audit record;
+. an ordinary same-version rebound publishes pending/audit evidence but cannot replace active;
+. explicit rebind requires an exact M46B authorization record and a matching pending record before
+  publishing its activation;
+. rollback points active back to the retained first activation without resolving again.
+
+Canonical V1 lock bytes and M46A companion bytes are stored alongside each candidate before the
+activation that names them. `active.record` is a mutable `0600` pointer updated through a private
+temporary file, file sync, atomic rename and directory sync. Immutable evidence is never rewritten.
+
+== Scenario closure
+
+The registered fixture contains old, new, metadata-drift and content-drift facts for one exact
+registry/package/version scope. The controller must close:
+
+* repeated stable observations;
+* first-resolution pending before activation;
+* old-to-new rebound rejection under ordinary update;
+* old-to-new-to-old oscillation observation;
+* metadata-only drift at unchanged commit/content;
+* archive/tree/selected-source drift at unchanged commit;
+* disappeared version while retained old lock remains replayable;
+* exact explicit rebind, frozen replay of new, and network-free rollback/replay of old.
+
+== Non-authority
+
+Passing this regression does not authorize arbitrary registry URLs, external project adoption,
+production package updates or construction of user approval from test code. It closes only the
+registered M46C file-loopback and demonstrates that M46B policy can be hosted by a durable Bun-owned
+transaction boundary.

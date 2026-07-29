@@ -1,0 +1,38 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+DEV_BUN="$REPO_DIR/.leanbun-dev/bun/bin/bun"
+BOOTSTRAP_BUN="${BUN:-}"
+
+if [ -x "$DEV_BUN" ]; then
+  BOOTSTRAP_BUN="$DEV_BUN"
+elif [ -z "$BOOTSTRAP_BUN" ]; then
+  BOOTSTRAP_BUN=$(command -v bun || true)
+fi
+
+if [ -z "$BOOTSTRAP_BUN" ] || [ ! -x "$BOOTSTRAP_BUN" ]; then
+  echo "LeanBun requires Bun on PATH, BUN=<path>, or an initialized .leanbun-dev runtime" >&2
+  exit 69
+fi
+
+if [ "${1:-}" = "check" ]; then
+  "$BOOTSTRAP_BUN" \
+    --no-install \
+    --no-env-file \
+    "--config=$REPO_DIR/bunfig.toml" \
+    run "$REPO_DIR/scripts/dev.ts" "$@"
+  exec "$REPO_DIR/scripts/rust-dev" check
+fi
+
+if [ "${1:-}" = "historical-check" ]; then
+  shift
+  exec "$REPO_DIR/scripts/rust-dev" historical-check "$@"
+fi
+
+exec "$BOOTSTRAP_BUN" \
+  --no-install \
+  --no-env-file \
+  "--config=$REPO_DIR/bunfig.toml" \
+  run "$REPO_DIR/scripts/dev.ts" "$@"

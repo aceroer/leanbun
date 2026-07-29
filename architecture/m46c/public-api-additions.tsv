@@ -1,0 +1,3 @@
+crate	kind	name
+leanbun-managed	struct	ReservoirLoopbackRegressionV1
+leanbun-managed	function	run_reservoir_loopback_regression_v1

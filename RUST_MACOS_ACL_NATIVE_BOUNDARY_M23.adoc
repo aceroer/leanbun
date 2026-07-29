@@ -1,0 +1,102 @@
+= LeanBun Rust macOS ACL Native Boundary M23
+
+== Outcome
+
+M23 已完成 macOS SDK 26.5、Rust 1.96.0、rustix 1.1.4、libc crate 0.2.189 与项目锁定 Bun Rust source 的 ACL/native API 审计。
+结论固定为 `RequiresSeparateAuditedFfiCrate`：完整 ACL enumeration 需要 macOS libc opaque-pointer API，而现有 safe dependencies 均没有提供所需
+wrapper。`leanbun-approval-macos` 本门仍保持 `forbid(unsafe_code)`，没有新增 native declaration、ACL 调用、spawn 或执行权。
+
+== Exact API set
+
+[cols="2,3,2",options="header"]
+|===
+|API |用途 |M23 disposition
+
+|`acl_get_fd_np(fd, ACL_TYPE_EXTENDED)`
+|直接从 M22 已打开 FD 取得独立 ACL working copy，避免重新按 path 查找。
+|future audited FFI required
+
+|`acl_get_entry`
+|以 `ACL_FIRST_ENTRY` / `ACL_NEXT_ENTRY` 枚举 entries；SDK 固定 `ACL_MAX_ENTRIES=128`。
+|future audited FFI required
+
+|`acl_get_tag_type`
+|区分 `ACL_EXTENDED_ALLOW`、`ACL_EXTENDED_DENY` 与 invalid tag。
+|future audited FFI required
+
+|`acl_get_permset_mask_np`
+|一次读取 64-bit permission mask，避免逐 permission 的重复 FFI 状态。
+|future audited FFI required
+
+|`acl_free`
+|释放 `acl_get_fd_np` 分配的 working storage。
+|future audited FFI required
+
+|`acl_get_qualifier`、`mbr_*`
+|读取 UUID principal 并做 uid/gid/membership 映射。
+|conservative policy 不需要
+
+|`acl_set_*`、create/delete mutation APIs
+|改变 ACL。
+|明确禁止
+
+|rustix `fstatfs`
+|读取 native `f_flags`、fsid 与 mount facts。
+|safe API 已有
+|===
+
+SDK 文档明确 `acl_get_fd_np` 可能分配内存且必须交给 `acl_free`；null 表示失败并通过 errno 分类。ACL working copy 不参与 kernel access
+decision，因此只能作为 observation evidence，不能替代 M22 的 effective-access probe 或最终 path protection。
+
+== Conservative ACL policy
+
+M23 不尝试复刻 Darwin ACE ordering、UUID membership 和 allow/deny 合成语义。future wrapper 枚举所有 entries，只要发现任一
+`ACL_EXTENDED_ALLOW` 包含下列 mutation permission，就立即将 component 归为 unsafe：
+
+* `WRITE_DATA` / `ADD_FILE`；
+* `APPEND_DATA` / `ADD_SUBDIRECTORY`；
+* `DELETE`；
+* `DELETE_CHILD`；
+* `WRITE_ATTRIBUTES`；
+* `WRITE_EXTATTRIBUTES`；
+* `WRITE_SECURITY`；
+* `CHANGE_OWNER`。
+
+即使该 ALLOW 可能被另一条 DENY 抵消，也继续拒绝。这会产生安全侧 false negative，但不会把 named ACL writer 错判为 protected；因此无需调用
+`acl_get_qualifier` 或 `mbr_check_membership`。unknown tag、unknown mutation bits、超过 128 entries、enumeration error、null/errno ambiguity 或
+free failure 全部 fail closed。
+
+== FFI safety contract
+
+future crate 必须满足：opaque pointers 不逃逸；所有 null/return/errno 受检；entry count 有界；ACL storage exactly-once free；不经
+`acl_to_text` 做易漂移文本解析；unsafe 只存在于该 crate 的最小 wrapper；safe result 只含 value types；调用前后由上层重验 FD identity、ctime、
+flags 与 mount facts。
+
+`leanbun-approval-macos` 不允许直接声明这些 extern symbols，也不允许把 workspace-wide `forbid(unsafe_code)` 静默放宽。
+
+== Mount finding
+
+M22 使用 `fstatvfs.f_flag`，它只覆盖 `ST_RDONLY` 等 portable flags，不能检测 SDK `mount.h` 的
+`MNT_IGNORE_OWNERSHIP=0x00200000`。锁定 libc crate 暴露该 constant，但不暴露 ACL APIs；rustix safe `fstatfs` 可返回 native `f_flags`。因此
+M24 必须同时让 M22 observer 记录并复核 `fstatfs` native flags，明确解码 ignore-ownership、read-only、rootfs、local 与 noexec。
+
+持有 component FD 通常会使普通 unmount 遇到 `EBUSY`，但 force/unprivileged-user-owned mount 与 kernel path re-resolution 仍不能由一次
+`fstatfs` observation 自动排除。因此 mount stability 继续是 eligibility 条件，不是 M23 已完成的保证。
+
+== Bun/Rust boundary
+
+项目锁定 Bun Rust source 没有可复用的 macOS filesystem ACL wrapper；出现的 ACL 名称属于 S3/其他业务语义。Rust std、rustix 1.1.4 与 libc
+crate 0.2.189 同样没有完整 safe ACL enumeration surface。Bun 的 Rust 重构仍用于交叉阅读，但不能替代独立 memory-safety wrapper。
+
+== Verification
+
+`macos_acl_native_boundary_v1` 固定 SDK/rustix/libc versions、八项 API disposition、八类 mutation permission、128-entry limit、八项 FFI
+requirement、唯一 boundary decision 与 withheld authority。Bun oracle 将 contract 纳入 runtime 禁止项扫描；本门没有 native call 或 unsafe block。
+
+== 下一门
+
+M24 已完成，见 xref:RUST_MACOS_ACL_WRAPPER_M24.adoc[LeanBun Rust macOS ACL Wrapper and Native Mount Evidence M24]。独立 sys crate
+只包装五个审计后的只读 symbols，以 RAII 释放 working storage；M22 也已加入 safe `fstatfs` native flags。M25 只建立 reservation-bound path
+eligibility assessment，不 spawn、不消费 reservation slot。
+
+前置 observer 见 xref:RUST_PATH_PROVENANCE_OBSERVER_M22.adoc[LeanBun Rust macOS Path Provenance Observer M22]。

@@ -4,7 +4,7 @@ use crate::model::{
 };
 use std::collections::BTreeSet;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -95,6 +95,11 @@ fn execute(
     command
         .arg("__leanbun-supervise")
         .arg(&request.sandbox_executable)
+        .arg("-D")
+        .arg(format!(
+            "LEANBUN_REPOSITORY={}",
+            sandbox_repository(&request.sandbox_profile).display()
+        ))
         .arg("-f")
         .arg(&request.sandbox_profile)
         .arg(&request.lake_executable)
@@ -195,6 +200,13 @@ fn execute(
         ));
     }
     Ok(result)
+}
+
+fn sandbox_repository(profile: &Path) -> &Path {
+    profile
+        .parent()
+        .and_then(Path::parent)
+        .unwrap_or_else(|| Path::new("/private/tmp/leanbun-unavailable-repository"))
 }
 
 fn read_bounded(mut reader: impl Read, maximum: usize) -> Result<(Vec<u8>, bool), BuildError> {

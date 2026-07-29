@@ -1,0 +1,17 @@
+(version 1)
+
+(allow default)
+
+; Inspect acceptance is offline and cannot execute any Lake binary.
+(deny network*)
+(deny process-exec (regex #"/lake$"))
+
+; The inspected project and provider are readable but cannot be modified.
+(deny file-write*)
+(allow file-write*
+  (subpath (param "LEANBUN_REPOSITORY"))
+  (literal "/dev/null")
+  (literal "/dev/tty")
+  (literal "/dev/stdin")
+  (literal "/dev/stdout")
+  (literal "/dev/stderr"))

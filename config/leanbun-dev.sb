@@ -1,0 +1,17 @@
+(version 1)
+
+(allow default)
+
+; Development commands are offline until a later transaction explicitly grants network access.
+(deny network*)
+
+; Development tools may only write inside this repository (including .leanbun-dev)
+; and to the standard device endpoints needed by command-line programs.
+(deny file-write*)
+(allow file-write*
+  (subpath (param "LEANBUN_REPOSITORY"))
+  (literal "/dev/null")
+  (literal "/dev/tty")
+  (literal "/dev/stdin")
+  (literal "/dev/stdout")
+  (literal "/dev/stderr"))

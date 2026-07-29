@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "version": "0.5.0-m41-dev",
+  "class": "external-adoption-dry-run-phase-a",
+  "bunUpstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+  "bunUpstreamTree": "81a25490c3c5aeb4271a200a96943239b686404b",
+  "forkBranch": "codex/leanbun-m38",
+  "leanBunCommit": null,
+  "leanBunCommitStatus": "unavailable-unborn-main-repository",
+  "sourceFileCount": 131,
+  "sourceListSha256": "fc0947857a0459454a2eca97e50cacf1b1e28c180b089a32f7737b1889aed782",
+  "sourceListMethod": "sha256 of sorted shasum lines from gitignore-filtered rg --files rust plus Bun fork Cargo.toml Cargo.lock and src/lean_pm",
+  "bunForkCargoLockSha256": "47f4e874c284ae44ab348eb703cb43a363cbcb95f9933b52b971134ad24eb39e",
+  "leanBunCargoLockSha256": "c95d153401acf04d7510a52f3d7098963580a6f96fcab4e7ee5ced97fa7c1c21",
+  "binary": {
+    "path": ".leanbun-dev-rust/release/bun-fork/target/release/leanbun",
+    "sha256": "4238f5ae0a18bd840fb68f52b8995f68064fdfff6098de7a475efe9b7abc018f",
+    "sizeBytes": 1616824,
+    "format": "Mach-O thin arm64",
+    "signature": "adhoc",
+    "cdHash": "59f2f14c8a9b7659e14f05f2e2bad01e287a669e",
+    "notarization": "not-submitted"
+  },
+  "adoptionDryRun": {
+    "command": "adopt-dry-run",
+    "confirmation": "--explicit-dry-run",
+    "authorizedCandidate": "test/fixtures/lake-managed-dependency",
+    "status": "eligible-not-adopted",
+    "persistentMutation": "none",
+    "projectId": "77534215ba30f3c7d61fdff59ea2845db2561fe62fd96418a8bc95eeac7730ac",
+    "projectTreeSha256": "bff2599f9f37cc0f4525897a4dfe8c2d11b62a465fbeedd4120cfc98d4ff3ddb",
+    "entryCount": 12,
+    "fileCount": 8,
+    "byteCount": 1093,
+    "configSha256": "e0d742da289bc4b182f961bc92d928108c1b5c69ea776ff8e99b8499503ef42e",
+    "toolchainSha256": "2773c517aa90b66ea8a2c52bddddf84393157797f8341be0df45294fff7fd32e",
+    "manifestSha256": "6854942b9cca9d8ae4fbca11ef943537cfee7abf647f92e823c3156f5a4b7fd8",
+    "rootDeclarationSha256": "1407e2553d29e049dbcc0eaccd7b4b65e10bb343397c65d880db86eefe793507",
+    "directDependencyCount": 1,
+    "manifestPackageCount": 1
+  },
+  "boundaries": {
+    "adoptionRecord": "not-created",
+    "generation": "not-created",
+    "store": "not-created",
+    "projectLakeDirectory": "not-created",
+    "actualExternalProject": "not-authorized",
+    "targetExistence": "deferred-to-m41-phase-b-frozen-build",
+    "mutatingAcceptance": "withheld-until-m41-phase-b"
+  }
+}

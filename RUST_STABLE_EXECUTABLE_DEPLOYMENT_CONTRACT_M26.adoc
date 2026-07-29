@@ -1,0 +1,95 @@
+= LeanBun Rust Stable Executable Deployment Contract M26
+
+== Outcome
+
+M26 已建立纯数据 `macos_stable_executable_deployment_contract_v1`，把“现有系统保护对象”与“可获取的自定义 Lean/Lake 部署”明确分开。
+五类候选中没有一类直接获得 process-adapter eligibility；contract 只返回 existing-platform-only、requires-external-coordinator 或
+denied，并保持 `PlanExecutionAuthorityV1::Withheld`。
+
+本门没有安装、复制或移动 toolchain，没有 attach/detach image、mount/unmount filesystem、修改权限/ACL/flags，也没有创建 child process。
+
+== Exact local audit
+
+审计基于本机 macOS SDK 26.5、rustix 1.1.4、系统 manual 与只读 live observation：
+
+* SDK `sys/mount.h` 定义 `MNT_RDONLY` 为 read-only filesystem，同时定义可改变既有 mount 的 `MNT_UPDATE` 和强制 unmount/readonly-change 的
+  `MNT_FORCE`；
+* 本机 `mount(2)` manual 明确 `MNT_RDONLY` 下即使 super-user 也不能写，但 `MNT_UPDATE` 可改变 mount flags，`unmount`/`funmount` 可解除
+  mount topology；
+* `hdiutil attach -help` 的 `-readonly` 只是 attach option，并不证明谁控制后续 detach/remount；
+* rustix 1.1.4 `mount` module 受 `cfg(linux_kernel)` 限制，macOS adapter 只有 safe `fstatfs` observation，没有 mount lifecycle capability；
+* rustix `flock`/`fcntl_lock` 在 macOS 可用，但本机 `flock(2)` manual 明确它们是 cooperating-process advisory locks，不能阻止不参与协议的
+  writer、detach 或 path replacement；
+* live `mount` 显示 `/` 为 sealed/local/read-only APFS，当前 production external volume 为 read-write/noowners APFS。
+
+因此“观察到 `MNT_RDONLY`”只证明内容层当前不可写；它不自动证明 mount identity 会持续到 kernel path resolution，也不等于 updater writer 已被
+排除。
+
+== Acquisition matrix
+
+[cols="2,2,2,2",options="header"]
+|===
+|部署类 |获取方式 |writer/mount continuity |结论
+
+|Existing sealed-system-volume binary
+|不能用于安装自定义 Lean/Lake
+|现有 OS seal
+|`ExistingPlatformBinaryOnly`
+
+|Privileged root-owned Data-volume install
+|需要 privileged installer
+|需要 privileged updater lease 持续到 child creation
+|`CandidateRequiresExternalCoordinator`
+
+|User-mounted read-only disk image
+|当前用户可 `hdiutil attach -readonly`
+|同 UID 仍控制 detach/remount，mount replacement 在 M21 攻击面
+|`DeniedMutableByInScopeActor`
+
+|Privileged-managed read-only disk image
+|需要 privileged mount coordinator
+|需要 mount lifecycle lease 持续到 child creation
+|`CandidateRequiresExternalCoordinator`
+
+|User-owned bundle/toolchain
+|普通复制即可获得
+|同 UID 可替换 leaf 或 ancestor
+|`DeniedMutableByInScopeActor`
+|===
+
+root-owned Data-volume install 和 privileged-managed image 只是 architecture candidates。普通 advisory lock 不足以把它们提升为安全执行路径；必须证明所有
+authorized updater/mount operations 都只能经过同一个 privileged coordinator，而且 coordinator 在最终 M25 rehash/path observation 之前取得 lease，
+直到 child creation 完成后才释放。
+
+== Verification requirements
+
+contract 固定十项合取：direct symlink-free path、trusted owner、effective UID/group/world mutation denial、ACL/Darwin flags、executable mount、
+ownership enforcement、stable mount identity/read-only state、sealed reservation leaf match、updater exclusion 与 mount-lifecycle exclusion。
+
+`MNT_NOEXEC` 或 `MNT_IGNORE_OWNERSHIP` 任一出现都不能成为 executable candidate。只保护 leaf、只验证 code signature、只设置 `UF_IMMUTABLE`、只持有
+advisory lock 或只做一次 `MNT_RDONLY` snapshot 都不满足 contract。
+
+== System baseline
+
+2026-07-24 使用 M24 observer 对 `/usr/bin/true` 做只读基线：四个 components 均 UID 0、ACL mutation scan clear、native mount
+read-only 且不忽略 ownership；`/usr`、`/usr/bin` 与 leaf 的 effective write 均 denied。`/` 的 effective-access probe 仍为 `Unverified`，所以
+observer 得到 `DeniedEffectiveAccessUnverified`，authority withheld。
+
+这说明 sealed system volume 是有价值的验证上界，但不是自定义 Lake 的 acquisition route，也不能绕过 observer 的完整证据要求。
+
+当前 production Lake 仍在 UID 501、read-write、`MNT_IGNORE_OWNERSHIP` external volume，维持 M24/M25 denial。
+
+== Verification boundary
+
+Rust tests固定五类 acquisition/continuity/disposition、十项 verification requirement，并确认 read-only image 不替代 mount lifecycle exclusion、advisory
+lock 不被误报为 OS-enforced writer exclusion。Bun oracle 把 M26 runtime source 纳入禁止项扫描，继续拒绝 process、host environment、unsafe、删除与
+`lake update`。
+
+== 下一门
+
+M27 已完成，见 xref:RUST_PRIVILEGED_COORDINATOR_BOUNDARY_M27.adoc[LeanBun Rust Privileged Coordinator Boundary M27]。审计确认
+`SMAppService` daemon 与 signed-peer XPC 是 host/transport candidates，但现有 M19 capability 不可直接 IPC 化，M25 implicit effective UID 在 root
+daemon 中不是 threat principal；因此仍不安装 helper、不申请权限、不 mount、不 spawn Lake。
+
+前置 reservation assessment 见
+xref:RUST_RESERVATION_BOUND_PATH_ELIGIBILITY_M25.adoc[LeanBun Rust Reservation-Bound Path Eligibility M25]。

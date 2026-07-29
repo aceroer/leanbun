@@ -6,6 +6,7 @@ mod fixture_regression;
 mod history_regression;
 mod negative_regression;
 mod registered;
+mod reservoir_regression;
 
 pub use dry_run::{ExternalAdoptionDryRunV1, dry_run_external_adoption_v1};
 pub use external_acceptance::{ExternalFixtureAcceptanceV1, run_external_fixture_acceptance_v1};
@@ -14,6 +15,9 @@ pub use fixture_regression::{
 };
 pub use history_regression::{ConcurrentHistoryRegressionV1, run_concurrent_history_regression_v1};
 pub use negative_regression::{NegativeFixtureRegressionV1, run_negative_fixture_regression_v1};
+pub use reservoir_regression::{
+    ReservoirLoopbackRegressionV1, run_reservoir_loopback_regression_v1,
+};
 
 use leanbun_build::{
     BuildErrorKind, SupervisedLakeBuildV1, project_artifact_sha256_v1,
@@ -27,7 +31,7 @@ use leanbun_lake_bridge::{
     LakeRootDeclarationV1, LakeRootProbeRequestV1, LakeRuntimePackagesProjectionV1,
     run_lake_root_probe_v1,
 };
-use leanbun_package::{
+use leanbun_lock::{
     LeanBunLockV1, LockedLeanPackageV1, PackageDependencyV1, PackageKeyV1,
     PackagePathDecisionSetV1, PackagePathDecisionV1, PackagePathProvenanceSetV1,
     PackagePathProvenanceV1, RequestedPackageSourceV1, ResolvedPackageSourceV1,

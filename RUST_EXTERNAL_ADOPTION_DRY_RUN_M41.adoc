@@ -1,0 +1,57 @@
+= LeanBun External Adoption Dry-Run M41 Phase A
+:toc: left
+:sectnums:
+
+== Result
+
+M41 Phase A 已把外部采用流程的第一步收口为 `adopt-dry-run`。当前只授权本库
+`test/fixtures/lake-managed-dependency` 充当小型外部候选的模拟器；没有读取或修改外部项目，也没有创建 managed
+adoption record、generation、Store object 或项目 `.lake`。
+
+命令使用独立确认 token：
+
+----
+leanbun adopt-dry-run REPO PROJECT TARGET --explicit-dry-run
+----
+
+`--explicit-managed-project` 不能替代 dry-run token。Phase A CLI 还要求候选 canonical path 精确等于登记 fixture；
+其他本库 fixture 和所有外部路径均 fail closed。
+
+== Read-only evidence
+
+Dry-run 在候选库上执行两次稳定 project-input tree snapshot，并在二者之间读取：
+
+* `lakefile.toml` 或 `lakefile.lean` 的稳定 SHA-256；
+* `lean-toolchain` 的内容和 SHA-256；
+* strict typed `lake-manifest.json` 及 SHA-256；
+* path package 的 canonical containment；
+* exact Lean/Lake 4.32 root-declaration probe。
+
+Lake probe 只在 `.leanbun-dev/tmp` 的随机 staging 目录编译和运行，源项目保持只读；成功或失败均删除 staging。
+前后 tree snapshot 必须完全相等，且项目中不得出现 `.lake`。Tree snapshot 排除 `.git`、`.lake` 和平台生成项，
+因此摘要表达源码/config/toolchain/manifest 输入，而不是既有构件。
+
+本次候选证据为：
+
+* project id：`77534215ba30f3c7d61fdff59ea2845db2561fe62fd96418a8bc95eeac7730ac`；
+* project tree：`bff2599f9f37cc0f4525897a4dfe8c2d11b62a465fbeedd4120cfc98d4ff3ddb`；
+* 12 entries、8 files、1093 bytes；
+* config SHA-256：`e0d742da289bc4b182f961bc92d928108c1b5c69ea776ff8e99b8499503ef42e`；
+* toolchain SHA-256：`2773c517aa90b66ea8a2c52bddddf84393157797f8341be0df45294fff7fd32e`；
+* manifest SHA-256：`6854942b9cca9d8ae4fbca11ef943537cfee7abf647f92e823c3156f5a4b7fd8`；
+* root declaration：`1407e2553d29e049dbcc0eaccd7b4b65e10bb343397c65d880db86eefe793507`；
+* one direct/path package，状态为 `standalone`。
+
+== Lake manifest correction
+
+该验收发现旧 evidence decoder 对 Lake 1.2 path package 过严。Lake 会规范输出空 `scope` 和
+`manifestFile: null`；decoder 现在接受这两个精确值，但继续拒绝非空 path scope、Git-only 字段和错误类型。
+登记 fixture 已加入 stable typed manifest 回归。
+
+== Phase B continuation
+
+`eligible-not-adopted` 只证明候选输入可稳定读取、声明可解析且 dry-run 无持久副作用，不授予 adopt 权限。
+Phase A 只验证 target 字符串边界。Phase B 已由
+xref:RUST_EXTERNAL_FIXTURE_ACCEPTANCE_M41.adoc[External Fixture Acceptance M41 Phase B] 在隔离副本验证 target 和完整
+build closure，并保存 dry-run record 后执行显式 adopt、frozen build、单包 update、故障恢复和 rollback。
+真实外部项目、远端更新、Developer ID 签名、notarization 与 Gatekeeper 仍关闭。

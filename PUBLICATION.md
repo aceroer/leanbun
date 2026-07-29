@@ -6,13 +6,14 @@ Suggested description: `Experimental Rust/Bun transaction and dependency layer f
 
 Suggested topics: `lean`, `lean4`, `lake`, `bun`, `rust`, `package-manager`, `dependency-management`, `reproducible-builds`
 
-## Before making the repository public
+## Public release checklist
 
-1. Create an empty GitHub repository without generated README, license or gitignore files.
-2. Enable private vulnerability reporting and secret scanning where available.
-3. Push this repository's `main` branch and wait for the `public-gate` workflow.
-4. Protect `main` with the public gate required and disallow force pushes.
-5. Confirm that the GitHub file browser contains no `.leanbun-dev`, `.leanbun-dev-rust`, `.lake` or `rust/target` content.
-6. Do not publish a binary release yet: Developer ID signing, notarization and release-tag replay remain separate distribution gates.
+1. Run `./scripts/test-public.sh` from a clean checkout.
+2. Confirm that `./scripts/check-public-source` passes and the patch replay tree matches the M48 provenance manifest.
+3. Push `main`, wait for the `public-gate` workflow, then publish the annotated source tag `leanbun-v0.20.0-m48-dev` only at the validated public snapshot commit.
+4. Keep `main` protected, require the public gate and disallow force pushes.
+5. Confirm that the GitHub file browser contains no `.leanbun-dev`, `.leanbun-dev-rust`, `.lake`, `rust/target` or local provider configuration.
+6. Keep private vulnerability reporting and secret scanning enabled where available.
+7. Do not attach a binary release: Developer ID signing, notarization and Gatekeeper acceptance remain outside M48.
 
-This handoff intentionally has no configured remote and performs no GitHub-side mutation.
+The public history is a sanitized snapshot history. Development-history commit identifiers recorded in the provenance manifest remain evidence identities; they are not imported into the public Git history.

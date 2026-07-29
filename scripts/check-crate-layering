@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+DEV_BUN="$REPO_DIR/.leanbun-dev/bun/bin/bun"
+BOOTSTRAP_BUN="${LEANBUN_BUN:-bun}"
+
+if [ -x "$DEV_BUN" ]; then
+  BOOTSTRAP_BUN="$DEV_BUN"
+fi
+
+if ! command -v "$BOOTSTRAP_BUN" >/dev/null 2>&1; then
+  echo "Bun is required to check crate layering" >&2
+  exit 69
+fi
+
+exec "$BOOTSTRAP_BUN" --no-install --no-env-file "$REPO_DIR/scripts/check-crate-layering.ts"

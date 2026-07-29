@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "version": "0.12.0-m43-dev",
+  "class": "architecture-dependency-contract",
+  "sourceBaseline": {
+    "commit": "736a24b0f175a140b49a9fec4b76db96377905d4",
+    "tree": "415e9079f787f54dbbd0f3a293a52c04e753137d",
+    "status": "pre-refactor committed M42 baseline"
+  },
+  "dependencyContract": {
+    "workspaceCrates": 13,
+    "mainlineRoots": 6,
+    "cargoGraph": {
+      "path": "architecture/m43/cargo-dependencies.tsv",
+      "sha256": "f00bd7dd2699b1c19ff701acc099203068045ed99379ecb82f59b9ae5d9ff37e"
+    },
+    "protectedBaseline": {
+      "path": "architecture/m43/pre-refactor-sha256.tsv",
+      "entries": 18,
+      "sha256": "e6a80fb267a488a7eb7afbd1de756d80b114450c008d519b91c3adf749ebbf98"
+    },
+    "publicApiCensus": {
+      "path": "architecture/m43/public-api-census.tsv",
+      "leanbunLockSymbols": 14,
+      "inventoryLegacySymbols": 19,
+      "sha256": "8a9ad6c8a3ac22f91314322d96843110801aad04beb123c1ab9051a1a283e0b9"
+    }
+  },
+  "validation": {
+    "architectureTests": 7,
+    "architectureExpectCalls": 9,
+    "bunTestsPerRun": 100,
+    "bunRuns": 2,
+    "bunExpectCallsPerRun": 875,
+    "rustDefaultTests": 184,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "workspaceFmt": "passed",
+    "workspaceClippy": "passed"
+  },
+  "boundaries": {
+    "rustModuleMoved": false,
+    "cargoPackageMoved": false,
+    "canonicalFormatChanged": false,
+    "externalProjectMutation": "not-authorized",
+    "nextMilestone": "M44 Phase A mechanical leanbun-lock extraction"
+  }
+}

@@ -1,21 +1,38 @@
-= LeanBun Public Test Project Boundary
+= LeanBun Test Project Boundary
+:toc: left
+:sectnums:
 
 == Normative rule
 
-LeanBun development tests, regressions, fault injection and release replay may use only the registered templates under `test/fixtures/` in this repository. Personal documents, research repositories, production projects and production dependency libraries are outside the test boundary.
+LeanBun 的开发测试、回归、故障注入、milestone acceptance 和 release replay 只能使用本仓库
+`test/fixtures/` 中登记的 Lean/Lake 测试库。不得为了“更真实”而临时选择用户文档目录、研究仓库、生产项目或生产 dependency library 作为测试项目。
 
-External-project adoption is a separate production operation and requires separate authorization and audit. A fixture result never grants that authorization.
+外部项目 adoption 是独立的 production operation：必须由用户另行点名、另行授权、另行审计，且不能替代或补足任何开发测试与 milestone exit gate。
 
 == Registered fixtures
 
-* `lake-basic`: minimal dependency-free Lean library and executable.
-* `lake-lean-config`: staged `lakefile.lean` parser probe.
-* `lake-managed-dependency`: one local dependency for path and transaction checks.
-* `mathlib-project`: locked nine-package Mathlib closure and minimal import.
-* `m42-negative`: malformed input, path escape, hash drift, dependency cycle and missing-package cases.
+* `test/fixtures/lake-basic/`：默认最小验收库；无外部依赖，覆盖 Lean library、executable、构建与增量复用；
+* `test/fixtures/lake-lean-config/`：只供 staged `lakefile.lean` config probe；
+* `test/fixtures/mathlib-project/`：只在最小库已通过后覆盖 Mathlib 九包路径与最小 import。
 
-Templates remain read-only. Execution copies and generated state belong only under ignored repository-local `.leanbun-dev/` or `.leanbun-dev-rust/` roots.
+模板目录始终只读。普通构建副本只能创建在 `.leanbun-dev/tmp/` 或
+`.leanbun-dev-rust/test-tmp/`；需要 M35 generation transaction 的副本可位于
+`.leanbun-dev-rust/generation-fixture/`。它们继续受仓库开发 sandbox、固定 toolchain、禁网和 bounded writer 约束。
 
 == Mandatory gate
 
-Before reading a project, writing state or starting a subprocess, a test must establish that the source is a registered fixture, the execution copy is under an allowed development root, production dependencies remain read-only, and no external project path enters an allowlist or evidence record. Failure is typed and fail closed.
+任何 Lean/Lake 测试在读取项目内容、写状态或启动进程之前，都必须证明：
+
+. source template canonical path 位于本仓库 `test/fixtures/`；
+. execution copy canonical path 位于本仓库允许的 development state root；
+. production dependency library 只读；
+. 没有用户研究仓库或其他活动项目路径进入 request、golden、acceptance record 或 writer allowlist。
+
+边界不成立时必须 typed fail closed，不能退化为警告或人工约定。
+
+== GRSC incident
+
+此前对 GRSC 子仓库 `lean/` 的一次 M37-shaped transaction 误把附属 Lean interface 当成小项目。该运行虽已回滚且保留了技术证据，但不构成 M37、真实项目验收或 managed-mode 资格。其程序不再是 Cargo build target，记录仅作为边界失误的历史证据保留。
+
+M37 已从 `lake-basic` 的仓库内隔离副本连续两次通过；`mathlib-project` 副本继续补充九包覆盖。验收见
+xref:RUST_REPOSITORY_FIXTURE_ACCEPTANCE_M37.adoc[LeanBun Repository-Local Fixture Acceptance M37]。

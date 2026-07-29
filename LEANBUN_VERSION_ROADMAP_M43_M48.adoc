@@ -1,0 +1,268 @@
+= LeanBun Version Roadmap M43--M48
+:toc: left
+:sectnums:
+
+== Baseline and objective
+
+The baseline is `0.11.0-m42-dev`: M42 Phase A--E has closed the registered fixture regression, negative matrix, concurrent publication, terminal failure record and retain-all history gates. M43--M48 refine the Rust architecture and add a defensible Reservoir version-to-commit authority model without changing the project boundary: implementation and mutation tests remain confined to repository-owned registered fixtures.
+
+The governing architecture intent is xref:LEANBUN_RUST_CRATE_LAYERING_INTENT.adoc[LeanBun Rust Crate Layering Intent]. This roadmap must not be used to move code before the corresponding intent and dependency gate is recorded.
+
+The version sequence is pre-1.0 and intentionally uses minor releases for crate/API boundary changes. A milestone version is not complete merely because the binary reports the new string; its exit gate, provenance record and regressions must all pass.
+
+[cols="1,2,3",options="header"]
+|===
+|Milestone |Development version |Purpose
+
+|M43
+|`0.12.0-m43-dev`
+|Freeze dependency intent and make it mechanically enforceable.
+
+|M44 Phase A
+|`0.13.0-m44a-dev`
+|Extract the pure current-generation lock model.
+
+|M44 Phase B
+|`0.14.0-m44b-dev`
+|Physically isolate historical inventory/drift types.
+
+|M45
+|`0.15.0-m45-dev`
+|Audit and place strict codec versus filesystem/project evidence layers.
+
+|M46 Phase A
+|`0.16.0-m46a-dev`
+|Define versioned Reservoir binding evidence and lock compatibility.
+
+|M46 Phase B
+|`0.17.0-m46b-dev`
+|Enforce first-resolution and version-rebinding policy.
+
+|M46 Phase C
+|`0.18.0-m46c-dev`
+|Close registered offline/loopback Reservoir regressions.
+
+|M47
+|`0.19.0-m47-dev`
+|Classify and isolate historical crates after the mainline is clean.
+
+|M48
+|`0.20.0-m48-dev`
+|Rebuild distribution provenance and close the post-refactor release candidate.
+|===
+
+== Global invariants
+
+Every milestone preserves these rules:
+
+* `leanbun-core` remains platform-neutral, filesystem-free and policy-free;
+* `leanbun.lock` or its versioned successor remains the only resolved dependency authority;
+* ordinary frozen build performs no registry, Git or network resolution;
+* exact Git revision, source-tree digest, config/manifest digest and dependency edges remain bound;
+* Lake receives exactly one Bun-generated complete runtime packages projection;
+* production dependency libraries and unselected external projects remain read-only and unmanaged;
+* M41 immutable records and M42 historical records are not rewritten;
+* mechanical refactors and semantic lock/resolver changes use separate commits and separate milestone evidence;
+* source publication does not require Developer ID signing or notarization; no unsigned development artifact is represented as a signed binary release.
+
+== M43 — Architecture and dependency contract
+
+Status: complete as `0.12.0-m43-dev`; see xref:RUST_CRATE_LAYERING_CONTRACT_M43.adoc[LeanBun Rust Crate Layering Contract M43].
+
+=== Deliverables
+
+* freeze the evidence/shared-infrastructure and package-generation intent in a committed architecture document;
+* record the current direct and transitive Cargo dependency graph;
+* add an automated dependency check over `cargo metadata` with an explicit mainline root set;
+* define forbidden mainline edges to historical inventory, plan, state and approval crates;
+* define allowed downward evidence edges and forbidden reverse edges from evidence into resolver/store/generation/build/managed policy;
+* capture the current M31 canonical lock bytes, identities, public symbol census and M42 regression baseline before code movement.
+
+=== Exit gate
+
+* the checker passes the current intended graph and fails a test fixture containing each forbidden edge;
+* `leanbun-evidence` is documented as shared lower-layer infrastructure, not as legacy-owned code;
+* the intended `leanbun-lock` and `leanbun-inventory-legacy` public surfaces are enumerated;
+* no Rust module, Cargo package or canonical format has moved in M43.
+
+== M44 — Package model physical separation
+
+Status: complete through Phase B as `0.14.0-m44b-dev`; see xref:RUST_INVENTORY_LEGACY_EXTRACTION_M44B.adoc[LeanBun Inventory Legacy Extraction M44 Phase B].
+
+=== Phase A: `leanbun-lock`
+
+Status: complete as `0.13.0-m44a-dev`; see xref:RUST_LOCK_EXTRACTION_M44A.adoc[LeanBun Lock Crate Extraction M44 Phase A].
+
+Move `PackageKeyV1`, canonical source types, `LeanBunLockV1`, locked packages, provenance and path decisions into `leanbun-lock`. The new crate depends only on `leanbun-core`.
+
+Resolver, Lake bridge, store, generation, build and managed code must import the new crate directly. A temporary compatibility re-export may exist only for the historical consumers during Phase A; the mainline dependency checker must already reject use of it.
+
+Phase A is mechanical. It must not change:
+
+* canonical lock text or graph/lock SHA-256 identities;
+* source validation, sorting, error precedence or path-decision semantics;
+* Lake manifest/runtime projection bytes;
+* resolver selection, store publication or generation recovery behavior.
+
+=== Phase B: `leanbun-inventory-legacy`
+
+Status: complete as `0.14.0-m44b-dev`.
+
+Move checkout inventory, provider comparison, drift report and inventory snapshot types/functions into `leanbun-inventory-legacy`. Plan and approval code may depend on it. Remove the temporary compatibility re-export and the mixed `leanbun-package` public namespace.
+
+=== Exit gate
+
+* `leanbun-lock` depends only on `leanbun-core`;
+* the complete mainline Cargo closure contains no inventory-legacy, plan, state or approval edge;
+* mainline source contains no `PackageInventoryV1`, `DependencyDrift*` or legacy inventory function import;
+* M31 Rust/Bun golden files are byte-identical to the M43 baseline;
+* all M32--M42 tests and release-binary fixture replays pass without semantic diff.
+
+== M45 — Codec and evidence layering
+
+Status: complete as `0.15.0-m45-dev`; see
+xref:STRICT_JSON_PLACEMENT_DECISION_M45.adoc[LeanBun Strict JSON Placement Decision M45] and
+xref:RUST_STRICT_JSON_CODEC_M45.adoc[LeanBun Strict JSON Codec Extraction M45].
+
+=== Audit before movement
+
+Inventory every `StrictJson`/canonical JSON consumer, including the proposed Reservoir binding model. Answer whether the lock layer will remain line-oriented or will require shared strict JSON primitives. Record the decision before changing module ownership.
+
+The default candidate architecture is:
+
+[source,text]
+----
+leanbun-core       pure identity/hash/diagnostic
+leanbun-codec      pure bounded strict JSON/canonical codec primitives
+leanbun-evidence   filesystem and project evidence over core/codec
+----
+
+This default is accepted only if the audit confirms that the parser is platform-neutral and free of evidence policy. If only evidence adapters need it, `StrictJson` may remain evidence-internal. Unix file identity, canonical path, stable read and tree hashing must not move into core.
+
+=== Exit gate
+
+* one recorded placement decision covers every current and planned consumer;
+* Lake probe JSON malformed/unknown/duplicate/trailing/oversize cases retain identical rejection behavior;
+* a pure lock/resolver build does not acquire a Unix filesystem dependency;
+* evidence has no reverse dependency on package lifecycle policy crates.
+
+All four exit conditions passed. `leanbun-lock` remains line-oriented and depends only on core;
+future M46 wire-format selection remains deliberately open.
+
+== M46 — Reservoir binding authority
+
+=== Phase A: versioned model
+
+Status: complete as `0.16.0-m46a-dev`; see
+xref:RESERVOIR_BINDING_AUTHORITY_DECISION_M46A.adoc[LeanBun Reservoir Binding Authority Decision M46 Phase A] and
+xref:RUST_RESERVOIR_BINDING_MODEL_M46A.adoc[LeanBun Reservoir Binding Model M46 Phase A].
+
+Reservoir must become a first-class requested source rather than being erased into a generic Git request. Define a versioned binding that includes at least registry identity, package identity, requested version, metadata digest, canonical resolved URL, exact commit, download integrity, source-tree digest and selected-source identity.
+
+Do not silently extend the existing strict `LeanBunLockV1` schema. Choose and document one compatible route:
+
+* introduce `LeanBunLockV2` with an explicit V1 read/migration policy; or
+* introduce a separately versioned Reservoir binding document whose digest is obligatorily bound by the lock/generation identity.
+
+Existing Git/path V1 locks and active generations remain readable and are not rewritten merely because a new reader exists.
+
+The selected route is the separately versioned companion document. It binds the exact V1 lock identity without changing V1 bytes;
+Phase B must make the activated generation bind the companion document identity before any Reservoir-backed activation.
+
+=== Phase B: first resolution and rebinding
+
+Status: pure policy and generation authority complete as `0.17.0-m46b-dev`; see
+xref:RESERVOIR_RESOLUTION_REBIND_POLICY_M46B.adoc[LeanBun Reservoir Resolution and Rebind Policy M46 Phase B] and
+xref:RUST_RESERVOIR_POLICY_GENERATION_M46B.adoc[LeanBun Reservoir Policy and Generation Binding M46 Phase B].
+
+Implement separate policies for:
+
+* *frozen build*: use the locked exact commit and verified store object without querying Reservoir;
+* *first online resolution*: publish a pending candidate and evidence/diff first; activate only after content verification and registered build/test success;
+* *ordinary update*: the same version resolving to another commit is not a normal package upgrade;
+* *explicit rebind*: require a narrowly scoped authorization binding package, registry, version, old commit, new commit and observed metadata digest;
+* *audit*: report upstream alias drift without destroying the ability to reproduce the old lock offline.
+
+Typed outcomes must distinguish stable binding, ambiguous candidates, metadata drift, version rebound, disappeared binding, content mismatch and explicit rebind acceptance.
+
+All typed outcomes, exact rebind scope and generation-side companion identity binding are implemented. Persistent pending-record publication and registered loopback transition/recovery are intentionally exercised in Phase C; no Phase B API can activate or mutate by itself.
+
+=== Phase C: registered regression closure
+
+Status: complete as `0.18.0-m46c-dev`; see
+xref:RUST_RESERVOIR_LOOPBACK_REGRESSION_M46C.adoc[LeanBun Reservoir Loopback Regression M46 Phase C].
+
+Use only repository-owned mock/loopback fixtures to cover:
+
+* stable repeated resolution;
+* first-resolution candidate rejected before activation;
+* same version rebound to a new commit;
+* oscillation from old to new and back;
+* unchanged commit with changed registry metadata;
+* changed archive bytes or source tree at the same commit identity;
+* disappeared version and unavailable old commit;
+* explicit rebind followed by frozen offline replay and rollback.
+
+=== Exit gate
+
+* no rebinding path can enter active lock through an ordinary update;
+* first-resolution evidence is durable and reviewable before the active commit point;
+* frozen builds remain network-free and reproduce the old exact lock after upstream drift;
+* V1 Git/path fixtures and all M42 histories remain unchanged;
+* arbitrary public Reservoir discovery remains closed until a separate authorization milestone.
+
+== M47 — Historical crate disposition
+
+Status: complete as `0.19.0-m47-dev`; see
+xref:RUST_HISTORICAL_CRATE_DISPOSITION_M47.adoc[LeanBun Historical Crate Disposition M47].
+
+Only after M44--M46 prove that the mainline has no historical dependency may the workspace status of `leanbun-plan`, `leanbun-state`, `leanbun-approval-macos`, `leanbun-macos-acl-sys` and `leanbun-inventory-legacy` change.
+
+For each crate choose one documented disposition:
+
+* retained historical research member;
+* excluded from default members but still independently testable;
+* moved under an explicit legacy directory;
+* deprecated public surface with a named replacement;
+* archived outside the active workspace.
+
+No historical record or source is deleted in this milestone. A crate is not deprecated merely because it is old; the decision must cite its consumers and replacement boundary.
+
+=== Exit gate
+
+* the default mainline build and tests do not compile historical crates;
+* an explicit historical test command still verifies retained code;
+* README/operator documentation cannot be read as if the XPC/privileged route were required by the Bun-managed mainline;
+* clean-clone source builds require no production credentials or personal paths.
+
+== M48 — Post-refactor distribution closure
+
+Status: complete as the source-only development release `0.20.0-m48-dev`; see
+xref:RUST_POST_REFACTOR_DISTRIBUTION_M48.adoc[LeanBun Post-refactor Distribution Closure M48].
+
+=== Deliverables
+
+* rerun full Rust, Bun, Lean/Lake projection and registered fixture regression suites from a clean source checkout;
+* rebuild the Bun-integrated Rust binary against the new crate graph;
+* record source commit/tree, Bun upstream commit, Cargo.lock, rustc target/version, binary SHA-256 and supported lock readers;
+* verify upgrade from the `0.11.0-m42-dev` state and rollback to its reader/binary without rewriting retained state;
+* refresh public source documentation and redaction checks;
+* publish source-only installation instructions; binary signing/notarization remains outside the required closure.
+
+=== Exit gate
+
+* clean clone can build and run all registered fixture paths without private dependency libraries;
+* M31 V1 compatibility and the selected M46 binding format both replay from installed binary;
+* dependency checker, source redaction, public test script and GitLab/GitHub source mirrors agree on the release commit;
+* no external project is silently adopted and no public remote metadata is trusted outside the registered M46 fixtures.
+
+== Conditions for a later 1.0 proposal
+
+M48 is still a development release. A `1.0.0` proposal requires a separate review proving at least:
+
+* stable public lock/binding compatibility policy and migration rules;
+* an authorized remote metadata adapter with registry provenance and rebinding defense;
+* clean mainline API surface with no accidental legacy imports;
+* source-build reproducibility on the declared supported platforms;
+* explicit external-project adoption and rollback evidence under a separately approved scope;
+* operator documentation that distinguishes source release, development binary and any optional signed distribution.

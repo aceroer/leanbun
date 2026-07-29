@@ -1,0 +1,65 @@
+= LeanBun M5 Project/Image Build Concurrency Lock
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第十二阶段已经在受控构建事务外层加入 project/image 级排他锁。同一个 canonical project ID 与
+sealed image ID 在任一时刻只能有一个 active execution；target 不进入锁 key，因此同一绑定下的不同
+target 也不能并行写共享项目构建目录。
+
+== 锁协议
+
+. 对 canonical `{projectId,imageId}` 编码计算 SHA-256 key；
+. 在 state root 的 `build-locks/<key>.lock` 以 `O_EXCL|O_NOFOLLOW` 创建；
+. 写入 execution ID、项目、镜像、target、协调 PID 与获取时间，`fsync` 后改为 `0444` 并立即严格回读；
+. 已存在锁只做有界只读发布等待，随后返回 `BUILD_LOCK_BUSY`；损坏、逃逸或所有权冲突均 fail closed；
+. 锁在 execution record 之前获取，覆盖 Lake 执行、cwd 审计和全部后验重验；
+. terminal record 原子发布后，按 execution/project/image 精确所有权释放并同步目录；
+. 进程组未确认收割时，record 与锁都保持 active，交给显式 recovery。
+
+锁不按年龄过期，也不允许另一执行接管。崩溃若发生在 terminal record 发布与释放之间，`build recover`
+只有在协调 PID 已消失、项目 cwd 无活动进程且锁与 record 全字段一致时，才补做释放；`running` record
+则还必须完成原有全证据审计并先终结为 `failed`。
+
+== 测试
+
+临时目录测试覆盖只读 mode、严格所有权释放、symlink store 拒绝，以及两个独立 Bun 进程同时争抢。
+跨进程测试确认恰有一个 `acquired`、一个 `busy`；发布窗口的短暂不可读只允许有界等待，不能触发删除。
+另有 terminal-record/release 崩溃窗口测试，确认显式恢复不改写既有终态，只释放匹配锁。
+
+== Mathlib fixture 验收
+
+绑定 production sealed image 的隔离 fixture 先由独立 Bun 进程持锁，再请求同一 project/image 的受控构建：
+
+[cols="1,2"]
+|===
+|Lock key |`3dfc1b256744c365b1069e9ffd29c1f6715751ff45cb78cf2d3cd97fd55330e2`
+|Busy owner |`facefeed-face-4bad-8dad-deadbeef0001`
+|Busy result |`failed` / `not-attempted` / verification `approved`
+|Busy diagnostic |`BUILD_LOCK_BUSY`
+|Busy execution record |未创建；record 数保持 4
+|Busy report SHA-256 |`d06691723f61644e28d6b9699237238122cb5bf5236d4b78f69b3b15bd829b68`
+|===
+
+持锁进程按精确所有权正常释放后，同一 fixture 完成一次真实 Mathlib target：
+
+[cols="1,2"]
+|===
+|Execution ID |`71d53909-ff1d-4a54-aa75-a9c8e03e81c2`
+|Status / Lake |`completed` / `0`
+|Lock lifecycle |`BUILD_LOCK_ACQUIRED` -> terminal record -> `BUILD_LOCK_RELEASED`
+|Lock released |true；store 无 active lock
+|Dependency artifact before / after |`82c17f8c55668dd2a10040ed53eaebe742e8d06422a67f25c3968a71203abc12`
+|Artifact count |112425
+|Execution record SHA-256 |`c7787d2d07b932dbbb017d0862511eb724f8759504a07ef03dc0644997f715eb`
+|Pass report SHA-256 |`5e68536e02694d2afa1a766631427ac769d09ae7d9b086360169ffafed1eaaa3`
+|===
+
+生产 registry、override、依赖源码与构件仍只读；真实项目未进入构建路径。
+
+== 下一执行门
+
+repeated-build 的输入/输出证据层已经实现，详见
+xref:M5_REUSE_EVIDENCE.adoc[M5 Repeated-Build Reuse Evidence]。下一步实现只读候选选择与实时重验；仍不跳过
+Lake，也不开放正式项目构建。

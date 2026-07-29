@@ -1,0 +1,83 @@
+= LeanBun Managed Dependency Regression M42 Phase B
+:toc: left
+:sectnums:
+
+== Result
+
+M42 Phase B 已在 `0.8.0-m42-dev` 将本库 `lake-managed-dependency` 接入可重复回归：
+
+[source,shell]
+----
+leanbun fixture-regress "$LEANBUN_REPOSITORY" \
+  --fixture=lake-managed-dependency
+----
+
+命令不接受项目路径。每次都从登记模板创建独立副本，执行 dry-run、adopt、baseline build、
+`--package=managed_dep` 等价的显式 update、updated build、`BeforeActiveRename` fault、recover、rollback 和 final build。
+
+== Per-run state boundary
+
+运行项目位于：
+
+----
+.leanbun-dev-rust/managed-fixture/m42-regression/runs/<run-id>/project
+----
+
+dry-run 生成唯一 project ID 后，cleanup guard 只登记以下五类 exact target：
+
+* 本次 run root；
+* `.leanbun-dev-rust/managed-projects/registry/<project-id>.record`；
+* `.leanbun-dev-rust/managed-projects/generation-state/projects/<project-id>`；
+* `.leanbun-dev-rust/managed-projects/project-control/<project-id>`；
+* `.leanbun-dev-rust/store-fixture/m40-managed/<project-id>`。
+
+加入 cleanup set 前要求四个 project-ID state target 均不存在，避免误删既有状态。清理拒绝 symlink/special file，
+递归恢复权限后只删除 exact target 并同步父目录。M41 project ID `9aaa5805...` 从不进入该集合。
+
+== Closure invariants
+
+每次成功同时证明：
+
+* baseline generation 与 rollback generation 相同，updated generation 不同；
+* baseline、updated、rollback 三次 build artifact 相同；
+* fault 后 active 仍是 updated，pending evidence 存在；
+* recover 清除 pending，rollback 回到 adopted transaction；
+* template tree 与项目源码未变，`vendor/managed_dep/.lake` 不存在；
+* recovery 后无 `.active-*.tmp`；
+* 摘要发布前五类 project-scoped 状态全部清理。
+
+== Repeated-run evidence
+
+[cols="2,3,3,3",options="header"]
+|===
+|Run |Run ID |Project ID |Record SHA-256
+
+|1
+|`76c7b8debffce4674cb63dd1d8d53f57e4ec7957b61b60b49401eb0fcb669d63`
+|`22fafd3689eeb4deb9b8db8aee43159fca0c1781d74b93332d1f6f1b3a630da5`
+|`dbc0b1ae835c9d3a33e01937962c7f68d51060ba65c40c8b1e00750cb7f6e0d2`
+
+|2
+|`bff51134443a529789870f73eb74fc98f79f004a8d288373706bc4117cdc720a`
+|`30cc026962cd20660c5f18e280862f2ae511ddd51b17905defc958a1d8e11c59`
+|`28ea454be5c9542d944177c899d91aad1d049e72681c75a8e0f1752fbea14f18`
+|===
+
+两份 record 均为 `0400`。`latest.record` 使用固定 schema，包含 run ID、fixture 和 record SHA-256，并指向第二次运行。
+未知 fixture selector 返回非零退出且不创建 run。
+
+M41 两份 frozen record 的 SHA-256 保持
+`c1603675599f69e9f9748ddf1a34a81f8bbe52a24e31f3f8405e04c8542776c7` 与
+`b476f6d14c16b1c668608469dcdeb61cff705b2beabc73ad2aa2a669a170d514`。
+
+== Parallel probe correction
+
+全量并行测试暴露旧 `probe_declaration` staging 只使用系统时间；两个同进程 probe 可能得到相同值，一个失败 guard
+会删除另一个正在使用的目录。staging identity 现加入进程内 `AtomicU64` nonce，单测重跑与全工作区并行回归均通过。
+
+== Validation and next phase
+
+最终验证为 Rust 默认 182 项、显式 ignored provider 1 项、Bun 93 项/866 次断言，以及 Rust/Bun fork Clippy。
+
+M42 Phase C 已由 xref:RUST_MATHLIB_REGRESSION_M42.adoc[Mathlib Regression M42 Phase C]
+加入 `mathlib-project` 九包完整闭包回归；下一步是 Phase D 的登记负 fixture 矩阵。真实外部项目入口仍关闭。

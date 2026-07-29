@@ -1,0 +1,26 @@
+[package]
+name = "leanbun-approval-macos"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[package.metadata.leanbun]
+lifecycle = "retained-historical-safety-research"
+default-member = false
+replacement-boundary = "leanbun-managed-explicit-package-transactions"
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+getrandom = { version = "=0.4.3", default-features = false }
+leanbun-core = { path = "../leanbun-core" }
+leanbun-evidence = { path = "../leanbun-evidence" }
+leanbun-macos-acl-sys = { path = "../leanbun-macos-acl-sys" }
+leanbun-inventory-legacy = { path = "../leanbun-inventory-legacy" }
+leanbun-plan = { path = "../leanbun-plan" }
+rustix = { version = "=1.1.4", default-features = false, features = ["std", "fs", "process", "termios"] }

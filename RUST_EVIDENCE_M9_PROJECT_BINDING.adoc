@@ -1,0 +1,67 @@
+= LeanBun Rust Evidence M9: Strict Project Binding Reader
+:toc: left
+:sectnums:
+
+== 结论
+
+Rust `leanbun-evidence` 已实现只读 `ProjectBindingV1` typed decoder 和 `read_project_binding`。reader 从 canonical
+project 的 `.leanbun/binding.json` 做有限稳定读取，将原文件 SHA-256 与 typed binding 保存在同一返回值中。
+
+M9 不创建 `.leanbun`、不修复 binding、不读取 attestation、不作构建授权，也没有 Rust writer。
+
+== Strict schema
+
+binding root 必须恰好由以下字段组成：
+
+* `schemaVersion = 1`、`policyVersion = 1`，且必须是 JSON integer `1`；
+* `projectId`、`projectPath`；
+* `imageId`、`providerId`；
+* `boundAt`、`lastVerifiedAt`；
+* `manifestSha256`、`toolchain`；
+* `allowedTargets`。
+
+strict JSON 层先拒绝 duplicate key、trailing value、非法 Unicode、过深或过多节点；typed decoder 再拒绝 unknown
+field、缺字段、错误类型和超限字符串。binding 文件硬上限为 1 MiB。
+
+`projectId`、`imageId`、`manifestSha256` 必须是 64 个 lowercase hexadecimal 字符。`providerId` 与 `toolchain`
+必须非空、最多 256 UTF-8 bytes 且不含控制字符。
+
+== Project authority binding
+
+decoder 不接受文档自报路径作为事实。调用者必须提供 canonical project path，随后同时验证：
+
+* `projectPath` 与 canonical path byte-for-byte 相同；
+* `projectId = sha256("leanbun-project-v1\0" + canonical path UTF-8)`；
+* canonical path 必须是非空 UTF-8，最大 4096 bytes。
+
+文件系统 reader 还要求 `.leanbun` 是 project 内的直接目录；symlinked control directory 在读取 binding 前拒绝。
+`binding.json` 本身继续受 M1 direct regular file、canonical containment 和 TOCTOU 稳定读取门保护。
+
+== Target and time normalization
+
+`allowedTargets` 必须有 1 至 256 项。每项通过 `BuildTarget` 语法门，集合必须唯一并已按 UTF-8 bytes 严格升序，
+因此同一策略只有一种数组表示。
+
+Bun writer 使用 `Date.toISOString()`。Rust reader 只接受其四位年份常规输出：
+`YYYY-MM-DDTHH:mm:ss.sssZ`。它验证 Gregorian 月日与闰年、小时/分钟/秒范围，并要求
+`lastVerifiedAt >= boundAt`。Bun reader 过去使用宽泛 `Date.parse`；M9 有意拒绝 date-only、本地时区和非规范等价写法。
+
+== Bun/Rust 差分
+
+共享 `rust/golden/project-binding-cases.tsv` 包含一组有效 binding，以及 unknown field、版本漂移、project
+identity/path drift、uppercase digest、空 provider、宽松或无效日期、逆序时间、未排序/重复/非法 target 等反例。
+
+Bun 独立 contract oracle 与 Rust decoder 对全部案例给出相同结果。Rust 另在动态 canonical temp project 中验证：
+
+* 稳定重复读取返回同一 typed document 与文件摘要；
+* project path 与 path-only ProjectId 一致；
+* symlinked `.leanbun` 在读取外部文件前被拒绝。
+
+== 边界与下一门
+
+M9 只能证明 binding 文档在固定 project 下结构有效，不能证明 image 已 sealed、provider/manifest/toolchain 当前仍匹配，
+也不能单独授予构建许可。
+
+下一门只读 `ImageAttestationV1` strict typed reader 已完成，见 `RUST_EVIDENCE_M10_IMAGE_ATTESTATION.adoc`：绑定
+requested ImageId、sealed status、image identity、provider digests、dependency/artifact tree evidence、规范
+missingRoots 与 sealedAt。仍未开放 Rust writer。

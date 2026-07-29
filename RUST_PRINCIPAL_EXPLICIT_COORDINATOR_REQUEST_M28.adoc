@@ -1,0 +1,67 @@
+= LeanBun Rust Principal-Explicit Coordinator Request M28
+
+== Outcome
+
+M28 已在 `leanbun-approval-macos` 建立纯类型 `MacOsCoordinatorRequestV1` 与
+`prepare_macos_coordinator_request_v1`。它是未来 privileged coordinator 的 bounded identity document，不是 XPC message decoder、Authorization
+proof、daemon ledger entry 或 execution capability。
+
+request decision 固定为 `PendingCoordinatorVerification`，`execution_authority` 固定为 `Withheld`。本门没有建立 XPC connection、接收 audit token、
+externalize/internalize Authorization、注册 service、创建 filesystem slot 或 spawn Lake。
+
+== Explicit peer and threat principal
+
+M27 的 implicit-`geteuid()` gap 由两份不同对象替代：
+
+* peer identity claim：bounded signing identifier、10-byte uppercase-alphanumeric Team ID、peer code-requirement SHA-256、effective UID 与 audit
+  session ID；
+* threat principal：显式 non-root UID、primary GID 与最多 32 个严格递增、唯一且不重复 primary GID 的 supplementary groups。
+
+构造 request 时要求 peer effective UID 与 threat UID 精确相同。该约束阻止一个 authenticated user peer 在 request 中另选“更安全”的 UID；但 peer
+object 仍只是未来 XPC adapter 应填充的结构化 claim，M28 本身不声称已经验证 code signature 或 audit token。
+
+== Fixed authorization and lineage
+
+operation 只有 `ExecuteReservedLakeCommand`，Authorization right 固定为：
+
+`com.leanbun.execute-reserved-lake-command`
+
+right name 进入 request identity；session-bound `AuthorizationExternalForm` blob 刻意不进入持久 identity，也不在 runtime type 中出现。未来 daemon 必须
+在线接收 blob、重建 AuthorizationRef 并检查该 exact right，再把结果绑定到 authenticated connection 和 request SHA。
+
+M19 不被序列化。request 只携带 coordinator lookup 所需的六个 non-zero lineage references：reservation、intent、grant、candidate、proof 和
+executable SHA-256。它们不会证明 user-owned M19 slot 已被 coordinator 接受；未来 daemon ledger 必须重新查找并验证整条 lineage。
+
+== Time, nonce, and identity
+
+request 绑定 non-zero nonce SHA-256、issued time 与 expiry；有效期必须为正且不超过 60 秒。constructor 不读取 wall clock，因此只保证结构窗口；未来
+daemon ingress 仍必须以自己的 monotonic/wall-clock policy 检查 fresh window。
+
+identity 使用 `leanbun-macos-coordinator-request-v1\0` domain separator。每个 key/value 以 64-bit big-endian byte length framing，UID/GID/ASID
+使用 32-bit big-endian，时间使用 64-bit big-endian，supplementary groups 已规范排序。固定 golden case 的 request SHA 为：
+
+`ffcaf2a4cd2d90522bd1f1d357af23558ac623748917ba5d33fae8341fc318e3`
+
+Rust 与 Bun CryptoHasher 对同一 binary oracle 精确一致；nonce 改变会改变 request SHA。
+
+== Rejection boundary
+
+typed rejection 覆盖：invalid peer identity、root/invalid threat principal、ambiguous groups、peer/principal mismatch、zero/missing lineage、zero nonce 与
+zero/over-60-second window。request struct 不实现 Clone 或 serialization，字段只能通过 getters 读取，避免在 M29 wire contract 形成前出现第二套隐式
+encoding。
+
+== Verification boundary
+
+Rust tests覆盖 deterministic identity、nonce drift、principal mismatch、group canonicality、deadline bound、pending/withheld authority 与
+Authorization blob absence。Bun oracle 固定 request surface、禁止 external Authorization blob，并提供跨语言 binary hash golden；M28 runtime source 继续
+进入 process/environment/unsafe/delete/`lake update` 禁止扫描。
+
+== 后续状态
+
+M29 bounded canonical wire envelope 与 strict decoder 已完成，见
+xref:RUST_COORDINATOR_CANONICAL_WIRE_M29.adoc[LeanBun Rust Coordinator Canonical Wire M29]。M30 已将主线切回 Bun package takeover，见
+xref:BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[LeanBun Bun-Managed Lean Package Takeover M30]；本 request contract 保留为可选 privileged/remote transport
+研究，不继续建立 daemon ledger。
+
+前置 privileged boundary 见
+xref:RUST_PRIVILEGED_COORDINATOR_BOUNDARY_M27.adoc[LeanBun Rust Privileged Coordinator Boundary M27]。

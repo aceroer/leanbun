@@ -1,0 +1,91 @@
+= LeanBun Rust Path Launch Threat Model and Policy M21
+
+== Outcome
+
+M21 已建立 macOS path-based launch 的 threat model 与 admissibility policy。默认生产攻击面明确包含同 effective UID 并发替换者；因此
+user-owned toolchain、普通 `0555`/`0755` mode，以及仅设置 owner-changeable `UF_IMMUTABLE` 的文件均不能关闭 M20 的 path-resolution race。
+
+`macos_path_launch_policy_v1` 是纯 policy contract：它不接收 M19 reservation、不观察具体路径、不创建 child process，也不授予执行权。
+所有分类，包括 `EligibleForFutureProductionAdapter`，最终仍为 `PlanExecutionAuthorityV1::Withheld`。
+
+== Threat model
+
+[cols="2,3",options="header"]
+|===
+|范围 |对象
+
+|In scope
+|同 effective UID 的并发进程；可写 group/world actor；与启动重叠的授权 updater；kernel 最终解析前发生的 mount topology replacement。
+
+|Out of scope
+|privileged root/kernel compromise；physical hardware compromise。
+|===
+
+同 UID actor 必须纳入，因为 owner 即使当前 mode 没有 write bit，通常仍能先 `chmod` 再修改；SDK `sys/stat.h` 把 `UF_SETTABLE` 定义为 owner
+changeable mask，`man 2 chflags` 也明确 `UF_IMMUTABLE` 可由 owner 设置或清除。相反，`SF_IMMUTABLE` 属于 super-user-changeable flag，但仅检查
+leaf flag 仍不足以保护可替换它的 parent directory 和 mount chain。
+
+== Production requirements
+
+未来具体 path 只有同时证明以下八项，才可被标为 production-adapter candidate：
+
+. absolute canonical direct path；
+. 任一 component 均无 symlink；
+. mount identity 在观察窗口内稳定；
+. 每个 component 对 effective UID 都由 OS 强制禁止 mutation；
+. 每个 component 对 group/world mutation 同样关闭；
+. ACL 与 Darwin file flags 已纳入判断，而不是只读 Unix mode；
+. leaf identity 与 sealed M19 reservation lineage 一致；
+. updater writer 从最终重验持续排除到 child creation 完成。
+
+这些条件必须覆盖从可信 filesystem root 到 `bin/lake` 的完整 component chain；只保护 leaf、只 hash、只持有 FD、只把 parent 设为 `0555` 均不够。
+
+== Admissibility matrix
+
+[cols="2,2,3",options="header"]
+|===
+|Provenance class |Policy result |含义
+
+|System-owned protected path
+|`EligibleForFutureProductionAdapter`
+|仅表示可由后续 observer 尝试证明八项要求；本门不声称任何现有路径已满足。
+
+|Read-only filesystem path
+|`EligibleForFutureProductionAdapter`
+|必须同时证明 mount 与完整 path chain 稳定，不以单次 `MNT_RDONLY` observation 代替全部要求。
+
+|User-owned managed toolchain
+|`DeniedMutableByInScopeActor`
+|同 UID actor 可改变 leaf 或 ancestor，生产 path spawn 禁止。
+
+|User immutable flag only
+|`DeniedMutableByInScopeActor`
+|`UF_IMMUTABLE` 可由 owner 清除；单个 `SF_IMMUTABLE` 也不能替代完整 chain proof。
+
+|Isolated test fixture
+|`IsolatedFixtureOnly`
+|只允许延续现有测试范围，不可提升为生产 provenance 或执行许可。
+|===
+
+== Current production observation
+
+2026-07-24 只读观察到当前生产 Lake 为：
+
+`$LEANBUN_PROVIDER_ROOT/lean/elan-home/toolchains/leanprover--lean4---v4.32.0/bin/lake`
+
+leaf 为当时登录用户所有、mode `0755`、无 immutable flag；外置卷根同为该用户所有、mode `0775`。挂载记录为 external APFS
+`noowners`，且不是 read-only mount。因此它属于 `UserOwnedManagedToolchain`，当前生产 path launch 明确拒绝。该 observation 是本机时点证据，未来
+必须重新观察，不能写死为永久事实。
+
+== Verification boundary
+
+Rust tests 固定 in-scope/excluded threat、八项 production requirement、五类 provenance decision，并断言所有结果继续 withheld。Bun boundary
+oracle 将 M21 runtime source 纳入禁止项扫描，继续拒绝 subprocess、host environment、unsafe、删除与 `lake update`。
+
+== 下一门
+
+M22 已完成，见 xref:RUST_PATH_PROVENANCE_OBSERVER_M22.adoc[LeanBun Rust macOS Path Provenance Observer M22]。observer 逐 component
+持有 `NOFOLLOW` FD，记录 effective-access、Darwin flags 与 mount identity；当前生产 Lake 实测为 `DeniedUserOwnedComponent`。M23 先审计
+macOS ACL enumeration 与 mount/path protection 的 exact native API，不 spawn、不修改 ACL/flags。
+
+前置 handoff audit 见 xref:RUST_EXECUTABLE_HANDOFF_BOUNDARY_M20.adoc[LeanBun Rust Executable Handoff Boundary M20]。

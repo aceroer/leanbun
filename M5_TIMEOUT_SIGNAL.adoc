@@ -1,0 +1,76 @@
+= LeanBun M5 Timeout and Signal Finalization
+:toc: left
+:sectnums:
+
+== 状态
+
+M5 第十一阶段已把主动 deadline 与外部 `SIGINT`/`SIGTERM` 纳入 controlled build execution record。
+CLI 的默认 Lake deadline 保持 30 秒；内部验收可传入更短的固定策略值，项目参数不能改写它。
+
+取消发生在完整重验前或重验期间时，返回 `not-attempted` 且不创建 execution record。记录创建后发生的
+timeout/signal 必须进入下述终止与后验协议。
+
+== 进程组协议
+
+. 以 Bun 1.3.14 `detached: true` 启动 `sandbox-exec`，令 leader PID 成为独立 PGID；
+. deadline 或 AbortSignal 首次触发时，记录 `timeout` 或 `signal` 及 `SIGINT`/`SIGTERM`/`ABORT` 来源；
+. 对负 PGID 发送 `SIGTERM`；
+. 宽限期后 leader 尚未退出则对同一 PGID 发送 `SIGKILL`，并记录 `terminationEscalated=true`；
+. 同时消费 stdout/stderr并等待 leader，不能只发送信号就返回；
+. 用 cwd process audit 确认项目及子目录内没有残留进程；审计不清或仍有进程时，record 保持 `running`，
+  交由 stale-running recovery；
+. 进程组确认清空后，执行项目、provider、binding、attestation 与 dependency artifact 后验复核；
+. 原子终结为 `failed`，`failureStage=sandbox-execution`。
+
+本机 smoke 已验证 Bun `detached` 子进程的 PID 等于 PGID，负 PID `SIGTERM` 可被收割。测试 worker 又生成
+一个真实 `/bin/sleep` 后代：父进程忽略 TERM 时会升级 KILL，父子 PID 最终都不存在；AbortSignal 的
+`SIGINT` 路径则在无需升级时完成同样收割。
+
+== Mathlib timeout 验收
+
+绑定 fixture 使用 1 ms deadline，强制在 Lake 执行阶段超时：
+
+[cols="1,2"]
+|===
+|Execution ID |`699aa299-8602-474e-9155-b4550d8e1479`
+|Status / terminal record |`failed` / `failed`
+|Lake exit |`143`
+|Termination |`timeout`
+|Process group |`22295`，reaped
+|Escalation |false
+|Project protected records |stable
+|Dependency artifact before / after |`82c17f8c55668dd2a10040ed53eaebe742e8d06422a67f25c3968a71203abc12`
+|Artifact count |112425
+|Binding / attestation / inspection |stable / stable / stable
+|Record SHA-256 |`d85905cc2ca7d4d8398d79c2219f63507e649d7184ba316bc687ac9d715f2408`
+|Report SHA-256 |`5ce737657cd4148cf2b6683aa55b4ee5a689a5c18587578d93384f4da2783b73`
+|===
+
+== Mathlib signal 验收
+
+第二次验收在新的 `running` record 出现后通过 AbortController 触发 `SIGINT`：
+
+[cols="1,2"]
+|===
+|Execution ID |`f56732f2-57b5-459a-8bf1-b087be49e46f`
+|Status / terminal record |`failed` / `failed`
+|Lake exit |`143`
+|Termination / trigger |`signal` / `SIGINT`
+|Process group |`24169`，reaped
+|Escalation |false
+|Project protected records |stable
+|Dependency artifact before / after |`82c17f8c55668dd2a10040ed53eaebe742e8d06422a67f25c3968a71203abc12`
+|Artifact count |112425
+|Binding / attestation / inspection |stable / stable / stable
+|Record SHA-256 |`ae771cf33e91e117fb0c07ef1f6798126d253e9d10d8bf30ee0b85b073cc660b`
+|Report SHA-256 |`f76024d720fea49c671a912884b2f4cfd18bc6c2323d46a53173c00508a387ad`
+|===
+
+两次诊断分别包含 `LAKE_EXECUTION_TIMED_OUT` 或 `LAKE_EXECUTION_CANCELLED`；均包含
+`ATTESTATION_REVERIFIED`、record start/finalize 与 `CONTROLLED_BUILD_FAILED`。生产依赖未写入。
+
+== 下一执行门
+
+project/image 级 build concurrency lock 已实现并通过真实争抢验收，详见
+xref:M5_BUILD_CONCURRENCY_LOCK.adoc[M5 Project/Image Build Concurrency Lock]。下一步研究可验证的重复构建复用；
+正式项目构建仍关闭。

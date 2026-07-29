@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "version": "0.13.0-m44a-dev",
+  "class": "mechanical-lock-crate-extraction",
+  "sourceBaseline": {
+    "commit": "736a24b0f175a140b49a9fec4b76db96377905d4",
+    "tree": "415e9079f787f54dbbd0f3a293a52c04e753137d",
+    "status": "uncommitted M43 plus M44A working-tree delivery"
+  },
+  "crateBoundary": {
+    "workspaceCrates": 14,
+    "mainlineRoots": 6,
+    "lockDependencies": ["leanbun-core"],
+    "historicalCompatibilityReexport": "leanbun-package",
+    "mainlineMixedPackageReachable": false,
+    "cargoGraphSha256": "7484853a0b5be610a4041ade0433676822aeb76a25e2e2d8ca753c6e7a0a8d0a",
+    "cargoLockSha256": "f9bdb4a3afc398e8f314007bc88068e62628c124bcf1f1153c434fff08ebcb18"
+  },
+  "mechanicalIdentity": {
+    "m43LockSourceSha256": "f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c",
+    "m44LockSourceSha256": "f0b5f429460f01dffa331dd90a53f22e2b2808cc370f6212fd9109b7a810608c",
+    "m31CanonicalGoldenSha256": "610540a3c6f410fd4dd2104d81f7047993aec2c680c3804de100c10d70df84cd",
+    "m31ModelCasesSha256": "6c7eac7715d117f466e236a80d8ebf12bbe444bee69094511df7bd2349e3945c",
+    "graphIdentity": "c9fc59e7b30dd812976cdab1d048c6d898cd59346741137339d3a3c3379219e8",
+    "lockIdentity": "917aeb33d1c71f9cae5898def87ce73a5c12c49c31b93923dfd38ee6c8afb775",
+    "canonicalTextSha256": "729a9af00601ab0dba7eba6b9f1230002dadd62e507e1179f97cea56a801efd3"
+  },
+  "validation": {
+    "architectureTests": 8,
+    "architectureExpectCalls": 11,
+    "bunTests": 101,
+    "bunExpectCalls": 877,
+    "rustDefaultTests": 184,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "workspaceFmt": "passed",
+    "workspaceClippy": "passed",
+    "mainlineLegacyImportScan": "clean"
+  },
+  "boundaries": {
+    "inventoryModelMoved": false,
+    "strictJsonMoved": false,
+    "reservoirSemanticsChanged": false,
+    "canonicalFormatChanged": false,
+    "externalProjectMutation": "not-authorized",
+    "nextMilestone": "M44 Phase B inventory legacy extraction"
+  }
+}

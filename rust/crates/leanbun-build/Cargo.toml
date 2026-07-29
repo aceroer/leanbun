@@ -10,7 +10,7 @@ autobins = false
 leanbun-core = { path = "../leanbun-core" }
 leanbun-generation = { path = "../leanbun-generation" }
 leanbun-lake-bridge = { path = "../leanbun-lake-bridge" }
-leanbun-package = { path = "../leanbun-package" }
+leanbun-lock = { path = "../leanbun-lock" }
 leanbun-resolver = { path = "../leanbun-resolver" }
 leanbun-store = { path = "../leanbun-store" }
 rustix = { version = "=1.1.4", default-features = false, features = ["std", "process"] }

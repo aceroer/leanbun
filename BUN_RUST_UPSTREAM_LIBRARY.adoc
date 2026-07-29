@@ -1,0 +1,61 @@
+= Bun Rust Upstream Source Library
+:toc: left
+:sectnums:
+
+== 目的
+
+LeanBun 在项目隔离区保存一份 `oven-sh/bun` 当前 `main` 的浅克隆，用于直接阅读 Rust crate、构建系统、
+进程接口和跨语言边界。它不是当前 LeanBun 的可执行运行时，也不是生产依赖。
+
+本地位置：
+
+----
+.leanbun-dev-rust/upstream/bun
+----
+
+可提交的来源锁位于 `config/upstream-bun.lock.json`。克隆本体约 289 MiB，受 `.gitignore` 排除，避免把上游
+仓库嵌入 LeanBun 的 Git 索引。
+
+== 当前锁定快照
+
+[cols="1,3"]
+|===
+|remote |`https://github.com/oven-sh/bun.git`
+|branch |`main`
+|commit |`892b1dabc69e2a0a973244f772b84967c73ccad5`
+|tree |`81a25490c3c5aeb4271a200a96943239b686404b`
+|commit time |`2026-07-23T01:18:13-07:00`
+|clone |单分支、depth 1、无 tags、未初始化 submodule
+|Cargo.toml SHA-256 |`1b212918f5430c40db082d86dd4cd4a37586ef11d5891731f621f4b48670d8cd`
+|Cargo.lock SHA-256 |`934bc1ecbc4ee3f3e82971e50b42a2ad6bc99356b9b543bde98932d83c89700b`
+|===
+
+本地文件观察为 99 个 Cargo workspace member、1495 个 Rust 源文件、0 个 Zig 源文件，以及 1532 个
+C/C++/header 源文件。因而该快照已经是 Rust 主体加 C/C++/JavaScriptCore ABI 的代码树，而不是旧版
+Zig 主体。
+
+== 与当前运行时的分离
+
+LeanBun 现有测试仍固定使用 `Bun 1.3.14+0d9b296af`，它是重构合并前的可复现行为 oracle。上游 clone
+只用于源码研究；不得用 clone 中的未发布产物静默替换现有 runtime，也不得让两个版本写同一个 state root。
+
+以后若切换 Rust Bun runtime，必须单独建立版本、commit、binary SHA-256、签名、行为差分和回滚门。
+
+== 可利用的同语言优势
+
+* 对照 Bun 的 Cargo workspace、crate 分层、target-dir、target triple、release LTO 和 lint 组织；
+* 直接审阅 Rust 类型、错误边界、进程与路径 API，减少从 TypeScript/Zig 语义二次翻译；
+* 复用 Rust 生态中的测试、Miri、Clippy、sanitizer 与供应链审计方法；
+* 将来通过稳定进程协议或经审计的窄 ABI 对接，避免 shell 拼接和动态 Python 宿主；
+* 对确有价值的纯 Rust crate 逐个评估许可证、API 稳定性、依赖图和 unsafe 后再决定是否引入。
+
+不得直接把 Bun 内部 crate 当作稳定公共 API。Bun 为兼容原有内存布局保留了大量 FFI/unsafe，而 LeanBun
+core 的默认规则仍是 `#![forbid(unsafe_code)]`；任何平台 adapter 必须与 core 分 crate 并单独审计。
+
+== 更新纪律
+
+更新不是普通 `git pull`。每次更新必须先读取远端 HEAD，然后在独立临时 clone 中检查 diff、Cargo.lock、
+unsafe/FFI 变化和上游测试状态；确认后才替换项目 clone 并更新锁文件。未经锁文件更新的工作树不得作为
+LeanBun 实施依据。
+
+当前阶段不编译 Bun、不初始化其依赖、不执行上游脚本。

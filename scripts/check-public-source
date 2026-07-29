@@ -1,0 +1,42 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPOSITORY=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+cd "$REPOSITORY"
+
+PROTECTED_M42="RUST_CONCURRENT_HISTORY_REGRESSION_M42.adoc"
+PROTECTED_M42_SHA256="1b149ef4f5de5cc70d105671650f68fbe4b6fdf5e98fb25709c6e1b3b4bdbe3b"
+ACTUAL_PROTECTED_SHA256=$(shasum -a 256 "$PROTECTED_M42" | awk '{print $1}')
+if [ "$ACTUAL_PROTECTED_SHA256" != "$PROTECTED_M42_SHA256" ]; then
+  echo "protected public M42 disclosure changed" >&2
+  exit 1
+fi
+
+USER_ROOT='/'Users'/'
+VOLUME_ROOT='/'Volumes'/'
+if git grep -n -F -e "$USER_ROOT" -e "$VOLUME_ROOT" -- .; then
+  echo "public source contains a personal absolute path" >&2
+  exit 1
+fi
+if git ls-files --error-unmatch config/leanbun-local-provider.json >/dev/null 2>&1; then
+  echo "local provider configuration is tracked" >&2
+  exit 1
+fi
+if ! git check-ignore -q config/leanbun-local-provider.json; then
+  echo "local provider configuration is not ignored" >&2
+  exit 1
+fi
+
+PATCH_COUNT=$(find distribution/bun-fork-patches -type f -name '*.patch' | wc -l | tr -d ' ')
+if [ "$PATCH_COUNT" != "7" ]; then
+  echo "Bun fork patch series must contain exactly seven patches" >&2
+  exit 1
+fi
+if grep -R -n -F -e "$USER_ROOT" -e "$VOLUME_ROOT" distribution/bun-fork-patches; then
+  echo "Bun fork patch series contains a personal absolute path" >&2
+  exit 1
+fi
+
+./scripts/check-crate-layering
+echo "public-source=passed protected-m42-disclosure=redacted-and-bound patch-count=$PATCH_COUNT"

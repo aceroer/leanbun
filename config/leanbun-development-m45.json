@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "version": "0.15.0-m45-dev",
+  "class": "strict-json-codec-evidence-layering",
+  "sourceBaseline": {
+    "commit": "736a24b0f175a140b49a9fec4b76db96377905d4",
+    "tree": "415e9079f787f54dbbd0f3a293a52c04e753137d",
+    "status": "uncommitted M43 through M45 working-tree delivery"
+  },
+  "placement": {
+    "decisionRecordedBeforeMovement": true,
+    "codecDependencies": ["leanbun-core"],
+    "evidenceDependencies": ["leanbun-codec", "leanbun-core"],
+    "directCodecConsumers": ["leanbun-evidence", "leanbun-lake-bridge", "leanbun-managed", "leanbun-plan"],
+    "stableJsonFileOwner": "leanbun-evidence",
+    "lockDependencies": ["leanbun-core"],
+    "lockV1Format": "canonical-line-oriented-unchanged",
+    "reservoirWireFormatSelected": false
+  },
+  "identity": {
+    "workspaceCrates": 15,
+    "mainlineRoots": 6,
+    "cargoGraphSha256": "962dd3e93fa46d39e943c265cc12f1a9efab38ddbc90a2c84f8b5703830e2dfa",
+    "cargoLockSha256": "f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07",
+    "codecSourceSha256": "0bc155bc441dd0415e8151f2aee91f37917a622d752585833ae982dc1e0e954d",
+    "evidenceStableJsonAdapterSha256": "ea2b49acf004ef85e043305be8ccb61b047ffc2cade308240b88639dbecf7c08",
+    "placementDecisionSha256": "5d94b40a70502fd809724fc7cb0f7bfb06d618f06df57d6011cf85b08ea1828e"
+  },
+  "lakeProbeRejectionCompatibility": {
+    "expectedKind": "MalformedProbeOutput",
+    "cases": ["malformed", "unknown", "duplicate", "trailing", "oversize"]
+  },
+  "validation": {
+    "architectureTests": 10,
+    "architectureExpectCalls": 16,
+    "bunTests": 103,
+    "bunExpectCalls": 882,
+    "rustDefaultTests": 184,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "workspaceFmt": "passed",
+    "workspaceClippy": "passed",
+    "cargoGraph": "passed",
+    "diffCheck": "passed"
+  },
+  "boundaries": {
+    "strictJsonMoved": true,
+    "filesystemEvidenceMovedToCodec": false,
+    "reservoirSemanticsChanged": false,
+    "canonicalLockFormatChanged": false,
+    "externalProjectMutation": "not-authorized",
+    "nextMilestone": "M46 Phase A Reservoir binding model and compatibility decision"
+  }
+}

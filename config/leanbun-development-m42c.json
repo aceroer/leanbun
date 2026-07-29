@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "version": "0.9.0-m42-dev",
+  "class": "run-scoped-mathlib-nine-package-regression-phase-c",
+  "leanBunSource": {
+    "commit": "7408fa4b4dc8e54e4ac1ece412cc4a23f4c0d0de",
+    "tree": "410221bbdb4c7dbbe613e0ecc3dd553f84bf2f05",
+    "sourceFileCount": 134,
+    "sourceListSha256": "8dabc8d8e61625f417f61911b784b7da519bcded780c5f92763410e8b51464e6"
+  },
+  "bunFork": {
+    "branch": "codex/leanbun-m38",
+    "commit": "a2521d94d9a777472f6be5105baf3cb35d29cae4",
+    "tree": "3d80dbab14a0104e935a7e5048580ff8870d29ec",
+    "upstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+    "upstreamTree": "81a25490c3c5aeb4271a200a96943239b686404b",
+    "cargoLockSha256": "47f4e874c284ae44ab348eb703cb43a363cbcb95f9933b52b971134ad24eb39e"
+  },
+  "binary": {
+    "path": ".leanbun-dev-rust/release/bun-fork/target/release/leanbun",
+    "sha256": "92cc95dda64daa62c86485c221518e800359e0bc8e73e8b8061a586d340d4563",
+    "sizeBytes": 1675640,
+    "format": "Mach-O thin arm64",
+    "signature": "adhoc-linker-signed",
+    "cdHash": "0c6cf3769b30a632ebf5f68691d6edbf3ca18c2c",
+    "notarization": "not-submitted"
+  },
+  "mathlibRegression": {
+    "command": "fixture-regress --fixture=mathlib-project",
+    "template": "test/fixtures/mathlib-project",
+    "templateTreeSha256": "c58f51424acf61c4194b39b7ff6e915d6a28a7560896522f77e6906d532aa43c",
+    "packageCount": 9,
+    "explicitUpdatePackage": "mathlib",
+    "fault": "BeforeActiveRename",
+    "runRootAfter": "empty",
+    "projectScopedControllerStateAfter": "absent",
+    "projectLocalStoreAfter": "absent",
+    "runs": [
+      {
+        "runId": "7b1eaa401ac97a40522271431157dbfc0d6fa2061c826bc14451a4661d2f298c",
+        "projectId": "f859b5fc951b672b5b313a55d1ae4597ca0da882307aaee2d4f282fecf7fd39f",
+        "recordSha256": "853903160c5ecb0b4d8b122ff0a2526da5a1f8fdc27f0d7a094ada38cae19a72"
+      },
+      {
+        "runId": "5b148cddf8562553bad58c19a752a1c7e52e9b941e5a6798f7f32f8797461c7f",
+        "projectId": "5a7a46f4ca24c86b7f1df82e993ffebd72afebdcd3198e550121691ccb767ed6",
+        "recordSha256": "d966d76e60c07b1454c10a5476d0b6b2c604485f91859625289de3cf6f1c9463"
+      }
+    ],
+    "latestRunId": "5b148cddf8562553bad58c19a752a1c7e52e9b941e5a6798f7f32f8797461c7f",
+    "m41RecordsUnchanged": true
+  },
+  "validation": {
+    "rustDefaultTests": 182,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "bunTests": 93,
+    "bunExpectCalls": 866,
+    "workspaceClippy": "passed",
+    "forkLeanPmClippy": "passed"
+  },
+  "boundaries": {
+    "authorizedFixtures": ["lake-basic", "lake-managed-dependency", "mathlib-project"],
+    "negativeFixtureMatrix": "deferred-to-m42-phase-d",
+    "actualExternalProject": "not-authorized"
+  }
+}

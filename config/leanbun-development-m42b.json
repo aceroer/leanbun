@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "version": "0.8.0-m42-dev",
+  "class": "run-scoped-managed-dependency-regression-phase-b",
+  "leanBunSource": {
+    "commit": "0736b11fea9cdc1c21ddbd0a66a81c8763549ced",
+    "tree": "d15e03694bf6d38135a5366dc9d322483dadf55d",
+    "sourceFileCount": 134,
+    "sourceListSha256": "a282be2619cd296d6ff056200ecebded7d75820739f0abb2f7def687b9b6f920"
+  },
+  "bunFork": {
+    "branch": "codex/leanbun-m38",
+    "commit": "b78f00fb27f7b9fb1a115a0790e95707b86b27b0",
+    "tree": "d766e43ac1d9bb9b9f7c58a4eb6e8f37e6f0189c",
+    "upstreamCommit": "892b1dabc69e2a0a973244f772b84967c73ccad5",
+    "upstreamTree": "81a25490c3c5aeb4271a200a96943239b686404b",
+    "cargoLockSha256": "47f4e874c284ae44ab348eb703cb43a363cbcb95f9933b52b971134ad24eb39e"
+  },
+  "binary": {
+    "path": ".leanbun-dev-rust/release/bun-fork/target/release/leanbun",
+    "sha256": "566fd954a7f5b02a66b00dac09b35c9ed7225c41f5cf57669a5574100a94a9c9",
+    "sizeBytes": 1675256,
+    "format": "Mach-O thin arm64",
+    "signature": "adhoc-linker-signed",
+    "cdHash": "699f68457bd35413ba469efd6aeca321a86fae01",
+    "notarization": "not-submitted"
+  },
+  "managedDependencyRegression": {
+    "command": "fixture-regress --fixture=lake-managed-dependency",
+    "template": "test/fixtures/lake-managed-dependency",
+    "templateTreeSha256": "bff2599f9f37cc0f4525897a4dfe8c2d11b62a465fbeedd4120cfc98d4ff3ddb",
+    "explicitUpdatePackage": "managed_dep",
+    "fault": "BeforeActiveRename",
+    "runRootAfter": "empty",
+    "projectScopedControllerStateAfter": "absent",
+    "projectLocalStoreAfter": "absent",
+    "runs": [
+      {
+        "runId": "76c7b8debffce4674cb63dd1d8d53f57e4ec7957b61b60b49401eb0fcb669d63",
+        "projectId": "22fafd3689eeb4deb9b8db8aee43159fca0c1781d74b93332d1f6f1b3a630da5",
+        "recordSha256": "dbc0b1ae835c9d3a33e01937962c7f68d51060ba65c40c8b1e00750cb7f6e0d2"
+      },
+      {
+        "runId": "bff51134443a529789870f73eb74fc98f79f004a8d288373706bc4117cdc720a",
+        "projectId": "30cc026962cd20660c5f18e280862f2ae511ddd51b17905defc958a1d8e11c59",
+        "recordSha256": "28ea454be5c9542d944177c899d91aad1d049e72681c75a8e0f1752fbea14f18"
+      }
+    ],
+    "latestRunId": "bff51134443a529789870f73eb74fc98f79f004a8d288373706bc4117cdc720a",
+    "unknownFixtureProbe": "rejected-nonzero",
+    "m41RecordsUnchanged": true
+  },
+  "validation": {
+    "rustDefaultTests": 182,
+    "rustIgnoredProviderTestsRunExplicitly": 1,
+    "bunTests": 93,
+    "bunExpectCalls": 866,
+    "workspaceClippy": "passed",
+    "forkClippy": "passed",
+    "parallelProbeCollision": "fixed-with-process-atomic-nonce"
+  },
+  "boundaries": {
+    "authorizedFixtures": ["lake-basic", "lake-managed-dependency"],
+    "mathlibRegression": "deferred-to-m42-phase-c",
+    "negativeFixtureMatrix": "deferred-to-m42-phase-d",
+    "actualExternalProject": "not-authorized"
+  }
+}

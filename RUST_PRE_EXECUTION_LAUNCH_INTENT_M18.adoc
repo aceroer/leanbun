@@ -1,0 +1,63 @@
+= LeanBun Rust Pre-Execution Launch Intent M18
+
+== Outcome
+
+M18 已在 `leanbun-approval-macos` 建立 consuming pre-execution gate。公开入口
+`prepare_trusted_lake_launch_intent_v1` 按值消费 M17 `TrustedLakeExecutionGrantV1`，重新观察固定 `bin/lake`、组装受控环境并检查最终时钟，
+成功只产生 non-clone `TrustedLakeLaunchIntentV1` / `PreparedOnce`。
+
+本门仍没有 process consumer，因此没有 spawn、没有运行 Lake，也没有接入 CLI。
+
+== Grant and executable gate
+
+pre-execution gate 重新核验 grant schema、`GrantedOnce` decision/authority、candidate expiry 与 canonical grant SHA。随后复用 M14 bounded
+observer，对 exact plan 的 managed-toolchain `bin/lake` 再做 nofollow open、metadata、streaming SHA、path reopen 与 reviewed identity 检查。
+
+时钟必须满足：
+
+`grant time <= executable observation time <= prepared time < grant expiry`
+
+executable drift、clock rollback 或准备期间过期均 typed reject；grant 被按值消费后不会退还为另一个 capability。
+
+== Controlled environment
+
+M18 不读取 `std::env`。调用方只提供 environment isolation root 与其中的目录位置；gate 固定生成以下 exact key set：
+
+* `ELAN_HOME`：isolation root 内的 direct canonical directory；
+* `GIT_CONFIG_NOSYSTEM=1`：禁止 system Git config；
+* `GIT_TERMINAL_PROMPT=0`：禁止网络认证交互提示；
+* `HOME`：isolation root 内的 direct canonical directory；
+* `PATH`：1 至 16 个 isolation root 内 direct canonical directories，去重、禁止 `:`，总长不超过 4096 bytes。
+
+isolation root、ELAN_HOME、HOME 与每个 PATH directory 必须使用直接 canonical path，不得经 symlink，必须归当前 effective user 所有，且不得
+group/world-writable。未知键、宿主 PATH 继承、路径逃逸、重复 PATH 和共享可写目录均拒绝。
+
+== Sealed launch identity
+
+launch intent 原样拥有 M17 grant 与新的 M14 executable observation，并只读暴露 exact executable、arguments、cwd、environment、times、
+intent SHA 和 `PreparedOnce` authority。intent 不实现 `Clone` 或 serialization。
+
+`intent_sha256` 使用 length-prefixed binary identity，绑定 grant SHA、fresh executable SHA/observation time、prepared time、expiry 与每个 exact
+environment key/value。grant SHA 已传递绑定 candidate/proof/full plan report，因此 arguments/cwd 不能在 intent 之后替换。
+
+== Security boundary
+
+M18 不调用 process/Git/Lake，不写 filesystem，不读取环境变量，不解析外部 grant JSON，也不把 launch intent 暴露给 CLI。目录检查只是
+只读 evidence；后续真正 spawn 前仍需要 durable launch reservation，不能仅依靠 Rust move semantics处理 crash window。
+
+== Verification
+
+Rust public-pipeline tests 覆盖 M14 -> M18：成功 intent 保持 exact executable/arguments/cwd，固定五项环境，fresh executable observation 与
+expiry ordering；修改 `bin/lake` 后拒绝，environment lexical escape 拒绝。
+
+Bun boundary oracle 固定 grant SHA 重验、M14 observer、direct canonical/private environment directories、fixed Git variables、time gate、
+non-clone intent，并继续拒绝 subprocess、host environment、deletion、unsafe 与 `lake update`。
+
+== 后续执行边界
+
+M19 已建立 intent-bound durable launch reservation，见
+xref:RUST_DURABLE_LAUNCH_RESERVATION_M19.adoc[LeanBun Rust Durable Launch Reservation M19]。private directory FD、`O_EXCL` slot 与
+file/directory sync 已关闭 crash 后重复启动窗口；仍不调用 process 或 Lake。
+
+前置 grant 见 xref:RUST_TRUSTED_EXECUTION_GRANT_M17.adoc[LeanBun Rust Trusted Execution Grant M17]；executable observer 见
+xref:RUST_TRUSTED_LAKE_EXECUTABLE_M14.adoc[LeanBun Rust Trusted Lake Executable M14]。

@@ -1,0 +1,52 @@
+= LeanBun Rust Core M0
+:toc: left
+:sectnums:
+
+== 结论
+
+LeanBun 已建立第一个隔离 Rust workspace 和无副作用的 `leanbun-core` crate。它不调用 Lake/Lean，不读取生产
+依赖，不访问现有 `.leanbun-dev/state`，也不提供 writer。
+
+本阶段以锁定的 Bun Rust 上游源码为结构参考：采用 Cargo workspace、workspace lint、分 crate 边界和固定
+target-dir；没有复制 Bun 为兼容 JavaScriptCore/C++ ABI 所需的裸指针或 unsafe 模式。
+
+== 布局
+
+[cols="1,3"]
+|===
+|`rust/Cargo.toml` |edition 2024、resolver 3、统一 lint、零 workspace dependency
+|`rust/crates/leanbun-core` |身份值类型、target validator、诊断 vocabulary 和 canonical diagnostic JSON
+|`rust/golden` |Bun 与 Rust 同时消费的诊断代码、JSON 和 target case
+|`.leanbun-dev-rust/target` |隔离的 Cargo 构建输出；不进入 Git
+|`.leanbun-dev-rust/cargo-home` |隔离 Cargo home；当前因零依赖没有下载 crate
+|`scripts/rust-dev` |固定 Homebrew rustc/cargo、清空继承环境、离线运行 fmt/clippy/test
+|===
+
+== Core API
+
+`Sha256` 只接受 64 个小写十六进制字符并保存为 32 字节；`ImageId` 与 `ProjectId` 是不可混用的新类型。
+`ExecutionId` 只接受小写 RFC 4122 UUID v4 和合法 variant。`BuildTarget` 与 Bun oracle 保持 UTF-16 长度语义，
+拒绝空值、超过 256 code unit、前导 `-`、`..`、C0 control 和 DEL。
+
+诊断代码由 Rust enum 表达，并与 Bun 的完整 machine-stable vocabulary 做逐项、有序差分。诊断 JSON 只实现
+当前固定 schema 的 canonical serializer，不声称已经提供任意 JSON canonicalization。
+
+== 安全门
+
+* crate 与 workspace 同时设置 `unsafe_code = "forbid"`；
+* 零第三方依赖，`Cargo.lock` 可直接审计；
+* Clippy 拒绝 `todo!`、`unimplemented!`、`dbg!`、未说明 unsafe、`unwrap` 与 `expect`；
+* `scripts/rust-dev` 使用 `env -i`，只传入固定 PATH、Cargo/Rustc、隔离目录、locale 和离线开关；
+* 构建过程没有访问 Bun 上游 clone、生产 Lean 依赖或真实项目。
+
+== 验收
+
+`./scripts/rust-dev check` 已通过：fmt、Clippy、3 个 core 单元测试、3 个共享黄金测试和 doc-test 均成功。
+Bun 侧共享 fixture 定向测试成功；加入 fixture 后原有 `./scripts/dev check` 两轮回归为 134 pass、662 assertions、
+0 fail。统一 `./scripts/dev check` 现在会在 Bun 检查成功后继续执行 Rust 检查。
+
+== 下一门
+
+建立 `leanbun-evidence` 的只读层：先做 canonical path token、bounded stable file read 与 symlink/TOCTOU 拒绝。
+在引入任何 JSON/SHA crate 前先形成依赖来源、许可证、unsafe 和 transitive graph 审计；仍不开放 state writer、
+Lake 执行或生产项目路径。

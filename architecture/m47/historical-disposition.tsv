@@ -1,0 +1,6 @@
+crate	workspace_member	default_member	disposition	direct_consumers	replacement_boundary
+leanbun-approval-macos	true	false	retained-historical-safety-research	-	leanbun-managed-explicit-package-transactions
+leanbun-inventory-legacy	true	false	retained-historical-support	leanbun-plan,leanbun-approval-macos	leanbun-lock-plus-leanbun-resolver
+leanbun-macos-acl-sys	true	false	retained-historical-platform-support	leanbun-approval-macos	none-mainline-does-not-require-privileged-acl
+leanbun-plan	true	false	retained-historical-research	leanbun-approval-macos	leanbun-resolver-plus-leanbun-managed
+leanbun-state	true	false	retained-historical-experiment	-	leanbun-generation-plus-leanbun-managed

@@ -1,0 +1,68 @@
+= LeanBun Rust Package Inventory M0
+:toc: left
+:sectnums:
+
+== 结论
+
+Rust workspace 已加入零三方依赖的 `leanbun-package`，实现外部管理域的 `PackageInventoryV1` 与
+`DependencyDriftReportV1`。它把既有 strict project/provider evidence 和调用者显式提供的 checkout observation
+组合为确定排序的只读事实，不执行发现命令，也不推演 Lake 内部状态。
+
+生产代码不导入 filesystem、process 或 network API；不调用 Git、Lake、Lean，不创建或修改 `.lake`，不接入已
+冻结的 `leanbun-state`。
+
+== Inventory contract
+
+inventory 顶层绑定：
+
+* canonical project path 与 path-only ProjectId；
+* toolchain；
+* manifest SHA-256 与 optional project override SHA-256；
+* optional provider registry/override SHA-256；
+* 最多 4096 个、按名称排序的 package facts。
+
+每个 package 分开保存：manifest 的 Git/path declaration、project override 声明、已 canonicalize 的 path package、
+provider revision/path registration，以及 checkout observation。
+
+checkout observation 只有三态：`Unobserved`、`Missing`、`Present`。`Present` 携带 canonical directory、optional
+lowercase 40-hex revision 与 optional dirty bit。未提供 observation 不会伪装成 matched；重复或不属于
+manifest/provider/override name union 的 observation fail closed。
+
+== Drift report
+
+一个 package 可以同时保留多个 finding，避免单状态覆盖证据。v1 finding 为：
+
+* `Missing`；
+* `RevisionMismatch`；
+* `Dirty`；
+* `PathMismatch`；
+* `OverrideMismatch`；
+* `Unobserved`；
+* 无其他 finding 时才是 `Matched`。
+
+每个 finding 同时发布 field、expected 与 observed。report summary 优先级为：存在实质 drift 时 `Drifted`；否则
+存在未观察字段时 `Unobserved`；全部证据一致时才为 `Matched`。
+
+这些分类只描述外部证据差异，不声称 Lake 会选择哪个 revision、checkout 或 build action，也不授权任何修复。
+
+== Verification
+
+Rust 五个 unit/integration tests 覆盖多 finding、unobserved、invalid revision/name、tracked 九包 manifest inventory
+及 unknown observation 拒绝。共享 `package-drift-cases.tsv` 的九组 matched/missing/revision/dirty/path/override/
+unobserved 及组合案例同时由 Rust classifier 与 Bun 独立 external-evidence oracle 消费。
+
+tracked Mathlib fixture 只读产生九个排序 package；因为 M0 没有执行 Git observation，它们被正确分类为
+`Unobserved`，而不是 matched。
+
+== 边界与下一门
+
+该下一门已完成，见 xref:RUST_LAKE_COMMAND_PLAN_M0.adoc[LeanBun Rust Lake Command Plan M0]：纯
+`LakeCommandPlanV1` 已为固定 targeted update 生成 executable/args/cwd/env/permission/effect/risk，并保持 execution
+authority withheld。
+
+完整 inventory/drift canonical snapshot 与向 plan/report/request 的 digest 绑定也已完成，见
+xref:RUST_PACKAGE_INVENTORY_SNAPSHOT_M4.adoc[LeanBun Rust Package Inventory Snapshot M4]。
+
+上位权威边界见 xref:LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]；strict evidence
+来源见 xref:RUST_EVIDENCE_M6_PROJECT_INPUT.adoc[LeanBun Rust Evidence M6]；迁移顺序见
+xref:RUST_MIGRATION_PLAN.adoc[LeanBun Rust Safety Migration Plan]。

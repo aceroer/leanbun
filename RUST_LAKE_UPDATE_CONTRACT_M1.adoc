@@ -1,0 +1,55 @@
+= LeanBun Rust Lake Update Contract M1
+:toc: left
+:sectnums:
+
+== 结论
+
+固定 Lake `5.0.0-src+8c9756b` 的 targeted update 已建立可提交、可机读的参数与副作用契约。契约由
+`config/lake-update-contract-sources-v1.tsv` 和 `config/lake-update-contract-v1.tsv` 组成；前者锁定本地
+Lean 4.32 Lake source/reference 的相对路径与 SHA-256，后者把每项事实绑定到 source id 和精确行区间。
+
+`leanbun-plan` 在编译时嵌入两份 fixture，不在运行时读取生产依赖库。`verify_lake_update_plan_contract_v1`
+验证现有 `LakeCommandPlanV1` 的 command identity、arguments、effects、risks、mitigations 与 withheld execution
+authority。该 API 只验证内存对象，不 spawn Lake，不接入 CLI，也不获得 filesystem/network/process capability。
+
+== 固定上游证据
+
+source fixture 锁定六个本地对象：`Lake/CLI/Help.lean`、`Lake/CLI/Main.lean`、
+`Lake/Load/Workspace.lean`、`Lake/Load/Resolve.lean`、`Lake/Load/Materialize.lean` 以及 Lean 4.32
+`lake.html` reference。每个对象使用完整 lowercase SHA-256；版本升级必须显式刷新 source hash、行区间和事实，
+不能仅修改 `SUPPORTED_LAKE_VERSION`。
+
+事实表覆盖：
+
+* targeted package usage、bare update 更新全部依赖以及 canonical `update` spelling；
+* `--keep-toolchain` parser 行为、默认 toolchain update/restart 及 reference 说明；
+* project configuration 加载、package override 读取、manifest rewrite；
+* `.lake`/packages directory 变化、remote fetch、checkout materialization；
+* package post-update hook 执行。
+
+== Plan coverage gate
+
+验证器要求 plan effects 与 fixture 的七项 effect 完全相等；fixture 的六类固定 Lake risk 必须全部存在于 plan。
+`ExecutablePropertiesRequireGateRecheck` 及 evidence-dependent drift/unobserved risk 属于 LeanBun 自身或运行时附加门，
+允许作为超集存在。
+
+四项 mitigation 必须同时满足：显式 package 非空、拒绝 bare update、使用 canonical `update` 而非 alias、参数前缀
+精确为 `--keep-toolchain update`。此外 schema/family/Lake version 必须吻合，execution authority 必须为 `Withheld`。
+
+== Verification
+
+Rust 测试验证 fixture 结构、完整 plan，以及删除单个 effect、risk 或 `--keep-toolchain` 后的失败路径。Bun oracle
+独立解析同一 TSV，核对 source 引用、行区间、requirements、effects、risks、mitigations 和所有 source 均被事实引用。
+
+验收期间只在隔离 Cargo target 与 Bun test runner 中运行；没有调用 `lake update`，没有写入生产依赖库、真实 Lean
+项目、manifest、checkout 或 `.lake`。
+
+== 后续门
+
+`LakeCommandPlanReportV1` 已完成：通过契约的 plan 现在可生成包含 source hashes、executable、参数、cwd、环境键、
+影响、风险、mitigation 与 withheld authority 的 canonical JSON，并已通过 Bun/Rust 字节差分，见
+xref:RUST_LAKE_COMMAND_PLAN_REPORT_M2.adoc[LeanBun Rust Lake Command Plan Report M2]。下一门是一次性 approval request
+绑定；仍不创建 process adapter、不接入公开 CLI、不执行 Lake。
+
+上位边界见 xref:LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]；plan 生成见
+xref:RUST_LAKE_COMMAND_PLAN_M0.adoc[LeanBun Rust Lake Command Plan M0]。

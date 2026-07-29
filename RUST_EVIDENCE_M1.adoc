@@ -1,0 +1,69 @@
+= LeanBun Rust Evidence M1
+:toc: left
+:sectnums:
+
+== 结论
+
+LeanBun 已建立只读 `leanbun-evidence` crate 的第一层：canonical directory/path token、root containment、
+有限大小 UTF-8 稳定读取，以及 symlink/TOCTOU 拒绝。该 crate 只依赖同 workspace 的 `leanbun-core`，没有
+第三方依赖、writer、Lake/Lean 调用或现有 state 接口。
+
+== API 与能力边界
+
+[cols="1,3"]
+|===
+|`canonicalize_directory` |解析已存在目录并返回不可与普通 `PathBuf` 混用的 `CanonicalDirectory`
+|`canonicalize_contained` |先检查词法 containment，再 canonicalize 并检查解析后 containment
+|`read_stable_text` |只在 canonical root 内读取直接 regular file；返回 canonical source、UTF-8 text、size、mtime
+|`MAX_STABLE_TEXT_BYTES` |不可由调用方绕过的 16 MiB 总上限；具体 schema 应继续传入更小限额
+|===
+
+本阶段不返回 SHA-256。加入哈希必须先确定经审计的实现或 crate，并把 digest 计算纳入同一个文件描述符和
+前后稳定性事务；不能先读路径、后另开文件计算摘要。
+
+== 打开与稳定性协议
+
+. 候选路径相对 canonical root 组合并做词法归一化；越界立即拒绝；
+. `symlink_metadata` 要求最终目录项是直接 regular file；最终 symlink 不跟随；
+. canonicalize 后再次确认解析路径位于 root；
+. 打开 canonical path 后比较 path metadata 与 file descriptor metadata；
+. 比较 device、inode、mode、size、mtime ns 与 ctime ns，并重新解析路径；
+. 最多读取 `maximum_bytes + 1`，以识别读取期间增长；
+. 读取后再次比较 descriptor、目录项、canonical path 和实际 byte count；
+. 只有全部稳定且 UTF-8 严格解码成功才返回证据。
+
+如果同长度内容被原地替换或目录项在读取时被 rename/recreate，结果为
+`EVIDENCE_CHANGED_DURING_READ`，不会发布部分证据。
+
+== 与 Bun 的同语言利用
+
+锁定的 Bun Rust 源码在 `src/sys` 中采用 `O::NOFOLLOW`、descriptor metadata 与分层 syscall adapter。
+LeanBun 采用相同的“不信任路径字符串、以打开对象复核”原则，但没有直接依赖 Bun 内部 crate，也没有复制
+其 FFI/unsafe syscall 层。当前仅用安全 `std` 实现，并通过打开前后目录项、inode 与 canonical path 多重比较
+补足最终 symlink 和替换竞争拒绝。
+
+相较 Bun 1.3.14 oracle 的 `readStableText`，Rust M1 有意更严格：最终 symlink 即使解析后仍在 root 内也拒绝。
+这是安全策略升级，不作为兼容回归。
+
+== 平台边界
+
+M1 依赖 Unix `MetadataExt` 的 device/inode/mode/mtime/ctime 字段，非 Unix target 在编译期拒绝。当前验收目标
+是本机 `aarch64-apple-darwin`。Windows 文件 identity/reparse-point adapter 必须作为未来独立平台门实现，
+不能退化为弱 metadata 比较。
+
+== 验收
+
+Rust fmt 与 Clippy 零警告；`leanbun-core` 的 6 个测试保持通过，`leanbun-evidence` 新增 4 个测试：
+
+* 正常 containment、词法 `..` 越界和解析后 symlink escape；
+* regular UTF-8、文件限额、全局硬上限、最终 symlink 与非法 UTF-8；
+* 打开后同长度内容变更；
+* 打开后路径 rename/recreate。
+
+所有 fixture 均位于隔离的 `.leanbun-dev-rust/tmp`，测试结束后清理。
+
+== 下一门
+
+对 SHA-256 与严格 JSON 所需 crate 做供应链审计，记录来源、许可证、版本、unsafe 和 transitive graph；通过后
+为同一稳定文件事务加入流式 SHA-256，并实现 schema-bounded strict JSON reader。仍不开放 writer、CLI、Lake
+或生产项目访问。

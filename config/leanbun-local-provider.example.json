@@ -1,0 +1,9 @@
+{
+  "bun": "/absolute/path/to/bun",
+  "elanHome": "/absolute/path/to/isolated-or-shared/elan-home",
+  "stackName": "lean4-version_mathlib-revision",
+  "packageSet": "/absolute/path/to/lean/package-set",
+  "downloadCache": "/absolute/path/to/mathlib/download-cache",
+  "registry": "/absolute/path/to/provider-manifest.json",
+  "overrides": "/absolute/path/to/provider-overrides.json"
+}
