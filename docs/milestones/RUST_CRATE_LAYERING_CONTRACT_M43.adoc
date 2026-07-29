@@ -1,0 +1,58 @@
+= LeanBun Rust Crate Layering Contract M43
+:toc: left
+:sectnums:
+
+== Result
+
+M43 is complete as `0.12.0-m43-dev`. It converts the crate-layering intent into an executable dependency contract while leaving every Rust module, Cargo package and canonical lock format in its M42 location.
+
+The governing intent remains xref:../architecture/LEANBUN_RUST_CRATE_LAYERING_INTENT.adoc[LeanBun Rust Crate Layering Intent]. The next authorized change is M44 Phase A's mechanical extraction of `leanbun-lock`; M43 does not perform that extraction.
+
+== Frozen evidence
+
+The reviewed baseline is stored under `architecture/m43/`:
+
+* `cargo-dependencies.tsv` records all 13 workspace crates and their direct workspace dependencies; transitive closure is recomputed by the checker;
+* `pre-refactor-sha256.tsv` protects 18 M31 lock/golden, current mixed-package, M42 record and registered-fixture files;
+* `public-api-census.tsv` assigns 14 current lock symbols to the future `leanbun-lock` surface and 19 inventory/drift symbols to the future `leanbun-inventory-legacy` surface.
+
+The baseline commit is `736a24b0f175a140b49a9fec4b76db96377905d4`, with tree `415e9079f787f54dbbd0f3a293a52c04e753137d`. This is deliberately the committed pre-refactor M42 baseline; the M43 files themselves are described by xref:config/leanbun-development-m43.json[the M43 development record].
+
+== Enforced dependency rules
+
+`scripts/check-crate-layering` obtains the real workspace graph from offline `cargo metadata`, compares its canonical form with the reviewed snapshot, verifies the protected file digests and validates the API census.
+
+It also enforces:
+
+* `leanbun-core` has no workspace dependency;
+* `leanbun-evidence` may depend downward on core but may not reach resolver, store, generation, build, managed or another policy layer;
+* the six mainline roots (`lake-bridge`, `resolver`, `store`, `generation`, `build`, `managed`) may not transitively reach historical inventory, plan, state, approval or macOS ACL crates;
+* once `leanbun-lock` exists, it must depend only on core and the mainline may no longer reach the mixed `leanbun-package` crate;
+* `leanbun-inventory-legacy` may not depend on the current lock crate.
+
+The current `leanbun-package` mainline edge is explicitly accepted only as a pre-M44 compatibility state. It is not accepted after `leanbun-lock` appears.
+
+== Negative tests
+
+`test/crate-layering.test.ts` contains seven checks and nine assertions. Besides checking the live graph, it injects forbidden transitive mainline-to-plan, evidence-to-resolver, core-to-evidence, invalid lock dependency, mixed-package visibility and legacy-to-lock edges. Each injected violation is rejected by a stable diagnostic.
+
+During implementation this negative matrix also exposed and fixed a cycle-handling error in the graph traversal itself. The final closure traversal terminates on cyclic injected graphs before reporting the violation.
+
+== Validation
+
+The following gates passed on 2026-07-29:
+
+* `./scripts/check-crate-layering`: 13 workspace crates and six mainline roots accepted;
+* architecture test: 7 passed, 0 failed, 9 assertions;
+* repository development test runner: two complete Bun runs, 200 passed, 0 failed, 1750 assertions, equivalent to 100 tests and 875 assertions per run;
+* Rust workspace: formatting and Clippy passed; 184 default tests passed with one environment-dependent provider test explicitly ignored;
+* explicit provider snapshot test: 1 passed;
+* `git diff --name-only -- rust`: empty, confirming no Rust or Cargo source movement in M43.
+
+The isolated Rust cache initially lacked two exact `Cargo.lock` artifacts. Only `.leanbun-dev-rust/cargo-home` was populated; no user or production Cargo home was modified. M36 process tests were then run outside the outer Codex sandbox so their own repository-defined Seatbelt could execute, and both passed.
+
+== Closure and next gate
+
+M43's exit conditions are satisfied: the intent is written, evidence is classified as shared lower-layer infrastructure, the future public surfaces are enumerated, the dependency contract is executable, forbidden-edge injection is tested, and the pre-refactor bytes are protected.
+
+M44 Phase A may now create `leanbun-lock` and mechanically redirect mainline imports. It must preserve every protected digest and must not combine the move with Reservoir or codec semantics.

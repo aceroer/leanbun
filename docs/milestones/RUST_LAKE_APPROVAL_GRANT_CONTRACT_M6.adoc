@@ -1,0 +1,56 @@
+= LeanBun Rust Lake Approval Grant Contract M6
+:toc: left
+:sectnums:
+
+== 结论
+
+`leanbun-plan` 已加入外部 `LakeCommandApprovalGrantV1` 的 strict JSON decoder 和 verifier，但没有 grant factory、writer
+或执行转换。成功验证的结果明确命名为 `StructurallyValidExternalClaim`，execution authority 仍为 `Withheld`。
+
+原因是普通 JSON 只能证明字段自洽，不能证明 principal 确实由用户或受信 UI 认证。M6 不把可伪造的文本升级为权限。
+
+== Strict grant claim
+
+v1 JSON 要求 exact field set，未知/缺失/重复字段、trailing content、错误类型和非整数时间均拒绝。字段绑定：
+
+* `grantId`、M3 `requestId` 与 M5 canonical preflight SHA-256；
+* 有界 principal；
+* 固定 `explicit-request-id-confirmation` method；
+* 精确 `approve:<requestId>:<preflightSha256>` confirmation；
+* grant/expiry 时间，窗口最长 5 分钟；
+* 固定 `single-lake-command` scope；
+* 外部 claim 请求的 `single-use-execution` authority。
+
+`grantId` 由上述字段的固定 identity JSON 计算 SHA-256。decoder 只发布 typed claim，不发布执行 capability。
+
+== Cross-object verification
+
+verifier 要求：
+
+* preflight decision 仍为 `ReadyForExplicitApproval`，preflight/request authority 均为 `Withheld`；
+* grant、request、preflight 的 RequestId 相同；
+* grant 中的 preflight SHA 等于当前 canonical preflight bytes；
+* grant time 不早于 request 与 fresh observation；
+* grant expiry 不越过 request expiry，且 current time 位于 grant 窗口内。
+
+通过后只得到 structural-claim verification，不能交给 process adapter。
+
+== Verification boundary
+
+共享 `lake-command-approval-grant.json` 是 synthetic fixture，不是真实许可。Rust 覆盖 exact schema、identity、交叉引用、
+过期和篡改拒绝；Bun 独立重算 preflight SHA、confirmation 与 GrantId，并确认 fixture 不含 `executionAuthority` 字段。
+
+测试未生成或保存真实 grant，未运行 `lake update`。
+
+后续 M17 已建立另一种只可从完整 trusted ingress pipeline 产生的 non-clone Rust capability，见
+xref:RUST_TRUSTED_EXECUTION_GRANT_M17.adoc[LeanBun Rust Trusted Execution Grant M17]。它不改变本门结论：任何外部 JSON claim 都不能成为
+可信 execution grant。
+
+== 下一门
+
+下一小门是 `TrustedApprovalIngressV1` 的安全边界与最小实现：确认必须来自当前进程直接控制的交互入口，并绑定
+RequestId/preflight challenge；普通文件或环境变量不能成为 trusted principal proof。需要先审计 TTY ownership、session
+nonce 来源、replay 防护和 macOS 权限，再决定是否建立独立 Rust adapter crate。完成前不开放 process adapter。
+
+preflight 见 xref:RUST_LAKE_COMMAND_PREFLIGHT_M5.adoc[LeanBun Rust Lake Command Preflight M5]；上位边界见
+xref:../architecture/LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]。

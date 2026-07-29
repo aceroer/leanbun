@@ -1,0 +1,56 @@
+= 里程碑实施与验收证据
+:toc: left
+
+本目录保存已经发生的实施记录。文件名中的 `M` 编号属于原始推进序列；文档保留当时的边界和证据，
+不应被当作当前 README 或通用操作手册。
+
+== M0--M30：证据、授权与路径权威
+
+完整逐步索引见 xref:../roadmaps/LEANBUN_IMPLEMENTATION_PLAN.adoc[实施计划]。这一阶段建立 Rust core、
+稳定读取、provider/project identity、attestation、execution record、锁、显式授权、terminal proof、
+path provenance 和 Bun 最终路径决定。
+
+关键闭包：
+
+* xref:RUST_CORE_M0.adoc[Rust core M0]
+* xref:RUST_EVIDENCE_M12_BUILD_LOCK.adoc[Evidence/build-lock M12]
+* xref:RUST_TRUSTED_EXECUTION_GRANT_M17.adoc[Trusted execution grant M17]
+* xref:RUST_PATH_PROVENANCE_OBSERVER_M22.adoc[Path provenance M22]
+* xref:RUST_COORDINATOR_CANONICAL_WIRE_M29.adoc[Coordinator wire M29]
+
+== M31--M38：lock、Store、generation 与受控构建
+
+* xref:RUST_BUN_PACKAGE_LOCK_M31.adoc[Bun package lock M31]
+* xref:RUST_LAKE_DECLARATION_PROJECTION_M32.adoc[Lake projection M32]
+* xref:RUST_DETERMINISTIC_LEAN_RESOLVER_M33.adoc[Resolver M33]
+* xref:RUST_BUN_FETCH_IMMUTABLE_STORE_M34.adoc[Immutable Store M34]
+* xref:RUST_ACTIVE_GENERATION_TRANSACTION_M35.adoc[Generation transaction M35]
+* xref:RUST_SUPERVISED_OFFLINE_LAKE_BUILD_M36.adoc[Offline Lake build M36]
+* xref:RUST_REPOSITORY_FIXTURE_ACCEPTANCE_M37.adoc[Repository fixture acceptance M37]
+* xref:RUST_BUN_RELEASE_INTEGRATION_M38.adoc[Bun release integration M38]
+
+== M39--M42：managed entry 与回归闭包
+
+* xref:RUST_MANAGED_PROJECT_ENTRY_M39.adoc[Managed project entry M39]
+* xref:RUST_DEPENDENCY_MANAGED_ENTRY_M40.adoc[Dependency-managed entry M40]
+* xref:RUST_REGISTERED_GIT_CLOSURE_M40.adoc[Registered Git closure M40]
+* xref:RUST_EXTERNAL_ADOPTION_DRY_RUN_M41.adoc[External adoption dry-run M41]
+* xref:RUST_EXTERNAL_FIXTURE_ACCEPTANCE_M41.adoc[External fixture acceptance M41]
+* xref:RUST_DISTRIBUTION_CLOSURE_M41.adoc[Distribution closure M41]
+* xref:RUST_FIXTURE_REGRESSION_M42.adoc[Fixture regression M42]
+* xref:RUST_MANAGED_DEPENDENCY_REGRESSION_M42.adoc[Managed dependency regression M42]
+* xref:RUST_MATHLIB_REGRESSION_M42.adoc[Mathlib regression M42]
+* xref:RUST_NEGATIVE_FIXTURE_REGRESSION_M42.adoc[Negative regression M42]
+* xref:../../RUST_CONCURRENT_HISTORY_REGRESSION_M42.adoc[Protected concurrent-history regression M42]
+
+== M43--M48：分层重构与源码发布闭包
+
+* xref:RUST_CRATE_LAYERING_CONTRACT_M43.adoc[Crate layering M43]
+* xref:RUST_LOCK_EXTRACTION_M44A.adoc[Lock extraction M44A]
+* xref:RUST_INVENTORY_LEGACY_EXTRACTION_M44B.adoc[Inventory extraction M44B]
+* xref:RUST_STRICT_JSON_CODEC_M45.adoc[Strict JSON codec M45]
+* xref:RUST_RESERVOIR_BINDING_MODEL_M46A.adoc[Reservoir binding model M46A]
+* xref:RUST_RESERVOIR_POLICY_GENERATION_M46B.adoc[Reservoir policy/generation M46B]
+* xref:RUST_RESERVOIR_LOOPBACK_REGRESSION_M46C.adoc[Reservoir loopback M46C]
+* xref:RUST_HISTORICAL_CRATE_DISPOSITION_M47.adoc[Historical crate disposition M47]
+* xref:RUST_POST_REFACTOR_DISTRIBUTION_M48.adoc[Post-refactor distribution M48]

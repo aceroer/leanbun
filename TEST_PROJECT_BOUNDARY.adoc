@@ -35,4 +35,4 @@ LeanBun 的开发测试、回归、故障注入、milestone acceptance 和 relea
 此前对 GRSC 子仓库 `lean/` 的一次 M37-shaped transaction 误把附属 Lean interface 当成小项目。该运行虽已回滚且保留了技术证据，但不构成 M37、真实项目验收或 managed-mode 资格。其程序不再是 Cargo build target，记录仅作为边界失误的历史证据保留。
 
 M37 已从 `lake-basic` 的仓库内隔离副本连续两次通过；`mathlib-project` 副本继续补充九包覆盖。验收见
-xref:RUST_REPOSITORY_FIXTURE_ACCEPTANCE_M37.adoc[LeanBun Repository-Local Fixture Acceptance M37]。
+xref:docs/milestones/RUST_REPOSITORY_FIXTURE_ACCEPTANCE_M37.adoc[LeanBun Repository-Local Fixture Acceptance M37]。

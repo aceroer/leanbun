@@ -1,0 +1,54 @@
+= LeanBun Rust Lake Approval Request M3
+:toc: left
+:sectnums:
+
+== 结论
+
+`leanbun-plan` 已加入纯 `LakeCommandApprovalRequestV1`。它从通过 M1 gate 的 plan 和 M2 canonical report 生成
+内容寻址的待批准对象，状态只能是 `Pending`，execution authority 只能是 `Withheld`。
+
+该对象不是许可、签名、执行票据或队列项。它不会写入 state、消费 nonce、接入 CLI、读取时钟或 spawn Lake。
+
+== Identity binding
+
+工厂函数接受调用方显式提供的 lowercase RFC 4122 UUID v4 nonce、issued time 和 expiry。时间使用 Unix
+milliseconds，必须为 JavaScript safe integer，严格递增，并且有效窗口不超过 15 分钟。
+
+request 公开并绑定：
+
+* M2 canonical report 的 SHA-256；
+* 完整 inventory/drift snapshot 的 SHA-256；
+* 由 canonical project path 派生的 `ProjectId`；
+* targeted package 集合、固定 Lake version 和 network-required 标志；
+* nonce、issued time、expiry；
+* `pending` approval state 与 `withheld` execution authority。
+
+`RequestId` 是固定 identity JSON 的 SHA-256。identity 同时包含 report digest、ProjectId、nonce 和时间窗口；修改
+命令、路径、executable SHA/metadata、source hash、effect/risk、package、nonce 或时间都会导致重算不一致。
+
+== Pure verification
+
+`verify_lake_command_approval_request_v1` 接受显式 `observedNowUnixMs`，不读取系统时钟。它先检查
+`issued <= now < expires`，再从当前 typed plan 重新生成完整 request，并要求所有字段精确相等。过期、未来生效、
+package 篡改、report 漂移和 plan 漂移均失败关闭。
+
+该 verifier 不记录 nonce 是否已被使用，因此 M3 不能声称提供一次性消费语义。未来若开放许可签发，nonce registry
+必须位于 LeanBun 自有审计域，且不能解释为 Lake lock/state。
+
+== Canonical JSON and verification
+
+共享 golden `rust/golden/lake-command-approval-request.json` 固定 pending request。Rust 验证 request factory、report
+digest、ProjectId、15 分钟窗口、篡改/过期拒绝、RequestId 和 canonical JSON；Bun 独立重算 report SHA、ProjectId、
+identity JSON SHA，并要求 `pending`/`withheld` 不变。
+
+验收只操作内存和既有 fixture；没有生成许可文件，没有运行 `lake update`。
+
+== 后续门
+
+`PackageInventorySnapshotDigestV1` 已完成，精确 manifest、override、provider、checkout 和 drift evidence 现在向上绑定
+到 plan、report 与 request，见
+xref:RUST_PACKAGE_INVENTORY_SNAPSHOT_M4.adoc[LeanBun Rust Package Inventory Snapshot M4]。下一门是把 fresh snapshot、
+request 时间窗和 executable observation 合取为纯只读 preflight；在此之前仍不讨论 process adapter。
+
+上游报告见 xref:RUST_LAKE_COMMAND_PLAN_REPORT_M2.adoc[LeanBun Rust Lake Command Plan Report M2]；上位职责边界见
+xref:../architecture/LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]。

@@ -1,0 +1,79 @@
+= LeanBun Rust Lake Command Plan M0
+:toc: left
+:sectnums:
+
+== 结论
+
+Rust workspace 已加入零三方依赖的 `leanbun-plan`，实现只生成不执行的 `LakeCommandPlanV1`。首个且唯一开放的
+M0 family 是固定 Lake `5.0.0-src+8c9756b` 的 targeted update plan。
+
+plan 生产代码不导入 filesystem、process 或 network API；不会 spawn Lake，不写 manifest、checkout、`.lake` 或
+LeanBun state，也未接入 CLI。公开字段 `executionAuthority` 固定为 `Withheld`。
+
+== 本地上游依据
+
+本机固定 toolchain 的 `Lake/CLI/Help.lean` 规定：
+
+* `lake update [<package>...]` 更新依赖并保存到 `lake-manifest.json`；
+* 新 Git dependency 会被 clone 到 `packagesDir`；
+* bare update 更新全部依赖；
+* update alias 为 `upgrade`。
+
+Lean 4.32 reference 另明确：update 默认可能改写 root `lean-toolchain` 并以新 toolchain 重启 Lake；
+`--keep-toolchain` 禁止这一自动更新。package 还可以声明 post-update hook，故 plan 必须披露 hook 执行风险。
+
+M0 只生成 canonical argument array：
+
+[source,text]
+----
+["--keep-toolchain", "update", "<sorted-explicit-git-package>", ...]
+----
+
+不提供 bare update，不使用 alias，也不隐式添加 package override 参数。
+
+== Plan contract
+
+`LakeCommandPlanV1` 绑定：
+
+* canonical、位于 managed toolchain root 内且 basename 为 `lake` 的 executable；
+* executable SHA-256、byte length、Unix mode、regular-file 与 symlink-free facts；
+* exact Lake version；
+* 完整 inventory/drift canonical snapshot SHA-256；
+* 与 inventory project path 一致的 canonical cwd；
+* 显式、唯一、确定排序且属于 inventory 的 Git package selectors；
+* environment key allowlist；
+* `ExplicitExternalUpdate` permission class 与 `Required` network policy；
+* expected effects、risks 与 withheld execution authority。
+
+M0 拒绝版本漂移、bare update、重复/未知/option-like selector、path package、project identity drift 和越界
+executable。参数使用数组，不存在 shell 拼接。
+
+== Effects and risks
+
+expected effects 明确包含：加载并执行 project configuration、读取 overrides、改写 manifest、创建或修改 `.lake`、
+获取远程内容、创建或修改 checkouts、执行 post-update hooks。
+
+固定 risks 包含不受信 project configuration、网络内容、manifest rewrite、checkout mutation、Lake internal state
+mutation、post-update hook，以及执行前必须重新检查 executable properties。inventory 为 unobserved/drifted 时再加入
+对应 evidence risk。
+
+environment allowlist 目前只记录键：`ELAN_HOME`、`GIT_CONFIG_NOSYSTEM`、`GIT_TERMINAL_PROMPT`、`HOME`、`PATH`。
+M0 不定义或读取实际值；future execution gate 必须把它们绑定到隔离、可审计值，不能据此继承当前 shell。
+
+== Verification
+
+Rust 三个测试覆盖完整 targeted plan、越界 executable 拒绝及八组共享 update plan cases。Bun 独立 non-executing
+oracle 对 fixed version、bare/duplicate/unknown/path/option selector 和排序参数给出相同结果。
+
+测试只在临时目录创建假 `lake` 文件作为 canonical path token；没有执行该文件，也没有执行真实 Lake。
+
+== 边界与后续门
+
+Lake Update Contract M1 已完成：固定本地 `Help.lean`、CLI parser、Lake loader/materializer 与 Lean reference
+已转为 source-hash + line-range fixture，并验证 M0 plan 没有遗漏 toolchain restart mitigation、manifest/checkout、
+override 与 post-update hook 风险，见 xref:RUST_LAKE_UPDATE_CONTRACT_M1.adoc[LeanBun Rust Lake Update Contract M1]。
+下一门是确定性的 plan review report；仍不运行 `lake update`，不接入 CLI，也不授予 execution authority。
+
+上位边界见 xref:../architecture/LEANBUN_EXTERNAL_MANAGEMENT_BOUNDARY.adoc[LeanBun 外部包与依赖管理边界]；inventory 来源见
+xref:RUST_PACKAGE_INVENTORY_M0.adoc[LeanBun Rust Package Inventory M0]；Lean/Lake API 边界见
+xref:../architecture/LEANBUN_LEAN_LAKE_API_BOUNDARY.adoc[Lean / Lake / Mathlib 边界与调用机制]。

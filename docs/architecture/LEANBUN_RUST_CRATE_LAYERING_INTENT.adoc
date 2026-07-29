@@ -1,0 +1,104 @@
+= LeanBun Rust Crate Layering Intent
+:toc: left
+:sectnums:
+
+== Status and purpose
+
+This document freezes the architectural intent before any crate is moved. It records the target dependency direction, the distinction between shared evidence infrastructure and legacy inventory models, and the ordered gates for the physical refactor. It does not authorize a semantic change, a production-path write, or removal of historical crates.
+
+M43 has implemented this intent as an executable pre-refactor contract; see xref:../milestones/RUST_CRATE_LAYERING_CONTRACT_M43.adoc[LeanBun Rust Crate Layering Contract M43]. Physical movement begins only in M44.
+
+The motivating defect is not the number of workspace crates. `leanbun-package` currently exposes two generations of package model from one crate root:
+
+* the historical checkout inventory, provider comparison and drift-report model used by the plan/approval route;
+* the current `LeanBunLockV1`, exact-source, provenance and final-path decision model used by the Bun-managed package lifecycle.
+
+That shared public namespace permits accidental imports across generations and makes the new lock model inherit dependencies needed only by the historical inventory model. This is active conceptual debt. The otherwise isolated `leanbun-plan`, `leanbun-state`, `leanbun-approval-macos` and `leanbun-macos-acl-sys` crates are lower-priority historical cleanup while the mainline does not depend on them.
+
+== Evidence is shared lower-layer infrastructure
+
+`leanbun-evidence` is not owned by the legacy route. The current mainline already consumes it directly:
+
+* `leanbun-lake-bridge` uses strict JSON decoding for bounded Lake probe output;
+* `leanbun-managed` uses stable project input, provider-pair reading, canonical path containment and project tree evidence;
+* future store/generation code may reuse stable-read, path and tree-evidence mechanisms when the dependency direction remains downward.
+
+Legacy inventory/plan/approval code is another consumer of evidence, not its owner. The intended direction is:
+
+[source,text]
+----
+leanbun-core
+  -> pure codec layer, if separated
+  -> filesystem/project evidence
+  -> mainline adapters and managed controller
+  -> legacy inventory/plan/approval consumers
+----
+
+The reverse direction is forbidden: evidence infrastructure must not depend on resolver, store, generation, build or managed policy.
+
+`leanbun-core` remains platform-neutral and free of filesystem I/O. The Unix file-identity, canonical-path, stable-read and tree-hash implementation must not be moved wholesale into core.
+
+== Target package-model boundary
+
+The first physical refactor separates the two package generations:
+
+[source,text]
+----
+leanbun-lock
+  PackageKeyV1
+  CanonicalSourceUrlV1
+  RequestedPackageSourceV1
+  ResolvedPackageSourceV1
+  LockedLeanPackageV1
+  LeanBunLockV1
+  PackagePathProvenanceV1
+  PackagePathDecisionV1
+
+leanbun-inventory-legacy
+  GitRevision
+  PackageCheckoutObservationV1
+  PackageInventoryV1
+  DependencyDriftV1
+  inventory snapshot and drift functions
+----
+
+`leanbun-lock` must depend only on `leanbun-core`. Resolver, Lake bridge, store, generation, build and managed code must import the new lock crate and must not have a dependency path to `leanbun-inventory-legacy`. Plan and approval code may continue to consume the legacy inventory crate until a separate historical-route decision is made.
+
+A pair of submodules under one crate is insufficient if both generations remain re-exported from the crate root. The acceptance property is compile-time visibility separation, not file movement alone.
+
+== Strict JSON placement decision gate
+
+Before `StrictJson` is extracted from `leanbun-evidence`, its complete consumer set and expected lock-format use must be audited.
+
+The current `LeanBunLockV1` codec is a strict canonical line-oriented text format and does not use `StrictJson`. That fact is not a permanent reason to place strict JSON inside evidence. The placement decision must answer:
+
+* Can `leanbun-lock` remain independent of JSON for its versioned lock codec?
+* Will lock-adjacent canonical metadata or future Reservoir binding evidence require the same strict JSON primitives?
+* Are the parser and bounded canonical-value rules fully platform-neutral and free of filesystem/evidence policy?
+
+If lock or another pure domain crate needs these primitives, they belong below evidence in a platform-neutral codec crate close to core. They must not be copied into lock or pulled upward through a Unix-only evidence dependency. If the audit proves that only evidence adapters need them, they may remain an evidence-internal module. Moving all filesystem evidence into core is not an allowed outcome.
+
+The decision and evidence for this audit must be recorded before the module is moved.
+
+== Ordered implementation gates
+
+. Freeze this architecture intent and add a dependency-graph check before code movement.
+. Mechanically extract `leanbun-lock` without changing lock bytes, identities, errors or resolution semantics.
+. Move the historical inventory/drift model into `leanbun-inventory-legacy`; remove its visibility from the mainline dependency closure.
+. Audit all `StrictJson` consumers, including possible lock/Reservoir binding use, then choose evidence-internal or lower platform-neutral codec placement.
+. Only after the mainline is physically isolated, decide whether historical crates remain workspace members, move outside the default workspace, or receive deprecation/status documentation.
+
+Semantic changes such as first-resolution Reservoir evidence and version-to-commit rebinding rejection follow the mechanical package split in separate commits.
+
+The versioned delivery sequence and milestone exit gates are defined by
+xref:../roadmaps/LEANBUN_VERSION_ROADMAP_M43_M48.adoc[LeanBun Version Roadmap M43--M48].
+
+== Dependency regression gates
+
+The refactor is complete only when automated checks establish:
+
+* `leanbun-lock` has no dependency other than `leanbun-core`;
+* the mainline closure (`lake-bridge`, `resolver`, `store`, `generation`, `build`, `managed`) contains no `leanbun-inventory-legacy`, `leanbun-plan`, `leanbun-state` or `leanbun-approval-macos` edge;
+* evidence remains a permitted shared lower-layer dependency and has no reverse edge to mainline policy crates;
+* no mainline source imports `PackageInventoryV1`, `DependencyDrift*` or legacy inventory functions;
+* all existing canonical lock, Rust/Bun golden, Lake projection, resolver, store, generation, build and managed regression tests remain byte- and behavior-compatible after the mechanical split.

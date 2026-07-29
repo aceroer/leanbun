@@ -1,0 +1,109 @@
+= LeanBun 隔离开发环境
+:toc: left
+:sectnums:
+
+== 目标
+
+开发状态全部位于仓库的 `.leanbun-dev/`，不修改以下生产状态：
+
+* 本地配置指定的 Bun 安装；
+* 本地配置指定的 Elan home；
+* 本地配置指定的 Lean/Mathlib provider、download cache、registry 与 overrides；
+* 任何活动 Lean 项目的 `.lake`、manifest、toolchain 或 override。
+
+`.leanbun-dev/` 已被 Git 忽略。环境不修改用户 shell，不设置全局 Elan default/override，也不运行
+`lake update` 或 Mathlib cache 命令。
+
+== 隔离方式
+
+首次 setup 在同一 case-sensitive APFS volume 上以 copy-on-write clone 建立：
+
+[source,text]
+----
+.leanbun-dev/
+  bun/                  独立 Bun binary、install cache、transpiler cache
+  lean/
+    elan-home/          独立 Elan proxies 与 Lean toolchain clone
+    package-set/        独立 Mathlib 九包源码/构件 clone
+    download-cache/     独立 Mathlib .ltar cache clone
+    registry/           生产 registry/override 只读快照
+    overrides/          路径已改写到开发 clone 的 override
+  state/                未来 SQLite/audit 状态
+  tmp/                  开发进程临时目录
+  xdg/                  独立 cache/config/data
+  READY.json            来源摘要与创建记录
+----
+
+APFS clone 初始共享物理数据块，但目录、inode 和后续写入彼此独立。开发修改只触发开发副本的数据块
+复制，不回写生产来源。
+
+== 命令
+
+[source,shell]
+----
+./scripts/dev setup
+./scripts/dev verify
+./scripts/dev test
+./scripts/dev check
+./scripts/dev historical-check
+./scripts/dev bun run src/cli.ts --version
+./scripts/dev lean --version
+./scripts/dev lake --version
+----
+
+机器相关的 provider 路径不再写入公开脚本。首次使用时复制
+`config/leanbun-local-provider.example.json` 为 Git 忽略的
+`config/leanbun-local-provider.json`，填写本机绝对路径；也可用
+`LEANBUN_LOCAL_PROVIDER_CONFIG` 指向另一个本地 JSON。Bun bootstrap 按 `.leanbun-dev`、`BUN` 环境变量、
+`PATH` 的顺序发现，不嵌入用户目录。
+
+`scripts/dev` 会优先使用开发环境内的 Bun；环境尚未建立时，仅用本机 Bun 作为 setup bootstrap。
+`./scripts/dev test` 同时运行 TypeScript unit tests 和 `test/fixtures/` 下的真实 Lean/Lake integration
+projects；构建发生在 `.leanbun-dev/tmp` 的临时副本中。
+
+`./scripts/rust-dev check` 只编译 Cargo 的 10 个默认主线成员；
+`./scripts/dev historical-check` 显式编译并测试五个保留历史成员。clean clone 若只验证 Rust 源码，可在
+`rust/` 直接运行 `cargo test`，无需本地 provider 配置、生产凭据、签名或 notarization 身份。
+
+`test/fixtures/` 是所有 Lean/Lake 开发测试与 milestone acceptance 的唯一项目来源；Rust integration
+普通副本只能写 `.leanbun-dev-rust/test-tmp`，generation transaction 副本只能写
+`.leanbun-dev-rust/generation-fixture`。外部研究仓库和活动项目不属于测试输入，详见
+xref:../../TEST_PROJECT_BOUNDARY.adoc[LeanBun Test Project Boundary]。
+
+== 注入的开发变量
+
+runner 为子进程构造最小环境，固定 `ELAN_HOME`、`MATHLIB_CACHE_DIR`、Bun cache、XDG roots、`TMPDIR`
+和受限 `PATH`。不继承用户 shell 的完整环境，也不重新定义用户 `HOME`。
+
+M2 另注入 `LEANBUN_PROVIDER_ID`、`LEANBUN_PROVIDER_TOOLCHAIN`、`LEANBUN_PROVIDER_REGISTRY`、
+`LEANBUN_PROVIDER_OVERRIDES` 与 `LEANBUN_PROVIDER_PACKAGE_ROOT`；开发值全部指向 `.leanbun-dev` 内的
+registry、override 和 COW package-set。
+
+Bun 同时使用 `--no-install`、`--no-env-file` 与仓库 `bunfig.toml` 的 `install.auto = "disable"`、
+`install.prefer = "offline"`、`env = false`。这是重复防护，不依靠单一 flag。
+
+所有 `dev bun/lean/lake/test/check` 子进程还通过 `config/leanbun-dev.sb` 进入 macOS sandbox。当前 profile
+默认禁网、默认拒绝文件写入，只允许写本 LeanBun 仓库（包括 `.leanbun-dev`）和必要设备端点。
+因此，即使测试代码误用绝对路径，也不能写生产依赖库、用户 Bun/Elan 或其他活动项目。
+
+== 验证门
+
+`./scripts/dev verify` 检查：
+
+* 生产 registry/override 摘要仍等于 setup 时记录；
+* 开发 override 的全部 package 路径都位于开发 package-set；
+* 生产和开发 Mathlib Git `HEAD` 相同；
+* registry 中九个 package 的生产与开发 Git `HEAD` 都等于登记 revision；
+* 开发 Bun、Lean、Lake 能从隔离路径运行；
+* 当前正式基线为 Bun `1.3.14+0d9b296af`、Lean `4.32.0`、Lake `5.0.0`、Mathlib
+  `81a5d257c8e410db227a6665ed08f64fea08e997`。
+
+== 使用边界
+
+环境隔离允许在 clone/fixture 中测试写入，但不会自动授权危险命令。M36 后仍遵循：
+
+* 只有 `SupervisedLakeBuildV1` 可在 fixture 中执行固定的离线 Lake build/path observation；
+* fixture source 必须来自本仓库 `test/fixtures`，执行副本必须位于本仓库隔离 state root；
+* `lake update`、Git/network materialization、toolchain update 和正式项目 cache publication 仍关闭；
+* 不从开发 runner 指向活动项目；
+* `.leanbun-dev/` 缺少 `READY.json` 时 setup 停止，不覆盖可能的部分环境。

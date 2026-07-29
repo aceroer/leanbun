@@ -39,4 +39,5 @@ if grep -R -n -F -e "$USER_ROOT" -e "$VOLUME_ROOT" distribution/bun-fork-patches
 fi
 
 ./scripts/check-crate-layering
+./scripts/check-docs
 echo "public-source=passed protected-m42-disclosure=redacted-and-bound patch-count=$PATCH_COUNT"

@@ -1,0 +1,142 @@
+= LeanBun v1 Operator Manual
+:toc: left
+:sectnums:
+
+== Scope
+
+本手册记录 M38--M42 建立并由 M48 保留的 operator command surface。M43--M48 重组了 crate、
+lock/binding reader 和源码发行 provenance，但没有扩大外部项目或公网 registry 权限。M48 的精确
+源码重建入口见 xref:LEANBUN_SOURCE_INSTALL_M48.adoc[source-only installation]。
+
+本手册覆盖 `leanbun 0.1.0-m38` repository-fixture release、`0.2.0-m39-dev` 空依赖入口、`0.3.0-m40-dev` 本地依赖 Phase A、`0.4.0-m40-dev` 注册 Git 九包闭包、`0.5.0-m41-dev` read-only adoption dry-run、`0.6.0-m41-dev` 隔离 fixture acceptance、`0.7.0-m42-dev` 基础回归、`0.8.0-m42-dev` 本地依赖回归、`0.9.0-m42-dev` Mathlib 九包回归、`0.10.0-m42-dev` 负 fixture 矩阵与 `0.11.0-m42-dev` 并发历史闭包。只支持 macOS arm64、单机、单用户和本库登记 fixture；不代表任何真实外部项目已接管。
+
+以下示例令 `REPO` 为本仓库绝对路径，`BIN` 为 manifest 指定的 release binary。
+
+== Read-only commands
+
+[source,shell]
+----
+$BIN version
+$BIN doctor "$REPO"
+$BIN inspect "$REPO"
+$BIN export-evidence "$REPO"
+----
+
+`doctor` 对 Bun lock 与 Lake source hash fail closed。`inspect` 必须报告 `managed-external-projects=0`；`export-evidence` 输出当前 binary SHA 和签名/notarization 状态。
+
+== Update and build acceptance
+
+[source,shell]
+----
+$BIN fixture-network-update "$REPO"
+$BIN fixture-accept "$REPO"
+----
+
+第一条只连接进程内创建的 `127.0.0.1` server，验证显式 network fetch、并发 dedupe、integrity 和 immutable publication。第二条只复制 `test/fixtures/lake-basic`，执行 frozen/offline Lake build、crash recovery、cache publication/reuse 和 generation rollback。
+
+日常重复回归使用：
+
+[source,shell]
+----
+$BIN fixture-regress "$REPO"
+$BIN fixture-regress "$REPO" --fixture=lake-managed-dependency
+$BIN fixture-regress "$REPO" --fixture=mathlib-project
+$BIN fixture-regress "$REPO" --fixture=negative-matrix
+$BIN fixture-regress "$REPO" --fixture=concurrent-history
+----
+
+不带 selector 时默认 `lake-basic`。Phase B、C 额外登记 `lake-managed-dependency` 与 `mathlib-project`，其他名称拒绝。每次成功必须产生新的 `0400`
+`.leanbun-dev-rust/regression/records/<run-id>.record`，更新 `0600` `latest.record`，并清空对应 run execution root。
+依赖型回归还必须清除 run 对应 registry、generation、project-control 和 project-local store；Mathlib record 必须报告
+`package-count=9` 与 `explicit-update-package=mathlib`。历史 record 不覆盖；
+`fixture-accept` 和 M41 的一次性 `fixture-external-accept` 语义不变。
+
+`negative-matrix` 不接受项目路径，也不创建 execution copy 或 managed-project state。五类拒绝全部符合预期后，聚合摘要只写入
+`.leanbun-dev-rust/regression/negative-records/<run-id>.record` 和独立的 `negative-latest.record`。运行前后必须逐项比较
+正向 records 的 SHA-256/mode 与正向 latest 的 bytes/mode；任一变化都使矩阵失败。负 record 为 `0400`，负 latest 为 `0600`。
+
+`concurrent-history` 在单次命令内用 barrier 同时释放两个 `negative-matrix` worker，并让第三个 worker 对登记 malformed
+manifest 产生真实 `JSON_MALFORMED`。两个成功 worker 与一个失败 worker 都写入 `0400` terminal records；随后审计正向、
+负向、terminal 与既有 audit records，并发布 `0400` audit record 和 `0600` `audit-latest.record`。保留策略固定为
+`retain-all-v1`，`automatic-deletion=disabled`；本命令不是清理工具，也不授权删除历史。
+
+== Install, recover, and rollback
+
+安装目标必须是 `$REPO/.leanbun-dev-rust/release-fixture` 的子目录：
+
+[source,shell]
+----
+$BIN install "$REPO" "$REPO/.leanbun-dev-rust/release-fixture/manual"
+$BIN recover "$REPO" "$REPO/.leanbun-dev-rust/release-fixture/manual"
+$BIN rollback "$REPO" "$REPO/.leanbun-dev-rust/release-fixture/manual"
+$BIN fixture-install-accept "$REPO"
+----
+
+仅在 `install-transaction` 存在时使用 `recover`；pending transaction 存在时 `rollback` 拒绝。rollback 不删除当前或 previous version。
+
+== Adopt, update, build
+
+M41 Phase A 只允许对登记的小型 fixture 执行非变异 dry-run：
+
+[source,shell]
+----
+$BIN adopt-dry-run "$REPO" "$REPO/test/fixtures/lake-managed-dependency" \
+  leanbun_managed_dependency_fixture --explicit-dry-run
+----
+
+成功状态必须是 `eligible-not-adopted` 和 `mutation=none`。命令不得创建项目 `.lake`、adoption record、generation
+或 Store；其他路径及错误 confirmation token 必须拒绝。
+
+M41 Phase B 的变异验收只有一个专用、无项目路径参数的命令：
+
+[source,shell]
+----
+$BIN fixture-external-accept "$REPO"
+----
+
+它只把 `lake-managed-dependency` 复制到固定的 `.leanbun-dev-rust/external-acceptance-fixture/m41-small-project`，
+发布 `0400` dry-run record 后执行 adopt、baseline build、`managed_dep` explicit update、updated build、precommit
+fault、recover、rollback 与 final build。该命令是一次性验收器：固定副本或记录已经存在时 fail closed，不覆盖证据。
+
+M40 development binary 已开放空依赖、local snapshot 和本库登记的九包 Git closure 受管入口。adopt 必须使用显式确认：
+
+[source,shell]
+----
+$BIN adopt "$REPO" "$PROJECT" "$TARGET" --explicit-managed-project
+$BIN managed-status "$REPO" "$PROJECT"
+$BIN update "$REPO" "$PROJECT" --package=managed_dep
+$BIN build "$REPO" "$PROJECT"
+$BIN recover "$REPO" "$PROJECT"
+$BIN rollback "$REPO" "$PROJECT"
+----
+
+带依赖 update 缺少显式 `--package=NAME` 时必须拒绝。九包模式只接受登记 provider 的 exact package set/revision，
+普通 build 禁网；这些通用命令仍不得用于 acceptance root 或外部项目。fixture 对应关系为：
+
+[cols="2,3",options="header"]
+|===
+|Operator intent |Current authorized command
+
+|adopt/inspect
+|M39 在隔离副本建立 strict adoption record；缺少 confirmation 必须拒绝。
+
+|update
+|空依赖允许空 update set；`lake-managed-dependency` 必须显式 `--package=managed_dep`；Mathlib fixture 必须显式
+`--package=mathlib`。`fixture-network-update` 仍只用 loopback fixture source。
+
+|build/recover/generation rollback
+|`build/recover/rollback` 已进入跨进程 managed controller；全部 dependency 实际路径必须是 Bun generation。package
+`.lake` 是可写派生缓存；ProofWidgets 的一个已验证 ignored lock trace 只读注入；`fixture-managed-recovery` 只在
+managed-fixture 内开放 fault injection。
+
+|binary/config recover/rollback
+|`recover` / `rollback`，且只限 release-fixture install root。
+|===
+
+对 acceptance root 或外部项目运行上述通用 mutation command 必须得到非零退出，不能用专用验收结果绕过生产授权边界。
+
+== Distribution boundary
+
+M48 是 source-only development release。源码 clone、重建和本地使用不要求 Developer ID 或 notarization；仓库不提供
+官方预编译 binary 或 installer。如果未来发布预编译 macOS binary，签名、notarization、staple、Gatekeeper 和对应
+binary replay 必须作为独立发行边界重新验证。

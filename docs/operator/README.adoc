@@ -1,0 +1,7 @@
+= Operator 文档
+
+* xref:LEANBUN_OPERATOR_MANUAL_V1.adoc[Operator manual]
+* xref:LEANBUN_SOURCE_INSTALL_M48.adoc[M48 source-only installation]
+
+当前 operator 范围是登记 fixture、开发状态与 source-only M48 重建。任意公网 registry discovery 和
+未登记外部项目 adoption 不在本手册授权范围内。
