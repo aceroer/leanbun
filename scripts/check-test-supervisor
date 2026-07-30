@@ -1,0 +1,64 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPOSITORY=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+PID_FILE="$REPOSITORY/.leanbun-dev/tmp/supervisor-regression-child.pid"
+OUTPUT_FILE="$REPOSITORY/.leanbun-dev/tmp/supervisor-regression-output.txt"
+
+cleanup() {
+  rm -f "$PID_FILE" "$OUTPUT_FILE"
+}
+trap cleanup EXIT HUP INT TERM
+cleanup
+
+if LEANBUN_TEST_TIMEOUT_SECONDS=1 \
+  LEANBUN_TEST_TERMINATION_GRACE_SECONDS=1 \
+  "$REPOSITORY/scripts/dev" test \
+    "$REPOSITORY/test/fixtures/process-supervisor/hang.ts" \
+    >"$OUTPUT_FILE" 2>&1; then
+  echo "intentional hanging test unexpectedly completed" >&2
+  exit 1
+fi
+
+if [ ! -f "$PID_FILE" ]; then
+  echo "intentional hanging test did not publish its descendant pid" >&2
+  exit 1
+fi
+
+if ! grep -q 'reason=timeout' "$OUTPUT_FILE" || ! grep -q 'escalation=SIGKILL' "$OUTPUT_FILE"; then
+  echo "test supervisor did not report timeout and escalation" >&2
+  sed -n '1,160p' "$OUTPUT_FILE" >&2
+  exit 1
+fi
+
+descendant_pid=$(tr -d '[:space:]' <"$PID_FILE")
+process_group_id=$(awk '
+  /reason=timeout/ {
+    for (field = 1; field <= NF; field += 1) {
+      if ($field ~ /^process-group=/) {
+        sub(/^process-group=/, "", $field)
+        print $field
+        exit
+      }
+    }
+  }
+' "$OUTPUT_FILE")
+
+case "$descendant_pid:$process_group_id" in
+  *[!0-9:]* | :* | *:)
+    echo "test supervisor produced an invalid process identity" >&2
+    exit 1
+    ;;
+esac
+
+if /bin/kill -0 "$descendant_pid" 2>/dev/null; then
+  echo "test supervisor left descendant pid $descendant_pid running" >&2
+  exit 1
+fi
+if /bin/kill -0 "-$process_group_id" 2>/dev/null; then
+  echo "test supervisor left process group $process_group_id running" >&2
+  exit 1
+fi
+
+echo "test-supervisor=passed timeout=1 grace=1 descendants=reaped"

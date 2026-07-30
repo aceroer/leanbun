@@ -23,6 +23,7 @@ if [ "${1:-}" = "check" ]; then
     --no-env-file \
     "--config=$REPO_DIR/bunfig.toml" \
     run "$REPO_DIR/scripts/dev.ts" "$@"
+  "$REPO_DIR/scripts/check-test-supervisor"
   "$REPO_DIR/scripts/check-docs"
   exec "$REPO_DIR/scripts/rust-dev" check
 fi
