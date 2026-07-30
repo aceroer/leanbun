@@ -15,18 +15,77 @@ external projects.
 
 == Why LeanBun
 
-Lake is the authority for describing and building Lean projects. Large,
-version-sensitive dependency closures also need stricter lifecycle controls:
+Lake is very good at its intended job: interpreting a Lean project's package and
+target declarations, constructing the build graph, and invoking Lean. The problem
+appears when the same machinery is also expected to act as a workstation-wide,
+transactional dependency manager for large and version-sensitive closures such as
+mathlib. Those responsibilities require guarantees outside Lake's build-oriented
+scope.
 
-* a package/version identity must resolve to an exact commit and content identity;
-* an ordinary build must not silently re-resolve, download, or rebuild locked dependencies;
-* multiple projects should reuse a verified immutable store instead of rebuilding the same mathlib closure;
-* update, publication, activation, recovery, and rollback must form one auditable transaction;
-* Git, path, provider, and Reservoir inputs need deterministic precedence and one final path projection.
+For the reviewed Lean `4.32.0` / Lake `5.0.0` surface, the concrete gaps are:
 
-LeanBun therefore manages update authorization, resolved locks, source acquisition,
-integrity, the immutable store, generations, transactions, concurrency, recovery,
-and change reports. It does not reimplement Lake or replace the Lean compiler.
+[cols="2,3,3",options="header"]
+|===
+|Lake behavior |Lifecycle gap |Operational consequence
+
+|`lakefile.lean` is executable Lean configuration. Loading a workspace may create
+`.lake` state, compile configuration, or materialize dependencies when a manifest
+is absent.
+|There is no generally safe, filesystem-only workspace query boundary.
+|A command that appears observational, including environment or target discovery,
+can execute project code or write project state before it is trusted.
+
+|`lake update` resolves packages, rewrites the manifest, and changes materialized
+Git checkouts as one project operation.
+|Lake does not expose a candidate-generation, verify, atomic-activate, and rollback
+transaction around the complete dependency closure.
+|A failed or interrupted update can leave evidence spread across the manifest,
+checkout directories, caches, and build state rather than one committed generation.
+
+|Package paths can come from the manifest, workspace overrides, and runtime
+`--packages` projections. Later provenance layers shadow earlier ones, and runtime
+ordering can decide the winning path.
+|There is no single portable authority that records every candidate provenance,
+the conflict decision, and exactly one final canonical path per package.
+|The same declared package can resolve to different bytes or directories depending
+on local overrides and invocation order.
+
+|A manifest can pin a Git revision after resolution, but the revision alone does
+not attest the actual source tree, package configuration, extracted archive, or
+compiled artifacts. A Reservoir version also needs an independently frozen
+version-to-commit binding to detect a same-version rebound.
+|Resolved identity and verified content identity are not one lock invariant.
+|A matching version or commit string can be mistaken for a verified, reusable
+package image.
+
+|Mathlib's artifact cache restores build products and Lake may reuse existing
+trace or `.hash` information. When usable artifacts are absent, an ordinary build
+can correctly fall back to compiling dependency sources.
+|Cache recovery is not byte-level attestation, and Lake does not distinguish
+permission to compile project code from permission to rebuild a shared dependency.
+|A routine project build can unexpectedly become a long mathlib rebuild, while a
+cache hit still does not prove that every active artifact matches a sealed image.
+
+|Lake coordinates a project's build, but independently invoked projects do not
+share a content-addressed package publication transaction or a global immutable
+image lock.
+|Cross-project fetch deduplication, publication, crash recovery, retention, and
+auditable rollback remain outside the project build graph.
+|Concurrent projects can duplicate downloads or compilation and can contend over
+shared mutable dependency state without one durable commit point.
+|===
+
+These are not reasons to replace Lake. They are reasons to put a package lifecycle
+layer in front of it. LeanBun freezes each requested identity to an exact commit and
+verified content identity, resolves the three provenance layers deterministically,
+publishes packages into an immutable store, and activates a complete generation
+only after verification. Normal builds are frozen and offline; update, recovery,
+and rollback are explicit audited transactions. Lake then receives one complete
+package-path projection and remains the authority for target/build semantics, while
+Lean remains the authority for compilation and kernel checking.
+
+The detailed source-derived boundary is documented in
+xref:docs/architecture/BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[Bun-managed package takeover authority].
 
 == Authority boundary
 
@@ -49,7 +108,7 @@ semantics; consume dependency paths already selected by LeanBun.
 By default, `inspect` reads only `lean-toolchain`, manifest, provider, Git, and
 artifact metadata. It does not execute a project's `lakefile.lean`, `lake env`,
 or `lake query`. See the
-xref:docs/architecture/LEANBUN_LEAN_LAKE_API_BOUNDARY.adoc[Lean/Lake API boundary].
+xref:docs/architecture/BUN_LEAN_PACKAGE_TAKEOVER_M30.adoc[current Lean/Lake authority boundary].
 
 == Current status
 
