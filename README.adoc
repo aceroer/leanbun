@@ -239,6 +239,12 @@ Known limits remain explicit:
   signed binary or installer;
 * macOS arm64 is the fully reviewed build platform.
 
+The next boundary is contract-only M49A: user-selected managed-library intake,
+registry enumeration, and status semantics are specified but not yet implemented.
+See the
+xref:docs/decisions/MANAGED_LIBRARY_INTAKE_REGISTRY_CONTRACT_M49A.adoc[M49A intake and registry contract]
+and xref:docs/roadmaps/LEANBUN_MANAGED_LIBRARY_ROADMAP_M49_M50.adoc[M49--M50 roadmap].
+
 See the xref:docs/roadmaps/LEANBUN_VERSION_ROADMAP_M43_M48.adoc[M43--M48 roadmap]
 for exit gates. The xref:docs/README.adoc[documentation index] contains the full
 historical evidence instead of duplicating it here.
