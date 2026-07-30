@@ -12,6 +12,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Tests run against GitHub's PR merge commit, while the identity gate
+          # below audits the real branch head rather than that synthetic commit.
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -19,3 +23,5 @@ jobs:
         run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
       - name: Run public gate
         run: ./scripts/test-public.sh
+        env:
+          LEANBUN_PUBLIC_HISTORY_HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
