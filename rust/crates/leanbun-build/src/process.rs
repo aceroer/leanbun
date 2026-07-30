@@ -1,11 +1,14 @@
 use crate::model::{
-    BuildError, BuildErrorKind, BuildResultV1, SupervisedLakeBuildV1, TerminationReasonV1,
-    hash_file, io,
+    BuildError, BuildErrorKind, BuildResultV1, ProgramRunResultV1, ProgramTerminationReasonV1,
+    SupervisedLakeBuildV1, SupervisedProgramRunV1, TerminationReasonV1, hash_file, io,
 };
 use std::collections::BTreeSet;
 use std::io::Read;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -13,6 +16,116 @@ pub fn run_supervised_lake_build_v1(
     request: &SupervisedLakeBuildV1,
 ) -> Result<BuildResultV1, BuildError> {
     execute(request, request.lake_arguments())
+}
+
+pub fn run_supervised_program_v1(
+    request: &SupervisedProgramRunV1,
+) -> Result<ProgramRunResultV1, BuildError> {
+    request.validate()?;
+    if hash_file(&request.executable, 1024 * 1024 * 1024)? != request.executable_sha256
+        || hash_file(&request.sandbox_profile, 1024 * 1024)? != request.sandbox_profile_sha256
+    {
+        return Err(BuildError::new(
+            BuildErrorKind::ExecutableDrift,
+            "program executable or sandbox profile differs from its fixed SHA",
+        ));
+    }
+    let mut command = Command::new(&request.supervisor_executable);
+    command
+        .arg("__leanbun-supervise")
+        .arg(&request.sandbox_executable)
+        .arg("-f")
+        .arg(&request.sandbox_profile)
+        .arg(&request.executable)
+        .args(&request.arguments)
+        .current_dir(&request.cwd)
+        .env_clear()
+        .envs(&request.environment)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().map_err(|error| {
+        BuildError::new(
+            BuildErrorKind::SpawnFailed,
+            format!("cannot spawn managed program supervisor: {error}"),
+        )
+    })?;
+    let process_group_id = child.id();
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io(std::io::Error::other("stdout pipe missing")))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io(std::io::Error::other("stderr pipe missing")))?;
+    let overflow = Arc::new(AtomicBool::new(false));
+    let stdout_overflow = Arc::clone(&overflow);
+    let stderr_overflow = Arc::clone(&overflow);
+    let maximum = request.maximum_output_bytes;
+    let stdout_reader =
+        thread::spawn(move || read_bounded_signal(stdout, maximum, &stdout_overflow));
+    let stderr_reader =
+        thread::spawn(move || read_bounded_signal(stderr, maximum, &stderr_overflow));
+    let started = Instant::now();
+    let mut termination = ProgramTerminationReasonV1::Exit;
+    let status = 'wait: loop {
+        if let Some(status) = child.try_wait().map_err(io)? {
+            break status;
+        }
+        let forced = if overflow.load(Ordering::Acquire) {
+            Some(ProgramTerminationReasonV1::OutputOverflow)
+        } else if started.elapsed() >= request.deadline {
+            Some(ProgramTerminationReasonV1::Timeout)
+        } else {
+            None
+        };
+        if let Some(reason) = forced {
+            termination = reason;
+            signal_group(process_group_id, "-TERM")?;
+            let grace_started = Instant::now();
+            loop {
+                if let Some(status) = child.try_wait().map_err(io)? {
+                    break 'wait status;
+                }
+                if grace_started.elapsed() >= request.termination_grace {
+                    signal_group(process_group_id, "-KILL")?;
+                    break 'wait child.wait().map_err(io)?;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let stdout = stdout_reader
+        .join()
+        .map_err(|_| io(std::io::Error::other("stdout reader panicked")))??;
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| io(std::io::Error::other("stderr reader panicked")))??;
+    let signal = status.signal();
+    if termination == ProgramTerminationReasonV1::Exit && signal.is_some() {
+        termination = ProgramTerminationReasonV1::Signal;
+    }
+    let exit_code = match termination {
+        ProgramTerminationReasonV1::Timeout => 124,
+        ProgramTerminationReasonV1::OutputOverflow => 125,
+        ProgramTerminationReasonV1::Signal => signal
+            .and_then(|value| u8::try_from(128_i32.saturating_add(value)).ok())
+            .unwrap_or(128),
+        ProgramTerminationReasonV1::Exit => status
+            .code()
+            .and_then(|value| u8::try_from(value).ok())
+            .unwrap_or(1),
+    };
+    Ok(ProgramRunResultV1 {
+        exit_code,
+        stdout,
+        stderr,
+        termination,
+        signal,
+        process_group_id,
+    })
 }
 
 /// Loads the exact workspace through Lake and compares its effective package
@@ -223,6 +336,27 @@ fn read_bounded(mut reader: impl Read, maximum: usize) -> Result<(Vec<u8>, bool)
         overflow |= count > remaining;
     }
     Ok((output, overflow))
+}
+
+fn read_bounded_signal(
+    mut reader: impl Read,
+    maximum: usize,
+    overflow: &AtomicBool,
+) -> Result<Vec<u8>, BuildError> {
+    let mut output = Vec::with_capacity(maximum.min(64 * 1024));
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let count = reader.read(&mut buffer).map_err(io)?;
+        if count == 0 {
+            break;
+        }
+        let remaining = maximum.saturating_sub(output.len());
+        output.extend_from_slice(&buffer[..count.min(remaining)]);
+        if count > remaining {
+            overflow.store(true, Ordering::Release);
+        }
+    }
+    Ok(output)
 }
 
 fn signal_group(process_group_id: u32, signal: &str) -> Result<(), BuildError> {

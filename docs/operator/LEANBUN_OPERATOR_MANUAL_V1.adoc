@@ -66,6 +66,55 @@ inputs before update. For `unsupported`, upgrade only to a binary that documents
 the required schema/provider. For `pending-recovery`, run `recover` on the exact
 registered path; do not edit authority files manually.
 
+=== M50B managed build front door
+
+[source,shell]
+----
+$BIN build "$REPO" <canonical-project-path-or-project-id>
+----
+
+The source-tree adapter keeps `$REPO` explicit. The selector must resolve to one
+M49 record whose strict state is `healthy`; names, relative paths and current
+directory fallback are not accepted. Build fixes the selected active generation,
+acquires the per-project operation lease, rereads the record and generation,
+reverifies lock/projection/final paths, and only then supervises the existing
+offline Lake build. Update, recover and rollback use the same lease and cannot
+publish a pending record while build is active.
+
+Success prints ProjectId, canonical path, target, generation and artifact
+digest. If a selection becomes stale, select again; LeanBun never silently
+switches the build to a newer generation.
+
+=== M50C managed run front door
+
+[source,shell]
+----
+$BIN run "$REPO" <canonical-project-path-or-project-id>
+$BIN run "$REPO" <canonical-project-path-or-project-id> -- <argument>...
+----
+
+The recorded target must be exactly one filesystem-parsed `[[lean_exe]]`; a
+library target, `lakefile.lean`, missing/duplicate declaration or guessed file
+name is rejected. LeanBun keeps the operation lease across the M50B build and
+the child, selects only `.lake/build/bin/<target>`, and reverifies generation,
+the complete artifact tree and executable bytes after exit.
+
+Arguments require the exact `--` delimiter and are passed directly without a
+shell. The child receives null stdin, canonical project cwd, a cleared fixed
+environment and a Seatbelt profile denying network and project/artifact writes.
+Stdout and stderr are captured up to one MiB each and emitted after exit. Normal
+exit codes propagate; signal uses `128 + signal`, timeout uses 124, output
+overflow uses 125, validation/spawn failure uses 1 and CLI usage failure uses
+64. This is non-interactive source-tree development execution and does not
+claim protection against a malicious same-UID process.
+
+M50D validates this front door from a clean Git candidate and through a
+separate-process update, ProjectId build/run, rollback and canonical-path
+build/run sequence. The source-only reconstruction and lifecycle record is
+xref:../milestones/RUST_MANAGED_DISTRIBUTION_CLOSURE_M50D.adoc[M50D]. A clean
+clone intentionally lacks the ignored provider snapshot; initialize the pinned
+provider before attempting provider-bound intake or lifecycle acceptance.
+
 == Update and build acceptance
 
 [source,shell]

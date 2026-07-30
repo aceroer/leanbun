@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "version": "0.23.0-m50b-dev",
+  "class": "generation-bound-managed-build-front-door",
+  "sourceBaseline": {
+    "commit": "600c74c863514fc50614b5688a16af9ed536d630",
+    "status": "uncommitted M50A and M50B working-tree delivery"
+  },
+  "bun": {
+    "m49PairedForkCommit": "d827bda214499ccabfe1a2ad8b4ff3e03979cc57",
+    "m50bPairedForkCommit": "5fa4630349435a419e06c991347cfdc656f9ef7d",
+    "m50bPairedForkTree": "165e65d9b252466365cfefa70d8930b4212db53a",
+    "incrementalPatchCount": 1,
+    "incrementalPatchSha256": "4308fe186520f639dbc68283a9c98076cad766c4b58e30b64423db47d68ef4a2",
+    "patchReplayTree": "165e65d9b252466365cfefa70d8930b4212db53a"
+  },
+  "toolchain": {
+    "rustc": "1.96.0 (ac68faa20 2026-05-25) (Homebrew)",
+    "host": "aarch64-apple-darwin"
+  },
+  "binary": {
+    "target": "aarch64-macos",
+    "size": 2075608,
+    "sha256": "325339c31a345231efbe3f1e0770e3c8feca2b90e323d82b0ae5b1a6654fb171",
+    "signatureStatus": "unsigned-development",
+    "notarizationStatus": "not-submitted"
+  },
+  "executionSelection": {
+    "schemaVersion": 1,
+    "selectors": ["exact-canonical-path", "project-id"],
+    "requiredState": "healthy",
+    "doubleRegistryObservation": true,
+    "executesLake": false,
+    "writesState": false
+  },
+  "managedBuild": {
+    "schemaVersion": 1,
+    "operationLease": "per-project-nonblocking-exclusive-flock",
+    "operationFileMode": "0600",
+    "operationFileNoFollow": true,
+    "sharedOperations": ["build", "update", "recover", "rollback"],
+    "selectedGenerationRequiredActive": true,
+    "offlineSupervisedLake": true,
+    "postBuildGenerationReverification": true
+  },
+  "identity": {
+    "cargoLockSha256": "a5113db66086da92254da75ad685155df6e9c99fae87425191a300e830ef17f4",
+    "executionSourceSha256": "7a05b5b0f8309faf8f9f0fd14923ecbd281d5b62aeedcbf236d7ba7bee3ae8a2",
+    "managedLibrarySourceSha256": "c8b15a69455faefe0738780012adebc9e1e76efc22eebb40cb21d368308d9b2c"
+  },
+  "validation": {
+    "publicGate": "passed",
+    "repositoryCheck": "passed",
+    "repositoryBunTestsPassed": 212,
+    "repositoryRustTestsPassed": 125,
+    "repositoryRustTestsIgnored": 1,
+    "historicalTestsPassed": 79,
+    "managedPackageTestsPassed": 15,
+    "bunAdapterParserTestsPassed": 4,
+    "bunAdapterFmt": "passed",
+    "bunAdapterClippy": "passed",
+    "releaseBuild": "passed",
+    "patchReplay": "passed",
+    "realBuildSelectorsPassed": 2,
+    "realBuildProjectId": "eb8ded4254b9acad7c970fcb124be030ea6b419aab28ee71d76c6bb862776c22",
+    "realBuildGenerationSha256": "72fb517c3564a5b6304bbb5670689866137cf98a045d55e394daa122835322ea",
+    "realBuildArtifactSha256": "eee3d8df7e354ab2d7b6388c711ea306290c5045e75f02e58a41d6495aabe1a9"
+  },
+  "boundaries": {
+    "m50aComplete": true,
+    "m50bComplete": true,
+    "managedRunFrontDoor": "closed",
+    "productionInstallerWiring": "closed",
+    "nextMilestone": "M50C managed run contract and front door"
+  }
+}

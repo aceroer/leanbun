@@ -1,9 +1,9 @@
 #![cfg(target_os = "macos")]
 
 use leanbun_build::{
-    BuildErrorKind, SupervisedLakeBuildV1, project_artifact_sha256_v1,
-    protected_project_input_sha256_v1, run_supervised_lake_build_v1,
-    verify_lake_workspace_paths_v1,
+    BuildErrorKind, ProgramTerminationReasonV1, SupervisedLakeBuildV1, SupervisedProgramRunV1,
+    project_artifact_sha256_v1, protected_project_input_sha256_v1, run_supervised_lake_build_v1,
+    run_supervised_program_v1, verify_lake_workspace_paths_v1,
 };
 use leanbun_core::{Sha256, Sha256Hasher};
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,6 +19,138 @@ fn hash_file(path: &Path) -> Sha256 {
     let mut hasher = Sha256Hasher::new();
     hasher.update(&fs::read(path).unwrap_or_else(|error| panic!("hash read failed: {error}")));
     hasher.finalize()
+}
+
+fn program_request(
+    root: &Path,
+    body: &str,
+    arguments: Vec<String>,
+    deadline: Duration,
+    maximum: usize,
+) -> SupervisedProgramRunV1 {
+    let script = root.join("program");
+    fs::write(&script, format!("#!/bin/sh\n{body}\n"))
+        .unwrap_or_else(|error| panic!("program script failed: {error}"));
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o700))
+        .unwrap_or_else(|error| panic!("program chmod failed: {error}"));
+    let profile = root.join("program.sb");
+    fs::write(&profile, "(version 1)\n(allow default)\n(deny network*)\n")
+        .unwrap_or_else(|error| panic!("program profile failed: {error}"));
+    SupervisedProgramRunV1 {
+        supervisor_executable: PathBuf::from(env!("CARGO_BIN_EXE_leanbun-process-supervisor")),
+        sandbox_executable: PathBuf::from("/usr/bin/sandbox-exec"),
+        sandbox_profile_sha256: hash_file(&profile),
+        sandbox_profile: profile,
+        executable_sha256: hash_file(&script),
+        executable: script,
+        cwd: root.to_path_buf(),
+        arguments,
+        environment: BTreeMap::from([
+            ("PATH".to_owned(), "/usr/bin:/bin".to_owned()),
+            ("HOME".to_owned(), root.to_string_lossy().into_owned()),
+            ("TMPDIR".to_owned(), root.to_string_lossy().into_owned()),
+            ("LC_ALL".to_owned(), "C.UTF-8".to_owned()),
+            ("LANG".to_owned(), "C.UTF-8".to_owned()),
+        ]),
+        deadline,
+        termination_grace: Duration::from_millis(100),
+        maximum_output_bytes: maximum,
+    }
+}
+
+#[test]
+fn supervised_program_preserves_arguments_and_bounded_terminal_results() {
+    let success_root = temporary();
+    let success = program_request(
+        &success_root,
+        "printf '%s' \"$1\"",
+        vec!["exact argument".to_owned()],
+        Duration::from_secs(2),
+        1024,
+    );
+    let result = run_supervised_program_v1(&success)
+        .unwrap_or_else(|error| panic!("program success failed: {error}"));
+    assert_eq!(
+        result.exit_code,
+        0,
+        "program stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(result.stdout, b"exact argument");
+    assert_eq!(result.termination, ProgramTerminationReasonV1::Exit);
+
+    let nonzero_root = temporary();
+    let nonzero = program_request(
+        &nonzero_root,
+        "exit 7",
+        Vec::new(),
+        Duration::from_secs(2),
+        1024,
+    );
+    let result = run_supervised_program_v1(&nonzero)
+        .unwrap_or_else(|error| panic!("program nonzero failed: {error}"));
+    assert_eq!(result.exit_code, 7);
+    assert_eq!(result.termination, ProgramTerminationReasonV1::Exit);
+
+    let timeout_root = temporary();
+    let timeout = program_request(
+        &timeout_root,
+        "sleep 5",
+        Vec::new(),
+        Duration::from_millis(100),
+        1024,
+    );
+    let result = run_supervised_program_v1(&timeout)
+        .unwrap_or_else(|error| panic!("program timeout failed: {error}"));
+    assert_eq!(result.exit_code, 124);
+    assert_eq!(result.termination, ProgramTerminationReasonV1::Timeout);
+
+    let signal_root = temporary();
+    let signal = program_request(
+        &signal_root,
+        "kill -TERM $$",
+        Vec::new(),
+        Duration::from_secs(2),
+        1024,
+    );
+    let result = run_supervised_program_v1(&signal)
+        .unwrap_or_else(|error| panic!("program signal failed: {error}"));
+    assert_eq!(result.exit_code, 143);
+    assert_eq!(result.termination, ProgramTerminationReasonV1::Signal);
+    assert_eq!(result.signal, Some(15));
+
+    let overflow_root = temporary();
+    let overflow = program_request(
+        &overflow_root,
+        "yes x",
+        Vec::new(),
+        Duration::from_secs(2),
+        1024,
+    );
+    let result = run_supervised_program_v1(&overflow)
+        .unwrap_or_else(|error| panic!("program overflow failed: {error}"));
+    assert_eq!(result.exit_code, 125);
+    assert_eq!(
+        result.termination,
+        ProgramTerminationReasonV1::OutputOverflow
+    );
+    assert_eq!(result.stdout.len(), 1024);
+
+    let mut too_many = success.clone();
+    too_many.arguments = vec!["x".to_owned(); 65];
+    assert_eq!(
+        run_supervised_program_v1(&too_many).map_err(|error| error.kind),
+        Err(BuildErrorKind::InvalidField)
+    );
+    for root in [
+        success_root,
+        nonzero_root,
+        timeout_root,
+        signal_root,
+        overflow_root,
+    ] {
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 fn temporary() -> PathBuf {

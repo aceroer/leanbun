@@ -1,0 +1,97 @@
+From 5fa4630349435a419e06c991347cfdc656f9ef7d Mon Sep 17 00:00:00 2001
+From: LeanBun contributors <noreply@invalid>
+Date: Thu, 30 Jul 2026 12:57:08 +0800
+Subject: [PATCH] feat: add managed build front door
+
+---
+ Cargo.lock          |  1 +
+ src/lean_pm/main.rs | 25 ++++++++++++++++---------
+ 2 files changed, 17 insertions(+), 9 deletions(-)
+
+diff --git a/Cargo.lock b/Cargo.lock
+index 25432893..d6b832c5 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2988,6 +2988,7 @@ dependencies = [
+  "leanbun-lock",
+  "leanbun-resolver",
+  "leanbun-store",
++ "rustix 1.1.4",
+ ]
+ 
+ [[package]]
+diff --git a/src/lean_pm/main.rs b/src/lean_pm/main.rs
+index c00d4ad4..eee49c0c 100644
+--- a/src/lean_pm/main.rs
++++ b/src/lean_pm/main.rs
+@@ -8,9 +8,9 @@ use leanbun_managed::{
+     ManagedProjectControllerV1, ManagedProjectStatusV1, commit_managed_intake_v1,
+     dry_run_external_adoption_v1, managed_library_status_v1, prepare_managed_intake_v1,
+     read_managed_registry_v1, run_concurrent_history_regression_v1,
+-    run_external_fixture_acceptance_v1, run_managed_dependency_regression_v1,
+-    run_mathlib_regression_v1, run_negative_fixture_regression_v1,
+-    run_reservoir_loopback_regression_v1,
++    run_external_fixture_acceptance_v1, run_managed_build_front_door_v1,
++    run_managed_dependency_regression_v1, run_mathlib_regression_v1,
++    run_negative_fixture_regression_v1, run_reservoir_loopback_regression_v1,
+ };
+ use leanbun_store::run_loopback_update_acceptance_v1;
+ use std::env;
+@@ -22,7 +22,7 @@ use std::os::unix::process::CommandExt;
+ use std::path::{Path, PathBuf};
+ use std::process::{Command, ExitCode};
+ 
+-const RELEASE_VERSION: &str = "0.22.0-m49-dev";
++const RELEASE_VERSION: &str = "0.23.0-m50b-dev";
+ const M42_RELEASE_VERSION: &str = "0.11.0-m42-dev";
+ const M42_BINARY_SHA256: &str = "f6416817e2c893b311245c65f2a54668b0a633e028de1fe31e05701322670359";
+ const BUN_UPSTREAM_COMMIT: &str = "892b1dabc69e2a0a973244f772b84967c73ccad5";
+@@ -32,7 +32,7 @@ const LEAN_COMPILER_COMMIT: &str = "8c9756b28d64dab099da31a4c09229a9e6a2ef35";
+ const LAKE_VERSION: &str = "5.0.0-src+8c9756b";
+ const BUN_LOCK_FILE_SHA256: &str =
+     "d2292d26c8200f23db4fc4fc89237117f0d90a25821fb65b8fe009f0e9134ae4";
+-const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReaders=1,2\nlockReaders=leanbun-lock-v1,reservoir-bindings-v1\nmanagedProjectSchema=1\nmanagedRegistryReader=1\nmanagedIntake=1\ndependencyClosure=registered-git-reservoir-companion-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-reservoir-loopback-v1\n";
++const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReaders=1,2\nlockReaders=leanbun-lock-v1,reservoir-bindings-v1\nmanagedProjectSchema=1\nmanagedRegistryReader=1\nmanagedIntake=1\nmanagedBuildFrontDoor=1\ndependencyClosure=registered-git-reservoir-companion-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-reservoir-loopback-v1\n";
+ const M42_RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReader=1\nmanagedProjectSchema=1\ndependencyClosure=registered-git-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-v1\n";
+ 
+ fn main() -> ExitCode {
+@@ -229,6 +229,7 @@ fn version() -> Result<(), String> {
+     println!("managed-project-schema=1");
+     println!("managed-registry-reader=1");
+     println!("managed-intake=1");
++    println!("managed-build-front-door=1");
+     println!("target={}-{}", env::consts::ARCH, env::consts::OS);
+     Ok(())
+ }
+@@ -533,11 +534,16 @@ fn update_project(repository: &Path, project: &Path, packages: &[String]) -> Res
+ 
+ fn build_project(repository: &Path, project: &Path) -> Result<(), String> {
+     doctor(repository)?;
+-    let controller = managed_controller(repository, project)?;
+-    let result = controller.build().map_err(managed_error)?;
++    let executable = env::current_exe()
++        .map_err(|error| format!("cannot identify managed build supervisor: {error}"))?;
++    let result =
++        run_managed_build_front_door_v1(repository, project, executable).map_err(managed_error)?;
+     println!("managed-build-status=passed");
+-    println!("generation={}", result.generation_sha256);
+-    println!("project-artifact={}", result.project_artifact_sha256);
++    println!("project-id={}", result.selection.project_id);
++    println!("project={}", result.selection.project_root.display());
++    println!("target={}", result.selection.target);
++    println!("generation={}", result.build.generation_sha256);
++    println!("project-artifact={}", result.build.project_artifact_sha256);
+     Ok(())
+ }
+ 
+@@ -1031,6 +1037,7 @@ fn export_evidence(repository: &Path) -> Result<(), String> {
+     println!("managedProjectSchema=1");
+     println!("managedRegistryReader=1");
+     println!("managedIntake=1");
++    println!("managedBuildFrontDoor=1");
+     println!("target={}-{}", env::consts::ARCH, env::consts::OS);
+     println!("binarySha256={}", hash_file(&executable)?);
+     println!("repository={}", repository.display());
+-- 
+2.55.0
+

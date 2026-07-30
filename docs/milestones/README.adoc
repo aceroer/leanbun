@@ -59,4 +59,7 @@ path provenance 和 Bun 最终路径决定。
 
 * xref:RUST_MANAGED_LIBRARY_REGISTRY_M49B.adoc[Strict managed-library registry reader M49B]
 * xref:RUST_MANAGED_LIBRARY_INTAKE_M49C_M49D.adoc[Explicit intake and local-project authorization M49C/D]
-* M49 已闭包；M50 build/run 日常前门尚未完成。
+* xref:RUST_MANAGED_BUILD_FRONT_DOOR_M50B.adoc[Generation-bound managed build front door M50B]
+* xref:RUST_MANAGED_RUN_FRONT_DOOR_M50C.adoc[Generation-bound managed run front door M50C]
+* xref:RUST_MANAGED_DISTRIBUTION_CLOSURE_M50D.adoc[Managed front-door distribution closure M50D]
+* M49 与 M50 均已闭包；生产安装器、自动发现和 hostile same-UID 防护仍不在主线授权内。

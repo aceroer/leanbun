@@ -1,0 +1,192 @@
+From 951e4966aa628bfa94e8eee5941abb307858c96f Mon Sep 17 00:00:00 2001
+From: LeanBun contributors <noreply@invalid>
+Date: Thu, 30 Jul 2026 13:15:25 +0800
+Subject: [PATCH] feat: add managed run front door
+
+---
+ src/lean_pm/main.rs | 102 +++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 97 insertions(+), 5 deletions(-)
+
+diff --git a/src/lean_pm/main.rs b/src/lean_pm/main.rs
+index eee49c0c..7067cf77 100644
+--- a/src/lean_pm/main.rs
++++ b/src/lean_pm/main.rs
+@@ -9,8 +9,9 @@ use leanbun_managed::{
+     dry_run_external_adoption_v1, managed_library_status_v1, prepare_managed_intake_v1,
+     read_managed_registry_v1, run_concurrent_history_regression_v1,
+     run_external_fixture_acceptance_v1, run_managed_build_front_door_v1,
+-    run_managed_dependency_regression_v1, run_mathlib_regression_v1,
+-    run_negative_fixture_regression_v1, run_reservoir_loopback_regression_v1,
++    run_managed_dependency_regression_v1, run_managed_program_front_door_v1,
++    run_mathlib_regression_v1, run_negative_fixture_regression_v1,
++    run_reservoir_loopback_regression_v1,
+ };
+ use leanbun_store::run_loopback_update_acceptance_v1;
+ use std::env;
+@@ -22,7 +23,7 @@ use std::os::unix::process::CommandExt;
+ use std::path::{Path, PathBuf};
+ use std::process::{Command, ExitCode};
+ 
+-const RELEASE_VERSION: &str = "0.23.0-m50b-dev";
++const RELEASE_VERSION: &str = "0.24.0-m50c-dev";
+ const M42_RELEASE_VERSION: &str = "0.11.0-m42-dev";
+ const M42_BINARY_SHA256: &str = "f6416817e2c893b311245c65f2a54668b0a633e028de1fe31e05701322670359";
+ const BUN_UPSTREAM_COMMIT: &str = "892b1dabc69e2a0a973244f772b84967c73ccad5";
+@@ -32,7 +33,7 @@ const LEAN_COMPILER_COMMIT: &str = "8c9756b28d64dab099da31a4c09229a9e6a2ef35";
+ const LAKE_VERSION: &str = "5.0.0-src+8c9756b";
+ const BUN_LOCK_FILE_SHA256: &str =
+     "d2292d26c8200f23db4fc4fc89237117f0d90a25821fb65b8fe009f0e9134ae4";
+-const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReaders=1,2\nlockReaders=leanbun-lock-v1,reservoir-bindings-v1\nmanagedProjectSchema=1\nmanagedRegistryReader=1\nmanagedIntake=1\nmanagedBuildFrontDoor=1\ndependencyClosure=registered-git-reservoir-companion-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-reservoir-loopback-v1\n";
++const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReaders=1,2\nlockReaders=leanbun-lock-v1,reservoir-bindings-v1\nmanagedProjectSchema=1\nmanagedRegistryReader=1\nmanagedIntake=1\nmanagedBuildFrontDoor=1\nmanagedRunFrontDoor=1\ndependencyClosure=registered-git-reservoir-companion-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-reservoir-loopback-v1\n";
+ const M42_RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReader=1\nmanagedProjectSchema=1\ndependencyClosure=registered-git-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-v1\n";
+ 
+ fn main() -> ExitCode {
+@@ -47,6 +48,22 @@ fn main() -> ExitCode {
+     if command == OsStr::new("manage") {
+         return manage_command(arguments);
+     }
++    if command == OsStr::new("run") {
++        let (repository, query, program_arguments) = match run_arguments(arguments) {
++            Ok(value) => value,
++            Err(error) => {
++                eprintln!("leanbun: {error}");
++                return ExitCode::from(64);
++            }
++        };
++        return match run_project(&repository, &query, &program_arguments) {
++            Ok(code) => ExitCode::from(code),
++            Err(error) => {
++                eprintln!("leanbun: {error}");
++                ExitCode::from(1)
++            }
++        };
++    }
+     let result = match command.to_str() {
+         Some("version") => version(),
+         Some("doctor") => repository_argument(arguments).and_then(|root| doctor(&root)),
+@@ -230,6 +247,7 @@ fn version() -> Result<(), String> {
+     println!("managed-registry-reader=1");
+     println!("managed-intake=1");
+     println!("managed-build-front-door=1");
++    println!("managed-run-front-door=1");
+     println!("target={}-{}", env::consts::ARCH, env::consts::OS);
+     Ok(())
+ }
+@@ -547,6 +565,26 @@ fn build_project(repository: &Path, project: &Path) -> Result<(), String> {
+     Ok(())
+ }
+ 
++fn run_project(repository: &Path, query: &Path, arguments: &[String]) -> Result<u8, String> {
++    let executable = env::current_exe()
++        .map_err(|error| format!("cannot identify managed run supervisor: {error}"))?;
++    let result = run_managed_program_front_door_v1(repository, query, executable, arguments)
++        .map_err(managed_error)?;
++    std::io::stdout()
++        .write_all(&result.program.stdout)
++        .map_err(|error| format!("cannot emit managed program stdout: {error}"))?;
++    std::io::stdout()
++        .flush()
++        .map_err(|error| format!("cannot flush managed program stdout: {error}"))?;
++    std::io::stderr()
++        .write_all(&result.program.stderr)
++        .map_err(|error| format!("cannot emit managed program stderr: {error}"))?;
++    std::io::stderr()
++        .flush()
++        .map_err(|error| format!("cannot flush managed program stderr: {error}"))?;
++    Ok(result.program.exit_code)
++}
++
+ fn managed_status(repository: &Path, project: &Path) -> Result<(), String> {
+     doctor(repository)?;
+     let controller = managed_controller(repository, project)?;
+@@ -1038,6 +1076,7 @@ fn export_evidence(repository: &Path) -> Result<(), String> {
+     println!("managedRegistryReader=1");
+     println!("managedIntake=1");
+     println!("managedBuildFrontDoor=1");
++    println!("managedRunFrontDoor=1");
+     println!("target={}-{}", env::consts::ARCH, env::consts::OS);
+     println!("binarySha256={}", hash_file(&executable)?);
+     println!("repository={}", repository.display());
+@@ -1087,6 +1126,36 @@ fn two_path_arguments(
+     Ok((PathBuf::from(first), PathBuf::from(second)))
+ }
+ 
++fn run_arguments(
++    mut arguments: impl Iterator<Item = std::ffi::OsString>,
++) -> Result<(PathBuf, PathBuf, Vec<String>), String> {
++    let repository = arguments
++        .next()
++        .ok_or_else(|| "run requires repository and managed project selector".to_owned())?;
++    let query = arguments
++        .next()
++        .ok_or_else(|| "run requires repository and managed project selector".to_owned())?;
++    let Some(delimiter) = arguments.next() else {
++        return Ok((PathBuf::from(repository), PathBuf::from(query), Vec::new()));
++    };
++    if delimiter != OsStr::new("--") {
++        return Err("run program arguments require the exact -- delimiter".to_owned());
++    }
++    let mut program_arguments = Vec::new();
++    for argument in arguments {
++        program_arguments.push(
++            argument
++                .into_string()
++                .map_err(|_| "run program arguments must be UTF-8".to_owned())?,
++        );
++    }
++    Ok((
++        PathBuf::from(repository),
++        PathBuf::from(query),
++        program_arguments,
++    ))
++}
++
+ fn manage_list_arguments(
+     mut arguments: impl Iterator<Item = std::ffi::OsString>,
+ ) -> Result<(PathBuf, bool), String> {
+@@ -1297,7 +1366,7 @@ fn hash_file(path: &Path) -> Result<Sha256, String> {
+ 
+ fn print_usage() {
+     eprintln!(
+-        "usage: leanbun <version|doctor|inspect|manage|fixture-accept|fixture-regress|fixture-network-update|fixture-install-accept|fixture-m42-upgrade-accept|fixture-managed-recovery|fixture-external-accept|export-evidence|adopt-dry-run|adopt|update|build|managed-status|recover|rollback> ..."
++        "usage: leanbun <version|doctor|inspect|manage|fixture-accept|fixture-regress|fixture-network-update|fixture-install-accept|fixture-m42-upgrade-accept|fixture-managed-recovery|fixture-external-accept|export-evidence|adopt-dry-run|adopt|update|build|run|managed-status|recover|rollback> ..."
+     );
+ }
+ 
+@@ -1330,6 +1399,7 @@ fn make_writable(path: &Path) {
+ mod tests {
+     use super::{
+         manage_add_arguments, manage_command, manage_list_arguments, manage_status_arguments,
++        run_arguments,
+     };
+     use std::ffi::OsString;
+     use std::path::PathBuf;
+@@ -1362,6 +1432,28 @@ mod tests {
+         assert!(manage_status_arguments(arguments(&["/repo", "project-id", "--repair"])).is_err());
+     }
+ 
++    #[test]
++    fn run_parser_requires_the_exact_program_argument_delimiter() {
++        assert_eq!(
++            run_arguments(arguments(&["/repo", "project-id"])),
++            Ok((
++                PathBuf::from("/repo"),
++                PathBuf::from("project-id"),
++                Vec::new()
++            ))
++        );
++        assert_eq!(
++            run_arguments(arguments(&["/repo", "project-id", "--", "a", "two words"])),
++            Ok((
++                PathBuf::from("/repo"),
++                PathBuf::from("project-id"),
++                vec!["a".to_owned(), "two words".to_owned()]
++            ))
++        );
++        assert!(run_arguments(arguments(&["/repo", "project-id", "argument"])).is_err());
++        assert!(run_arguments(arguments(&["/repo"])).is_err());
++    }
++
+     #[test]
+     fn manage_add_parser_requires_target_and_exact_confirmation() {
+         assert_eq!(

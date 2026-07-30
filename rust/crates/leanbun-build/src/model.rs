@@ -158,6 +158,76 @@ pub struct SupervisedLakeBuildV1 {
     pub maximum_output_bytes: usize,
 }
 
+#[derive(Clone, Debug)]
+pub struct SupervisedProgramRunV1 {
+    pub supervisor_executable: PathBuf,
+    pub sandbox_executable: PathBuf,
+    pub sandbox_profile: PathBuf,
+    pub sandbox_profile_sha256: Sha256,
+    pub executable: PathBuf,
+    pub executable_sha256: Sha256,
+    pub cwd: PathBuf,
+    pub arguments: Vec<String>,
+    pub environment: BTreeMap<String, String>,
+    pub deadline: Duration,
+    pub termination_grace: Duration,
+    pub maximum_output_bytes: usize,
+}
+
+impl SupervisedProgramRunV1 {
+    pub fn validate(&self) -> Result<(), BuildError> {
+        for (path, label) in [
+            (&self.supervisor_executable, "supervisor"),
+            (&self.sandbox_executable, "sandbox"),
+            (&self.sandbox_profile, "sandbox profile"),
+            (&self.executable, "program executable"),
+        ] {
+            if !path.is_absolute() || !path.is_file() {
+                return Err(invalid(format!("{label} must be an absolute regular file")));
+            }
+        }
+        if !self.cwd.is_absolute() || !self.cwd.is_dir() {
+            return Err(invalid("program cwd must be an absolute directory"));
+        }
+        if self.arguments.len() > 64 {
+            return Err(invalid("program argument count exceeds limit"));
+        }
+        let mut argument_bytes = 0_usize;
+        for argument in &self.arguments {
+            if argument.len() > 4096 || argument.contains('\0') {
+                return Err(invalid("program argument is invalid or exceeds limit"));
+            }
+            argument_bytes = argument_bytes
+                .checked_add(argument.len())
+                .ok_or_else(|| invalid("program argument byte count overflow"))?;
+        }
+        if argument_bytes > 16 * 1024 {
+            return Err(invalid("program argument bytes exceed limit"));
+        }
+        if self.deadline.is_zero()
+            || self.deadline > Duration::from_secs(30)
+            || self.termination_grace > Duration::from_secs(1)
+            || !(1_024..=1024 * 1024).contains(&self.maximum_output_bytes)
+        {
+            return Err(invalid(
+                "program deadline, grace, or output bound is invalid",
+            ));
+        }
+        const ALLOWED: &[&str] = &["PATH", "HOME", "TMPDIR", "LC_ALL", "LANG"];
+        if self.environment.len() > ALLOWED.len() {
+            return Err(invalid("program environment allowlist is too large"));
+        }
+        for (key, value) in &self.environment {
+            if !ALLOWED.contains(&key.as_str()) || value.contains('\0') {
+                return Err(invalid(
+                    "program environment contains a non-allowlisted entry",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 impl SupervisedLakeBuildV1 {
     pub fn validate(&self) -> Result<(), BuildError> {
         for (path, label) in [
@@ -227,6 +297,24 @@ pub enum TerminationReasonV1 {
     Exit,
     Timeout,
     Signal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProgramTerminationReasonV1 {
+    Exit,
+    Signal,
+    Timeout,
+    OutputOverflow,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProgramRunResultV1 {
+    pub exit_code: u8,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    pub termination: ProgramTerminationReasonV1,
+    pub signal: Option<i32>,
+    pub process_group_id: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

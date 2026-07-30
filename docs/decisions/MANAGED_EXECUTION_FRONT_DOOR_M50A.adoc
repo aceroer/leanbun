@@ -1,0 +1,84 @@
+= LeanBun Managed Execution Front-Door Contract M50A
+:toc: left
+:sectnums:
+
+== Decision
+
+M50 begins with a read-only execution-selection layer. Build and run authority
+must not be inferred from a path, current directory, Lake configuration or a
+successful historical build. The only entry is an exact M49 durable registry
+record whose current strict status is `healthy`.
+
+M50 supplements the M49 intake contract. It does not change package resolution,
+registration, update, recovery or rollback semantics.
+
+== Selector
+
+An operator supplies exactly one of:
+
+* the canonical absolute project path recorded by M49; or
+* the exact ProjectId encoded by that path.
+
+Relative paths, current-directory fallback, name search, prefix matching, URL
+lookup and registry discovery are rejected. Both selector forms resolve to one
+`ManagedExecutionSelectionV1` containing the ProjectId, canonical project path,
+declared target, active generation digest and package count.
+
+Selection reads through the M49B registry reader, requires `healthy` with no
+diagnostics, canonicalizes the recorded directory without following a caller
+alias, and rereads by ProjectId. Any difference between the two observations is
+an input race and fails closed. Selection executes no Lake command and writes no
+state.
+
+== Build gate
+
+M50B may supervise a build only after consuming an M50A selection. Immediately
+before Lake starts it must:
+
+. reread the exact managed record;
+. reject pending, drifted, missing, unsupported or invalid state;
+. reconstruct and verify the management-input identity;
+. reverify the active generation, lock, path decisions, runtime projection and
+  every final package path;
+. require the active generation digest to equal the digest fixed by selection;
+. construct the existing offline sandbox request for the record's exact target.
+
+If a legitimate update activates a different generation between selection and
+execution, this attempt is rejected and the operator selects again. It is never
+silently upgraded to the newer generation.
+
+The source-tree development adapter may continue to require an explicit
+repository argument. Installed command grammar and production state-root wiring
+remain separate from project identity.
+
+== Run gate remains closed
+
+M50A does not authorize `run`. M50C must first define:
+
+* which Lake target classes are executable;
+* the exact relationship between the registered build target and executable;
+* the `--` argument boundary and byte/count limits;
+* environment inheritance and working-directory rules;
+* signal, timeout, output and exit-code propagation;
+* generation and artifact reverification after build and before spawn.
+
+A library-only target cannot become runnable merely because a file with a
+plausible name exists under `.lake/build`.
+
+== Compatibility boundary
+
+The pre-M50 fixture-era `build <repository> <project>` adapter is historical
+acceptance surface, not proof that the M50 front door exists. M50B must either
+route it through M50A selection or keep it explicitly outside the new public
+claim. Direct `lake build` and `lake exe` commands remain outside LeanBun and are
+not intercepted.
+
+== M50A exit gate
+
+M50A is complete when:
+
+* path and ProjectId select the same immutable value;
+* unmanaged and every non-healthy state are rejected;
+* a registry/generation change between observations is rejected;
+* focused tests prove selection is read-only and executes no Lake command;
+* the M50 roadmap names separate build, run and closure phases.

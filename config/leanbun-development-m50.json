@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "version": "0.24.0-m50c-dev",
+  "class": "managed-build-run-source-distribution-closure",
+  "sourceBaseline": {
+    "commit": "600c74c863514fc50614b5688a16af9ed536d630",
+    "status": "unified M50 delivery committed as one descendant of this baseline"
+  },
+  "bun": {
+    "m49PairedForkCommit": "d827bda214499ccabfe1a2ad8b4ff3e03979cc57",
+    "m50bPairedForkCommit": "5fa4630349435a419e06c991347cfdc656f9ef7d",
+    "m50cPairedForkCommit": "951e4966aa628bfa94e8eee5941abb307858c96f",
+    "m50FinalPairedForkTree": "4822fc482b20377801cff74f0a56e9c4487d4893",
+    "incrementalPatchCount": 2,
+    "m50bPatchSha256": "4308fe186520f639dbc68283a9c98076cad766c4b58e30b64423db47d68ef4a2",
+    "m50cPatchSha256": "e0529c3f8664f2ef043f2175b667d2c40e0ab17eaa77896801e17049a9965f3c",
+    "patchReplayTree": "4822fc482b20377801cff74f0a56e9c4487d4893"
+  },
+  "toolchain": {
+    "rustc": "1.96.0 (ac68faa20 2026-05-25) (Homebrew)",
+    "host": "aarch64-apple-darwin"
+  },
+  "binary": {
+    "target": "aarch64-macos",
+    "size": 2116920,
+    "sha256": "22cc6e80f3fd5ffdf721f37693ae4af67be7fe57bcff241646ea508075a92272",
+    "signatureStatus": "unsigned-development",
+    "notarizationStatus": "not-submitted"
+  },
+  "identity": {
+    "cargoLockSha256": "a5113db66086da92254da75ad685155df6e9c99fae87425191a300e830ef17f4",
+    "buildModelSourceSha256": "54b7b71ef00e05a35a4415bfa750def2c297c9d998a6bb896323ba3415d21d19",
+    "processSourceSha256": "550f52d74e839643f606396737431f1608274f77c39255a7765f0a0bf1662e21",
+    "executionSourceSha256": "87f2d4afcd8df31a22aeb3aa770dcb77921ed9f19b8cac5bffeede8844814066",
+    "intakeSourceSha256": "ab07a8ddee569da284bb841524c264c9e3f0163ab313b498e6053c80c39f762e",
+    "managedLibrarySourceSha256": "5b5078f84148563d0be8b704d669bd054fb3e3c9e06fc0aaad7b1af81f183e4e"
+  },
+  "lifecycleAcceptance": {
+    "projectId": "eb8ded4254b9acad7c970fcb124be030ea6b419aab28ee71d76c6bb862776c22",
+    "baselineGenerationSha256": "72fb517c3564a5b6304bbb5670689866137cf98a045d55e394daa122835322ea",
+    "updatedGenerationSha256": "7eceaa2ede0794448a194b10166ce4a1bffe0fec74fa0d04cbacbf1c5c9407a2",
+    "rolledBackGenerationSha256": "72fb517c3564a5b6304bbb5670689866137cf98a045d55e394daa122835322ea",
+    "artifactSha256": "eee3d8df7e354ab2d7b6388c711ea306290c5045e75f02e58a41d6495aabe1a9",
+    "updatePackage": "managed_dep",
+    "buildSelectorsPassed": 2,
+    "runSelectorsPassed": 2,
+    "runExitCode": 0,
+    "runStdout": "LeanBun M40 managed dependency\\n",
+    "sourceUnchangedExcludingLake": true,
+    "residualRunState": false
+  },
+  "validation": {
+    "repositoryCheck": "passed",
+    "repositoryBunTestsPassed": 212,
+    "repositoryRustTestsPassed": 129,
+    "repositoryRustTestsIgnored": 1,
+    "historicalTestsPassed": 79,
+    "managedPackageTestsPassed": 18,
+    "bunAdapterParserTestsPassed": 5,
+    "bunAdapterFmt": "passed",
+    "bunAdapterClippy": "passed",
+    "releaseBuild": "passed",
+    "patchReplay": "passed",
+    "cleanClonePublicGate": "passed",
+    "cleanCloneDefaultMainlineTestsPassed": 74,
+    "cleanCloneHistoricalTestsPassed": 79,
+    "cleanCloneProviderTestsIgnored": 1,
+    "cleanCloneContainedLocalState": false
+  },
+  "boundaries": {
+    "m50aComplete": true,
+    "m50bComplete": true,
+    "m50cComplete": true,
+    "m50dComplete": true,
+    "m50Complete": true,
+    "sourceOnlyDistribution": true,
+    "productionInstallerWiring": "closed",
+    "xpcOrPrivilegedHelper": "not-in-mainline",
+    "sameUidThreatBoundary": "cooperative-development-only",
+    "nextMilestone": "not authorized"
+  }
+}

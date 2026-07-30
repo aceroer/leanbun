@@ -1,0 +1,62 @@
+= LeanBun Generation-Bound Managed Run Front Door M50C
+:toc: left
+:sectnums:
+
+== Status
+
+M50C is complete in the `0.24.0-m50c-dev` source snapshot. The paired source-tree
+adapter now accepts `run <repository> <selector> [-- <argument>...]` for an exact
+healthy managed path or ProjectId. M50D distribution/lifecycle closure remains
+separate.
+
+== Execution boundary
+
+The filesystem-only classifier requires exactly one matching `[[lean_exe]]` in
+the stably read `lakefile.toml`. Build and run share one per-project operation
+lease. After the M50B build, only `.lake/build/bin/<recorded-target>` is opened
+with `O_NOFOLLOW`; direct-directory, regular-file, executable mode, non-writable
+mode, link count, device, inode, size, change time and SHA-256 checks bind the
+selected bytes. The complete build tree must equal the build result digest.
+
+The child runs in a new session under Seatbelt with network and project writes
+denied. Only a private per-run temporary directory is writable. Stdin is null;
+the environment is cleared and limited to fixed `PATH`, `HOME`, `TMPDIR`,
+`LC_ALL` and `LANG`. Arguments are UTF-8, shell-free and bounded. Stdout/stderr
+are consumed concurrently with independent one-MiB limits. Timeout and overflow
+terminate and reap the whole process group.
+
+After the child exits, LeanBun reverifies the active generation, complete build
+artifact and exact executable before releasing the operation lease. Per-run
+profile and temporary state are then removed.
+
+== Validation
+
+Focused tests cover:
+
+* exact executable classification and library-only/duplicate/missing rejection;
+* missing, group-writable and symlink artifact rejection plus byte-drift
+  detection;
+* the exact `--` grammar and argument count/per-item/total-byte limits;
+* argument preservation, normal nonzero exit, signal mapping, timeout, output
+  overflow and process-group cleanup under real macOS Seatbelt;
+* paired Bun parser tests, formatting, clippy and release compilation.
+
+The repository-maintained small managed project ran successfully once by
+ProjectId with two arguments and once by canonical path. Both printed only
+`LeanBun M40 managed dependency` and returned zero. They retained generation
+`72fb517c3564a5b6304bbb5670689866137cf98a045d55e394daa122835322ea`
+and artifact
+`eee3d8df7e354ab2d7b6388c711ea306290c5045e75f02e58a41d6495aabe1a9`.
+
+Exact commits, trees, patch and binary identities and final regression counts
+are recorded in `config/leanbun-development-m50c.json`.
+
+== Security boundary
+
+M50C follows the no-XPC mainline. It does not change the M20/M21 conclusion:
+ordinary user-owned path launch cannot exclude a malicious concurrent process
+with the same effective UID. The claim is bounded cooperative development
+execution for explicitly managed projects, not a privileged production handoff.
+
+M50D must close patch replay, restart/update/rollback/run acceptance, public
+source gates and final operator/release evidence without broadening this claim.

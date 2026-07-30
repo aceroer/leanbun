@@ -1,0 +1,82 @@
+= LeanBun Managed Front-Door Distribution Closure M50D
+:toc: left
+:sectnums:
+
+== Status
+
+M50 is complete in the `0.24.0-m50c-dev` source candidate. M50D adds no new
+execution authority: it closes source reconstruction, clean-clone validation
+and the restart/update/rollback/build/run lifecycle for the repository-owned
+small managed project.
+
+== Paired source and binary provenance
+
+The M49 adapter commit is followed by exactly two M50 commits: build-front-door
+commit `5fa4630349435a419e06c991347cfdc656f9ef7d` and run-front-door commit
+`951e4966aa628bfa94e8eee5941abb307858c96f`. The final paired tree is
+`4822fc482b20377801cff74f0a56e9c4487d4893`. Applying the two redacted patches
+to the M49 tree with `git am` reproduced that tree exactly.
+
+The arm64 macOS development binary is 2,116,920 bytes with SHA-256
+`22cc6e80f3fd5ffdf721f37693ae4af67be7fe57bcff241646ea508075a92272`.
+It remains an unsigned, non-notarized development artifact; LeanBun distributes
+source and reconstruction instructions, not an official prebuilt installer.
+
+== Clean-source regression
+
+A candidate tree was reconstructed from tracked changes plus untracked public
+source only. It contained no `.git`, `.leanbun-dev*` state or local provider
+configuration. The candidate was then initialized as a temporary Git clone
+with an approved noreply identity and ran `./scripts/test-public.sh`.
+
+The first clean run found that four managed unit tests assumed an ignored
+`.leanbun-dev` directory already existed. Their fixture now creates that empty
+development root only when absent and removes only the root it created. The
+corrected clean-clone gate passed:
+
+* formatting and warning-free clippy;
+* 74 default-mainline library tests;
+* 79 historical-crate tests;
+* one provider integration test correctly ignored because a public clone does
+  not contain the initialized local provider snapshot;
+* crate-layering, documentation, history-identity, protected-disclosure and
+  patch-count/source-redaction gates.
+
+This distinction is deliberate: a clean public clone proves the distributable
+Rust source and patch metadata. Provider-bound integration is separately
+covered by the initialized repository validation; provider state is never
+copied into the public candidate.
+
+== Restart and lifecycle acceptance
+
+The repository-owned project has ProjectId
+`eb8ded4254b9acad7c970fcb124be030ea6b419aab28ee71d76c6bb862776c22`.
+Starting from healthy generation
+`72fb517c3564a5b6304bbb5670689866137cf98a045d55e394daa122835322ea`,
+a fresh CLI process performed an explicit `managed_dep` update and activated
+generation `7eceaa2ede0794448a194b10166ce4a1bffe0fec74fa0d04cbacbf1c5c9407a2`.
+Separate status, ProjectId build and ProjectId run invocations all succeeded.
+
+A later CLI process rolled back to the exact baseline generation. Canonical
+path build and run then succeeded and produced the same artifact digest
+`eee3d8df7e354ab2d7b6388c711ea306290c5045e75f02e58a41d6495aabe1a9`.
+Both runs returned zero and printed only `LeanBun M40 managed dependency`.
+The source tree remained byte-for-byte equal to its fixture except for excluded
+`.lake` derived state, and no run profile, run temporary directory or child
+process remained.
+
+== Closed and retained boundaries
+
+M50 now closes exact healthy selection, advisory operation serialization,
+offline build, bounded non-interactive run, restart, explicit update, rollback,
+patch replay and source-only distribution for the supported local-project
+class.
+
+It does not add project discovery, URL intake, implicit current-directory
+adoption, rebind, retarget, removal, an installed production state-root adapter,
+an official binary installer or protection against a hostile concurrent process
+with the same effective UID. Direct Lake commands are not intercepted. XPC and
+privileged-helper work remain outside the mainline.
+
+Machine-readable identities and counts are recorded in
+`config/leanbun-development-m50.json`.

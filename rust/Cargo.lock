@@ -133,6 +133,7 @@ dependencies = [
  "leanbun-lock",
  "leanbun-resolver",
  "leanbun-store",
+ "rustix",
 ]
 
 [[package]]

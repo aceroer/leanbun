@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod dry_run;
+mod execution;
 mod external_acceptance;
 mod fixture_regression;
 mod history_regression;
@@ -11,6 +12,11 @@ mod registry;
 mod reservoir_regression;
 
 pub use dry_run::{ExternalAdoptionDryRunV1, dry_run_external_adoption_v1};
+pub use execution::{
+    ManagedBuildFrontDoorResultV1, ManagedExecutionSelectionV1, ManagedRunFrontDoorResultV1,
+    prepare_managed_execution_v1, run_managed_build_front_door_v1,
+    run_managed_program_front_door_v1,
+};
 pub use external_acceptance::{ExternalFixtureAcceptanceV1, run_external_fixture_acceptance_v1};
 pub use fixture_regression::{
     ManagedDependencyRegressionV1, run_managed_dependency_regression_v1, run_mathlib_regression_v1,
@@ -31,9 +37,9 @@ pub use reservoir_regression::{
 };
 
 use leanbun_build::{
-    BuildErrorKind, SupervisedLakeBuildV1, project_artifact_sha256_v1,
-    run_supervised_lake_build_v1, verify_active_generation_build_gate_v1,
-    verify_lake_workspace_paths_v1,
+    BuildErrorKind, ProgramRunResultV1, SupervisedLakeBuildV1, SupervisedProgramRunV1,
+    project_artifact_sha256_v1, run_supervised_lake_build_v1, run_supervised_program_v1,
+    verify_active_generation_build_gate_v1, verify_lake_workspace_paths_v1,
 };
 use leanbun_core::{ExecutionId, ProjectId, Sha256, Sha256Hasher, project_id};
 use leanbun_generation::{LeanBunGenerationV1, LeanGenerationFaultV1, LeanGenerationManagerV1};
@@ -61,7 +67,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
 use std::io::{Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::fd::AsFd;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -120,6 +127,32 @@ pub struct ManagedBuildResultV1 {
     pub project_artifact_sha256: Sha256,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ManagedExecutableV1 {
+    path: PathBuf,
+    sha256: Sha256,
+    device: u64,
+    inode: u64,
+    mode: u32,
+    size: u64,
+    change_time: i64,
+    change_time_nsec: i64,
+}
+
+struct ManagedRunTemporaryV1 {
+    path: PathBuf,
+    profile: Option<PathBuf>,
+}
+
+impl Drop for ManagedRunTemporaryV1 {
+    fn drop(&mut self) {
+        if let Some(profile) = &self.profile {
+            let _ = fs::remove_file(profile);
+        }
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ManagedProjectControllerV1 {
     project: PathBuf,
@@ -128,6 +161,16 @@ pub struct ManagedProjectControllerV1 {
     state: PathBuf,
     registry: PathBuf,
     supervisor: PathBuf,
+}
+
+struct ManagedOperationLeaseV1 {
+    file: fs::File,
+}
+
+impl Drop for ManagedOperationLeaseV1 {
+    fn drop(&mut self) {
+        let _ = rustix::fs::flock(self.file.as_fd(), rustix::fs::FlockOperation::Unlock);
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -289,6 +332,7 @@ impl ManagedProjectControllerV1 {
         &self,
         fault: LeanGenerationFaultV1,
     ) -> Result<ManagedProjectStatusV1, ManagedProjectError> {
+        let _operation = self.acquire_operation_lease()?;
         let mut record = self.read_record()?;
         if record.pending_transaction.is_some() {
             return Err(error(
@@ -319,6 +363,7 @@ impl ManagedProjectControllerV1 {
     }
 
     pub fn recover(&self) -> Result<ManagedProjectStatusV1, ManagedProjectError> {
+        let _operation = self.acquire_operation_lease()?;
         let mut record = self.read_record()?;
         let Some(pending_transaction) = record.pending_transaction else {
             return Err(error(
@@ -389,6 +434,7 @@ impl ManagedProjectControllerV1 {
     }
 
     pub fn rollback(&self) -> Result<ManagedProjectStatusV1, ManagedProjectError> {
+        let _operation = self.acquire_operation_lease()?;
         let mut record = self.read_record()?;
         if record.pending_transaction.is_some() {
             return Err(error(
@@ -417,6 +463,21 @@ impl ManagedProjectControllerV1 {
     }
 
     pub fn build(&self) -> Result<ManagedBuildResultV1, ManagedProjectError> {
+        self.build_expected(None)
+    }
+
+    fn build_expected(
+        &self,
+        expected_generation: Option<Sha256>,
+    ) -> Result<ManagedBuildResultV1, ManagedProjectError> {
+        let _operation = self.acquire_operation_lease()?;
+        self.build_expected_under_lease(expected_generation)
+    }
+
+    fn build_expected_under_lease(
+        &self,
+        expected_generation: Option<Sha256>,
+    ) -> Result<ManagedBuildResultV1, ManagedProjectError> {
         let record = self.read_record()?;
         if record.pending_transaction.is_some() {
             return Err(error(
@@ -427,6 +488,12 @@ impl ManagedProjectControllerV1 {
         let model = self.model()?;
         require_model_identity(&record, &model)?;
         let generation = model.generation(record.active_transaction)?;
+        if expected_generation.is_some_and(|expected| expected != generation.generation.identity())
+        {
+            return Err(input_error(
+                "managed build selection names a generation that is no longer active",
+            ));
+        }
         let paths = verify_active_generation_build_gate_v1(
             &model.manager,
             &generation.generation,
@@ -442,12 +509,271 @@ impl ManagedProjectControllerV1 {
         let request = self.build_request(&record, &generation.generation)?;
         verify_lake_workspace_paths_v1(&request, &paths).map_err(build_error)?;
         run_supervised_lake_build_v1(&request).map_err(build_error)?;
+        model
+            .manager
+            .verify_active_generation(&generation.generation)
+            .map_err(generation_error)?;
         let artifact =
             project_artifact_sha256_v1(&self.project.join(".lake/build")).map_err(build_error)?;
         Ok(ManagedBuildResultV1 {
             generation_sha256: generation.generation.identity(),
             project_artifact_sha256: artifact,
         })
+    }
+
+    fn run_expected(
+        &self,
+        expected_generation: Sha256,
+        arguments: &[String],
+    ) -> Result<
+        (
+            ManagedBuildResultV1,
+            ManagedExecutableV1,
+            ProgramRunResultV1,
+        ),
+        ManagedProjectError,
+    > {
+        let _operation = self.acquire_operation_lease()?;
+        let record = self.read_record()?;
+        intake::require_executable_target_v1(&self.project, &record.target)?;
+        let build = self.build_expected_under_lease(Some(expected_generation))?;
+        let executable = self.observe_managed_executable(&record.target)?;
+        let artifact =
+            project_artifact_sha256_v1(&self.project.join(".lake/build")).map_err(build_error)?;
+        if artifact != build.project_artifact_sha256 {
+            return Err(input_error(
+                "managed executable selection changed the built artifact identity",
+            ));
+        }
+        let (temporary, request) = self.program_run_request(&executable, arguments)?;
+        let result = run_supervised_program_v1(&request).map_err(build_error)?;
+        let record_after = self.read_record()?;
+        if record_after.active_transaction != record.active_transaction
+            || record_after.pending_transaction.is_some()
+        {
+            return Err(input_error("managed generation changed across program run"));
+        }
+        let model = self.model()?;
+        require_model_identity(&record_after, &model)?;
+        let generation = model.generation(record_after.active_transaction)?;
+        model
+            .manager
+            .verify_active_generation(&generation.generation)
+            .map_err(generation_error)?;
+        if generation.generation.identity() != build.generation_sha256
+            || project_artifact_sha256_v1(&self.project.join(".lake/build")).map_err(build_error)?
+                != build.project_artifact_sha256
+            || self.observe_managed_executable(&record.target)? != executable
+        {
+            return Err(input_error(
+                "managed generation, artifact, or executable changed across program run",
+            ));
+        }
+        drop(temporary);
+        Ok((build, executable, result))
+    }
+
+    fn observe_managed_executable(
+        &self,
+        target: &str,
+    ) -> Result<ManagedExecutableV1, ManagedProjectError> {
+        validate_target(target)?;
+        let lake = self.project.join(".lake");
+        let build = lake.join("build");
+        let bin = build.join("bin");
+        for (path, label) in [(&lake, ".lake"), (&build, "build"), (&bin, "bin")] {
+            let metadata = fs::symlink_metadata(path).map_err(io_error)?;
+            if !metadata.file_type().is_dir() {
+                return Err(input_error(format!(
+                    "managed executable {label} path is not a direct directory"
+                )));
+            }
+        }
+        let path = bin.join(target);
+        let before = fs::symlink_metadata(&path).map_err(io_error)?;
+        let mut file = fs::File::from(
+            rustix::fs::openat(
+                rustix::fs::CWD,
+                &path,
+                rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::NOFOLLOW,
+                rustix::fs::Mode::empty(),
+            )
+            .map_err(|error| io_error(error.into()))?,
+        );
+        let opened = file.metadata().map_err(io_error)?;
+        let mode = opened.permissions().mode() & 0o777;
+        if !before.file_type().is_file()
+            || !opened.file_type().is_file()
+            || before.nlink() != 1
+            || opened.nlink() != 1
+            || mode & 0o111 == 0
+            || mode & 0o022 != 0
+            || before.dev() != opened.dev()
+            || before.ino() != opened.ino()
+        {
+            return Err(input_error(
+                "managed executable is not a stable private executable file",
+            ));
+        }
+        let mut hasher = Sha256Hasher::new();
+        let mut buffer = [0_u8; 64 * 1024];
+        let mut size = 0_u64;
+        loop {
+            let count = file.read(&mut buffer).map_err(io_error)?;
+            if count == 0 {
+                break;
+            }
+            size = size
+                .checked_add(count as u64)
+                .ok_or_else(|| input_error("managed executable size overflow"))?;
+            if size > 1024 * 1024 * 1024 {
+                return Err(input_error("managed executable exceeds size limit"));
+            }
+            hasher.update(&buffer[..count]);
+        }
+        let after = fs::symlink_metadata(&path).map_err(io_error)?;
+        if after.dev() != opened.dev()
+            || after.ino() != opened.ino()
+            || after.len() != opened.len()
+            || after.permissions().mode() & 0o777 != mode
+            || after.ctime() != opened.ctime()
+            || after.ctime_nsec() != opened.ctime_nsec()
+            || size != opened.len()
+        {
+            return Err(input_error(
+                "managed executable changed while it was observed",
+            ));
+        }
+        Ok(ManagedExecutableV1 {
+            path,
+            sha256: hasher.finalize(),
+            device: opened.dev(),
+            inode: opened.ino(),
+            mode,
+            size,
+            change_time: opened.ctime(),
+            change_time_nsec: opened.ctime_nsec(),
+        })
+    }
+
+    fn program_run_request(
+        &self,
+        executable: &ManagedExecutableV1,
+        arguments: &[String],
+    ) -> Result<(ManagedRunTemporaryV1, SupervisedProgramRunV1), ManagedProjectError> {
+        let state = self.project_state_root()?;
+        let runs = state.join("runs");
+        ensure_private_directory(&state, &runs)?;
+        let run_id = new_transaction(&self.project, b"run")?;
+        let temporary_path = runs.join(run_id.to_string());
+        ensure_private_directory(&runs, &temporary_path)?;
+        let mut temporary = ManagedRunTemporaryV1 {
+            path: temporary_path.clone(),
+            profile: None,
+        };
+        let profile = state.join(format!("run-{run_id}.sb"));
+        let profile_text = format!(
+            "(version 1)\n(allow default)\n(deny network*)\n(deny file-write*)\n(allow file-write* (subpath {:?}) (literal \"/dev/null\") (literal \"/dev/stdout\") (literal \"/dev/stderr\"))\n",
+            temporary_path.to_string_lossy()
+        );
+        create_bytes(&profile, profile_text.as_bytes())?;
+        temporary.profile = Some(profile.clone());
+        let environment = BTreeMap::from([
+            ("PATH".to_owned(), "/usr/bin:/bin".to_owned()),
+            ("HOME".to_owned(), path_text(&temporary_path)?.to_owned()),
+            ("TMPDIR".to_owned(), path_text(&temporary_path)?.to_owned()),
+            ("LC_ALL".to_owned(), "C.UTF-8".to_owned()),
+            ("LANG".to_owned(), "C.UTF-8".to_owned()),
+        ]);
+        Ok((
+            temporary,
+            SupervisedProgramRunV1 {
+                supervisor_executable: self.supervisor.clone(),
+                sandbox_executable: PathBuf::from("/usr/bin/sandbox-exec"),
+                sandbox_profile_sha256: hash_file(&profile, 1024 * 1024)?,
+                sandbox_profile: profile,
+                executable: executable.path.clone(),
+                executable_sha256: executable.sha256,
+                cwd: self.project.clone(),
+                arguments: arguments.to_vec(),
+                environment,
+                deadline: Duration::from_secs(30),
+                termination_grace: Duration::from_secs(1),
+                maximum_output_bytes: 1024 * 1024,
+            },
+        ))
+    }
+
+    fn acquire_operation_lease(&self) -> Result<ManagedOperationLeaseV1, ManagedProjectError> {
+        let control = self
+            .authority
+            .join("project-control")
+            .join(project_id(path_text(&self.project)?).to_string());
+        ensure_private_directory(&self.authority, &self.authority.join("project-control"))?;
+        ensure_private_directory(&self.authority, &control)?;
+        let path = control.join("operation.lock");
+        if !path.exists() {
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(file) => {
+                    file.set_permissions(fs::Permissions::from_mode(0o600))
+                        .map_err(io_error)?;
+                    file.sync_all().map_err(io_error)?;
+                    sync_directory(&control)?;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(io_error(error)),
+            }
+        }
+        let path_metadata = fs::symlink_metadata(&path).map_err(io_error)?;
+        let file = fs::File::from(
+            rustix::fs::openat(
+                rustix::fs::CWD,
+                &path,
+                rustix::fs::OFlags::RDWR | rustix::fs::OFlags::NOFOLLOW,
+                rustix::fs::Mode::empty(),
+            )
+            .map_err(|error| io_error(error.into()))?,
+        );
+        let file_metadata = file.metadata().map_err(io_error)?;
+        let after_metadata = fs::symlink_metadata(&path).map_err(io_error)?;
+        if !path_metadata.file_type().is_file()
+            || !after_metadata.file_type().is_file()
+            || path_metadata.nlink() != 1
+            || after_metadata.nlink() != 1
+            || file_metadata.nlink() != 1
+            || path_metadata.permissions().mode() & 0o777 != 0o600
+            || after_metadata.permissions().mode() & 0o777 != 0o600
+            || file_metadata.permissions().mode() & 0o777 != 0o600
+            || path_metadata.dev() != file_metadata.dev()
+            || path_metadata.ino() != file_metadata.ino()
+            || after_metadata.dev() != file_metadata.dev()
+            || after_metadata.ino() != file_metadata.ino()
+            || path_metadata.ctime() != after_metadata.ctime()
+            || path_metadata.ctime_nsec() != after_metadata.ctime_nsec()
+        {
+            return Err(input_error(
+                "managed operation lock is not a stable private regular file",
+            ));
+        }
+        rustix::fs::flock(
+            file.as_fd(),
+            rustix::fs::FlockOperation::NonBlockingLockExclusive,
+        )
+        .map_err(|error| {
+            if error == rustix::io::Errno::WOULDBLOCK {
+                error_with(
+                    ManagedProjectErrorKind::PendingTransaction,
+                    "another managed operation is already active",
+                )
+            } else {
+                io_error(error.into())
+            }
+        })?;
+        Ok(ManagedOperationLeaseV1 { file })
     }
 
     pub fn status(&self) -> Result<ManagedProjectStatusV1, ManagedProjectError> {

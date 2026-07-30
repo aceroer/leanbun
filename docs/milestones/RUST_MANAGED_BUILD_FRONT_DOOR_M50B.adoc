@@ -1,0 +1,56 @@
+= LeanBun Generation-Bound Managed Build Front Door M50B
+:toc: left
+:sectnums:
+
+== Status
+
+M50B is complete in the `0.23.0-m50b-dev` source snapshot. The source-tree
+adapter's `build <repository> <selector>` command now accepts an exact canonical
+managed path or ProjectId and routes both forms through the M50A selection API.
+M50C managed run is not included.
+
+== Stable operation boundary
+
+The M50A selection fixes ProjectId, canonical path, target and active generation
+digest after two strict registry observations. M50B then opens the exact
+controller and acquires a nonblocking exclusive `flock` on the private
+per-project operation file. Build, update, recover and rollback share this lock.
+The file remains a stable `0600` regular file, while the kernel lease is released
+automatically on process exit; no age-based stale-lock guess is required.
+
+Under the lease, build rereads the managed record, reconstructs management input,
+requires the selected generation to remain active, verifies the lock, path
+decisions, runtime projection and final paths, prepares only declared build
+caches, and supervises the existing offline sandboxed Lake build. It reverifies
+the active generation after Lake and rereads M50A selection before reporting
+success.
+
+== Validation
+
+Focused regression proves:
+
+* canonical path and ProjectId select the same M50A value;
+* every non-healthy state and an observation race fail closed;
+* an operation-lock competitor cannot write a pending update record;
+* an old selection is rejected after generation update and before Lake starts;
+* existing update/recovery/rollback and M39/M46 compatibility tests remain valid;
+* paired Bun adapter tests, formatting, clippy and release build pass.
+
+The repository-maintained project at the ignored M49 test-library location was
+built once by ProjectId and once by canonical path. Both executions selected
+generation `72fb517c3564a5b6304bbb5670689866137cf98a045d55e394daa122835322ea`
+and produced artifact digest
+`eee3d8df7e354ab2d7b6388c711ea306290c5045e75f02e58a41d6495aabe1a9`.
+The second build reused existing build output.
+
+The exact source, paired Bun commit/tree, replayed patch, binary, test counts and
+acceptance digests are recorded in
+`config/leanbun-development-m50b.json`. The repository public-source gate and
+documentation checker both pass for this snapshot.
+
+== Remaining boundary
+
+M50B does not classify executable targets or authorize a process from project
+build output. M50C must freeze target class, artifact identity, argument and
+environment limits, cwd, signal, timeout, output and exit-code behavior before
+`run` can exist. Production installer/state-root wiring also remains open.

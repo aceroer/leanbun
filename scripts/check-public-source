@@ -45,13 +45,20 @@ if [ "$M49_PATCH_COUNT" != "1" ]; then
   echo "M49 Bun fork incremental patch series must contain exactly one patch" >&2
   exit 1
 fi
+M50_PATCH_COUNT=$(find distribution/bun-fork-m50-patches -type f -name '*.patch' | wc -l | tr -d ' ')
+if [ "$M50_PATCH_COUNT" != "2" ]; then
+  echo "M50 Bun fork incremental patch series must contain exactly two patches" >&2
+  exit 1
+fi
 if grep -R -n -F -e "$USER_ROOT" -e "$VOLUME_ROOT" \
-  distribution/bun-fork-patches distribution/bun-fork-m49-patches; then
+  distribution/bun-fork-patches distribution/bun-fork-m49-patches \
+  distribution/bun-fork-m50-patches; then
   echo "Bun fork patch series contains a personal absolute path" >&2
   exit 1
 fi
 if grep -R -h '^From:' \
-  distribution/bun-fork-patches distribution/bun-fork-m49-patches | \
+  distribution/bun-fork-patches distribution/bun-fork-m49-patches \
+  distribution/bun-fork-m50-patches | \
   grep -Ev '^From: LeanBun contributors <noreply@invalid>$'; then
   echo "Bun fork patch series contains an unapproved author identity" >&2
   exit 1
@@ -59,4 +66,4 @@ fi
 
 ./scripts/check-crate-layering
 ./scripts/check-docs
-echo "public-source=passed history-identities=noreply-only protected-m42-disclosure=redacted-and-bound m48-patch-count=$M48_PATCH_COUNT m49-patch-count=$M49_PATCH_COUNT"
+echo "public-source=passed history-identities=noreply-only protected-m42-disclosure=redacted-and-bound m48-patch-count=$M48_PATCH_COUNT m49-patch-count=$M49_PATCH_COUNT m50-patch-count=$M50_PATCH_COUNT"

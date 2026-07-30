@@ -15,6 +15,7 @@ leanbun-lake-bridge = { path = "../leanbun-lake-bridge" }
 leanbun-lock = { path = "../leanbun-lock" }
 leanbun-resolver = { path = "../leanbun-resolver" }
 leanbun-store = { path = "../leanbun-store" }
+rustix = { version = "=1.1.4", default-features = false, features = ["fs", "std"] }
 
 [lints]
 workspace = true

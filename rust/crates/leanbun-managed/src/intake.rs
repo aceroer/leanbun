@@ -294,6 +294,78 @@ pub(crate) fn parse_filesystem_declaration_v1(
     parse_declaration(&project)
 }
 
+pub(crate) fn require_executable_target_v1(
+    project: &Path,
+    target: &str,
+) -> Result<(), ManagedProjectError> {
+    validate_target(target)?;
+    let project = canonicalize_directory(project).map_err(evidence_error)?;
+    let config =
+        read_stable_text(&project, "lakefile.toml", MAX_CONFIG_BYTES).map_err(evidence_error)?;
+    let mut section = String::new();
+    let mut name = None::<String>;
+    let mut root = None::<String>;
+    let mut matches = 0_usize;
+    let finish = |name: &mut Option<String>,
+                  root: &mut Option<String>,
+                  matches: &mut usize|
+     -> Result<(), ManagedProjectError> {
+        if let Some(name) = name.take() {
+            root.take()
+                .ok_or_else(|| input_error("managed executable target lacks an explicit root"))?;
+            if name == target {
+                *matches += 1;
+            }
+        } else if root.take().is_some() {
+            return Err(input_error("managed executable root lacks a target name"));
+        }
+        Ok(())
+    };
+    for raw in config.text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if line.starts_with("[[") && line.ends_with("]]") {
+            if section == "lean_exe" {
+                finish(&mut name, &mut root, &mut matches)?;
+            }
+            section = line[2..line.len() - 2].trim().to_owned();
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            if section == "lean_exe" {
+                finish(&mut name, &mut root, &mut matches)?;
+            }
+            section = line[1..line.len() - 1].trim().to_owned();
+            continue;
+        }
+        if section != "lean_exe" {
+            continue;
+        }
+        let (key, value) = line
+            .split_once('=')
+            .ok_or_else(|| input_error("unsupported managed executable declaration"))?;
+        let slot = match key.trim() {
+            "name" => &mut name,
+            "root" => &mut root,
+            _ => return Err(input_error("unsupported [[lean_exe]] field")),
+        };
+        if slot.replace(basic_string(value)?).is_some() {
+            return Err(input_error("managed executable field is repeated"));
+        }
+    }
+    if section == "lean_exe" {
+        finish(&mut name, &mut root, &mut matches)?;
+    }
+    if matches != 1 {
+        return Err(input_error(
+            "managed run requires exactly one matching [[lean_exe]] target",
+        ));
+    }
+    Ok(())
+}
+
 fn parse_declaration(
     project: &CanonicalDirectory,
 ) -> Result<LakeRootDeclarationV1, ManagedProjectError> {
@@ -445,7 +517,7 @@ mod tests {
     use super::*;
     use crate::{
         ManagedLibraryStateV1, ManagedProjectControllerV1, managed_library_status_v1,
-        read_managed_registry_v1,
+        prepare_managed_execution_v1, read_managed_registry_v1,
     };
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
@@ -465,6 +537,7 @@ mod tests {
         repository: PathBuf,
         root: PathBuf,
         project: PathBuf,
+        development_root_created: bool,
     }
 
     impl FixtureCopy {
@@ -474,6 +547,12 @@ mod tests {
                 .nth(3)
                 .and_then(|path| path.canonicalize().ok())
                 .unwrap_or_else(|| panic!("repository root missing"));
+            let development = repository.join(".leanbun-dev");
+            let development_root_created = !development.exists();
+            if development_root_created {
+                fs::create_dir(&development)
+                    .unwrap_or_else(|error| panic!("M49 development root failed: {error}"));
+            }
             let root = repository
                 .join(".leanbun-dev-rust/m49-intake-tests")
                 .join(format!("{}-{label}", std::process::id()));
@@ -495,6 +574,7 @@ mod tests {
                 repository,
                 root,
                 project,
+                development_root_created,
             }
         }
 
@@ -535,6 +615,9 @@ mod tests {
             self.cleanup_state();
             make_writable(&self.root);
             let _ = fs::remove_dir_all(&self.root);
+            if self.development_root_created {
+                let _ = fs::remove_dir(self.repository.join(".leanbun-dev"));
+            }
         }
     }
 
@@ -633,6 +716,7 @@ mod tests {
                 .state,
             ManagedLibraryStateV1::PendingRecovery
         );
+        assert!(prepare_managed_execution_v1(&failed.repository, &failed.project).is_err());
         let restarted =
             ManagedProjectControllerV1::open(&failed.repository, &failed.project, "/usr/bin/true")
                 .unwrap_or_else(|error| panic!("restart controller failed: {error}"));
@@ -701,6 +785,14 @@ mod tests {
         .unwrap_or_else(|error| panic!("M49D prepare failed: {error}"));
         commit_managed_intake_v1(&plan, "/usr/bin/true", "--explicit-managed-project")
             .unwrap_or_else(|error| panic!("M49D intake failed: {error}"));
+        let selected = prepare_managed_execution_v1(&fixture.repository, &fixture.project)
+            .unwrap_or_else(|error| panic!("M50A path selection failed: {error}"));
+        assert_eq!(
+            prepare_managed_execution_v1(&fixture.repository, selected.project_id.to_string())
+                .unwrap_or_else(|error| panic!("M50A ProjectId selection failed: {error}")),
+            selected
+        );
+        assert!(prepare_managed_execution_v1(&fixture.repository, &unrelated.project).is_err());
         let controller = ManagedProjectControllerV1::open(
             &fixture.repository,
             &fixture.project,
@@ -710,6 +802,27 @@ mod tests {
         let baseline = controller
             .status()
             .unwrap_or_else(|error| panic!("M49D status failed: {error}"));
+        let operation = controller
+            .acquire_operation_lease()
+            .unwrap_or_else(|error| panic!("M50B operation lease failed: {error}"));
+        let competing = ManagedProjectControllerV1::open(
+            &fixture.repository,
+            &fixture.project,
+            "/usr/bin/true",
+        )
+        .unwrap_or_else(|error| panic!("M50B competing controller failed: {error}"));
+        assert!(matches!(
+            competing.update_packages(&["managed_dep".to_owned()]),
+            Err(error) if error.kind == ManagedProjectErrorKind::PendingTransaction
+        ));
+        drop(operation);
+        assert_eq!(
+            controller
+                .status()
+                .unwrap_or_else(|error| panic!("M50B post-contention status failed: {error}"))
+                .pending_transaction,
+            None
+        );
         assert!(
             controller
                 .update_with_fault(LeanGenerationFaultV1::BeforeActiveRename)
@@ -722,6 +835,11 @@ mod tests {
         let updated = controller
             .update_packages(&["managed_dep".to_owned()])
             .unwrap_or_else(|error| panic!("M49D update failed: {error}"));
+        assert!(
+            controller
+                .build_expected(Some(selected.active_generation_sha256))
+                .is_err()
+        );
         let rolled_back = controller
             .rollback()
             .unwrap_or_else(|error| panic!("M49D rollback failed: {error}"));
@@ -760,6 +878,71 @@ mod tests {
         fs::set_permissions(&state_root, fs::Permissions::from_mode(0o755))
             .unwrap_or_else(|error| panic!("state root public mode setup failed: {error}"));
         assert!(review_macos_managed_state_root_v1(&state_root).is_err());
+    }
+
+    #[test]
+    fn m50c_executable_target_classification_is_exact() {
+        let _guard = intake_test_guard();
+        let fixture = FixtureCopy::new("m50-target", "lake-managed-dependency");
+        assert!(
+            require_executable_target_v1(&fixture.project, "leanbun_managed_dependency_fixture")
+                .is_ok()
+        );
+        assert!(
+            require_executable_target_v1(&fixture.project, "LeanBunManagedDependencyFixture")
+                .is_err()
+        );
+        let config = fixture.project.join("lakefile.toml");
+        let mut text = fs::read_to_string(&config)
+            .unwrap_or_else(|error| panic!("M50C config read failed: {error}"));
+        text.push_str(
+            "\n[[lean_exe]]\nname = \"leanbun_managed_dependency_fixture\"\nroot = \"Main\"\n",
+        );
+        fs::write(&config, text)
+            .unwrap_or_else(|error| panic!("M50C duplicate config failed: {error}"));
+        assert!(
+            require_executable_target_v1(&fixture.project, "leanbun_managed_dependency_fixture")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn m50c_executable_observer_rejects_missing_writable_symlink_and_detects_drift() {
+        let _guard = intake_test_guard();
+        let fixture = FixtureCopy::new("m50-executable", "lake-managed-dependency");
+        let controller = ManagedProjectControllerV1::open(
+            &fixture.repository,
+            &fixture.project,
+            "/usr/bin/true",
+        )
+        .unwrap_or_else(|error| panic!("M50C observer controller failed: {error}"));
+        let target = "leanbun_managed_dependency_fixture";
+        assert!(controller.observe_managed_executable(target).is_err());
+        let bin = fixture.project.join(".lake/build/bin");
+        fs::create_dir_all(&bin)
+            .unwrap_or_else(|error| panic!("M50C observer bin failed: {error}"));
+        let executable = bin.join(target);
+        fs::write(&executable, b"first")
+            .unwrap_or_else(|error| panic!("M50C observer executable failed: {error}"));
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755))
+            .unwrap_or_else(|error| panic!("M50C observer chmod failed: {error}"));
+        let first = controller
+            .observe_managed_executable(target)
+            .unwrap_or_else(|error| panic!("M50C observer positive failed: {error}"));
+        fs::write(&executable, b"other")
+            .unwrap_or_else(|error| panic!("M50C observer drift failed: {error}"));
+        let second = controller
+            .observe_managed_executable(target)
+            .unwrap_or_else(|error| panic!("M50C observer drift read failed: {error}"));
+        assert_ne!(first, second);
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o775))
+            .unwrap_or_else(|error| panic!("M50C observer writable chmod failed: {error}"));
+        assert!(controller.observe_managed_executable(target).is_err());
+        fs::remove_file(&executable)
+            .unwrap_or_else(|error| panic!("M50C observer removal failed: {error}"));
+        std::os::unix::fs::symlink("/usr/bin/true", &executable)
+            .unwrap_or_else(|error| panic!("M50C observer symlink failed: {error}"));
+        assert!(controller.observe_managed_executable(target).is_err());
     }
 
     fn copy_tree(source: &Path, destination: &Path) {

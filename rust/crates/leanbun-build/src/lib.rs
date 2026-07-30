@@ -9,10 +9,13 @@ mod reuse;
 pub use acceptance::{RepositoryFixtureAcceptanceV1, run_repository_fixture_acceptance_v1};
 
 pub use model::{
-    BuildError, BuildErrorKind, BuildImageV1, BuildInputsV1, BuildResultV1, ProjectBuildOutputV1,
-    SupervisedLakeBuildV1, TerminationReasonV1,
+    BuildError, BuildErrorKind, BuildImageV1, BuildInputsV1, BuildResultV1, ProgramRunResultV1,
+    ProgramTerminationReasonV1, ProjectBuildOutputV1, SupervisedLakeBuildV1,
+    SupervisedProgramRunV1, TerminationReasonV1,
 };
-pub use process::{run_supervised_lake_build_v1, verify_lake_workspace_paths_v1};
+pub use process::{
+    run_supervised_lake_build_v1, run_supervised_program_v1, verify_lake_workspace_paths_v1,
+};
 pub use regression::{FixtureRegressionV1, run_lake_basic_regression_v1};
 pub use reuse::{BuildImageFaultV1, BuildImageStoreV1, ReuseOutcomeV1};
 

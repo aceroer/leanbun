@@ -1,0 +1,89 @@
+= LeanBun Managed Run Front-Door Contract M50C
+:toc: left
+:sectnums:
+
+== Decision
+
+M50C adds a deliberately narrow, non-interactive run front door for a managed
+Lake executable target. It does not call `lake exe`, infer an executable from a
+filename, or make library targets runnable. Build and run consume the same M50A
+selection and remain inside one per-project operation lease.
+
+This is a source-tree development capability. It does not overturn the M20/M21
+finding that a user-owned path cannot exclude a hostile concurrent process with
+the same effective UID. No XPC, privileged helper, root service or signing
+authority is introduced. The public claim is cooperative managed execution,
+not an OS-enforced production handoff against a malicious same-user writer.
+
+== Executable classification
+
+The project must use the already supported, stably read `lakefile.toml` form.
+Immediately before build, LeanBun parses its target declarations without
+executing Lake configuration and requires exactly one `[[lean_exe]]` whose
+`name` equals the target recorded by M49. `lakefile.lean`, a matching
+`[[lean_lib]]`, an absent target, duplicate executable declarations and unknown
+target syntax all fail closed.
+
+After the supervised M50B build, the only admissible artifact is
+`.lake/build/bin/<recorded-target>`. The target is already a validated
+`BuildTarget`, so it cannot contribute path components. LeanBun requires a
+direct regular executable file, rejects symlinks and group/world-writable mode,
+opens with `O_NOFOLLOW`, compares path/descriptor/path device, inode, mode,
+size and change time, and hashes the opened bytes. The complete
+`.lake/build` digest must still equal the digest returned by the build gate.
+
+== Arguments
+
+The development grammar is:
+
+[source,shell]
+----
+leanbun run <repository> <project-path-or-project-id> [-- <argument>...]
+----
+
+No program argument may appear before the exact `--` delimiter. An empty
+argument vector needs no delimiter. Arguments must be UTF-8 and NUL-free. The
+limit is 64 arguments, 4096 bytes per argument and 16384 bytes in total. LeanBun
+does not invoke a shell and performs no expansion.
+
+== Process boundary
+
+The process runs with:
+
+* the canonical managed project as cwd;
+* stdin connected to `/dev/null`;
+* a cleared environment containing only fixed `PATH`, `HOME`, `TMPDIR`,
+  `LC_ALL` and `LANG` values selected by LeanBun;
+* a generated Seatbelt profile denying network and all writes except a private
+  per-run temporary directory and standard streams;
+* stdout and stderr captured independently with a one-MiB limit each;
+* a 30-second deadline and one-second TERM-to-KILL grace period;
+* a new process session so timeout terminates and reaps the whole child group.
+
+Output is emitted by the CLI after the supervised child terminates. M50C is not
+an interactive terminal runner.
+
+Normal child exit codes are returned unchanged. A signal result maps to
+`128 + signal` when representable. Timeout maps to 124, output overflow to 125,
+and a LeanBun validation/spawn failure to 1. Usage failure remains 64.
+
+== Post-run gate
+
+Before reporting the child result, LeanBun rereads and verifies the same active
+generation, rehashes the complete build artifact tree, reopens and rehashes the
+exact executable, and requires every identity to remain unchanged. A post-run
+drift converts the attempt to a LeanBun failure even if the child exited zero.
+The operation lease is held until this gate finishes.
+
+== Exit gate
+
+M50C is complete when:
+
+* the repository-owned small executable fixture runs by path and ProjectId;
+* library-only, duplicate, missing, symlinked, writable and drifted artifacts
+  fail closed;
+* delimiter and all argument limits have parser tests;
+* nonzero exit, timeout, signal and output overflow are process-group tested;
+* generation, artifact and executable identities are reverified after run;
+* the paired Bun adapter, patch replay, public-source and full regression gates
+  pass without leaving a Bun, Lake or child process running.

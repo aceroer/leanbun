@@ -98,7 +98,7 @@ Closure evidence: xref:../milestones/RUST_MANAGED_LIBRARY_INTAKE_M49C_M49D.adoc[
 
 == M50 — Managed build and run front door
 
-Status: *pending after M49*.
+Status: *complete*.
 
 Planned commands:
 
@@ -114,3 +114,69 @@ commands remain outside LeanBun and are never claimed to be intercepted.
 
 M50 cannot begin by weakening M49 status checks or accepting an unregistered
 path as a convenience fallback.
+
+=== M50A — Stable execution selection
+
+Status: *complete*.
+
+The governing contract is
+xref:../decisions/MANAGED_EXECUTION_FRONT_DOOR_M50A.adoc[Managed Execution Front-Door Contract M50A].
+The read-only `prepare_managed_execution_v1` API resolves an exact canonical
+path or ProjectId, requires strict `healthy` status, fixes the active generation
+digest, and rereads by ProjectId before returning. It does not execute Lake or
+write state.
+
+=== M50B — Managed build front door
+
+Status: *complete*.
+
+Route the development adapter and eventual installed grammar through M50A,
+reverify that the selected generation remains active, then supervise the
+existing offline Lake build. Add race, non-healthy selector and ProjectId CLI
+tests. The legacy fixture build syntax is not itself M50 closure.
+
+The implementation adds a per-project advisory operation lease shared by
+build, update, recover and rollback. The lease is held for the complete
+selection-bound build and is released automatically if the process exits. A
+competing mutation therefore fails before it can publish a pending record. Both
+canonical path and ProjectId acceptance produced the same generation and
+artifact for the repository-maintained small managed test project.
+
+Closure evidence: xref:../milestones/RUST_MANAGED_BUILD_FRONT_DOOR_M50B.adoc[M50B milestone].
+
+=== M50C — Managed run front door
+
+Status: *complete*.
+
+Freeze executable-target classification, exact artifact selection, `--`
+argument limits, environment/cwd policy, signal and exit propagation, and the
+post-build generation/artifact gate before adding a run command.
+
+The governing contract is
+xref:../decisions/MANAGED_RUN_FRONT_DOOR_M50C.adoc[Managed Run Front-Door Contract M50C].
+This development front door remains within the cooperative same-user boundary
+and does not reopen the archived privileged/XPC route.
+
+The selector, build, exact executable observation, sandboxed child and post-run
+reverification remain inside one per-project operation lease. Program arguments
+require `--`; stdin is null, the environment is cleared and allowlisted, output
+is bounded, and timeout/signal/nonzero exit results are explicit.
+
+Closure evidence: xref:../milestones/RUST_MANAGED_RUN_FRONT_DOOR_M50C.adoc[M50C milestone].
+
+=== M50D — Distribution and lifecycle closure
+
+Status: *complete*.
+
+Complete source-patch provenance, restart and rollback regression, operator
+guidance, public gates and the small managed test-project acceptance sequence.
+
+The two M50 patches replay to the exact paired Bun tree. A clean Git candidate
+containing no local provider or managed state passes the public source gate,
+and the initialized repository passes the deeper provider-bound suite. The
+small managed project passes separate-process status, explicit update,
+ProjectId build/run, rollback and canonical-path build/run while returning to
+the original generation and preserving its source tree.
+
+Closure evidence:
+xref:../milestones/RUST_MANAGED_DISTRIBUTION_CLOSURE_M50D.adoc[M50D milestone].
