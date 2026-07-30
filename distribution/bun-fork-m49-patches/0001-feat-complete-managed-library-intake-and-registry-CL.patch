@@ -1,0 +1,432 @@
+From d827bda214499ccabfe1a2ad8b4ff3e03979cc57 Mon Sep 17 00:00:00 2001
+From: LeanBun contributors <noreply@invalid>
+Date: Thu, 30 Jul 2026 10:35:52 +0800
+Subject: [PATCH] feat: complete managed library intake and registry CLI
+
+---
+ src/lean_pm/main.rs | 330 +++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 311 insertions(+), 19 deletions(-)
+
+diff --git a/src/lean_pm/main.rs b/src/lean_pm/main.rs
+index c018a079..c00d4ad4 100644
+--- a/src/lean_pm/main.rs
++++ b/src/lean_pm/main.rs
+@@ -4,10 +4,13 @@ use leanbun_build::{run_lake_basic_regression_v1, run_repository_fixture_accepta
+ use leanbun_core::{Sha256, Sha256Hasher};
+ use leanbun_lake_bridge::verify_lake_source_compatibility_v1;
+ use leanbun_managed::{
+-    ManagedProjectControllerV1, ManagedProjectStatusV1, dry_run_external_adoption_v1,
+-    run_concurrent_history_regression_v1, run_external_fixture_acceptance_v1,
+-    run_managed_dependency_regression_v1, run_mathlib_regression_v1,
+-    run_negative_fixture_regression_v1, run_reservoir_loopback_regression_v1,
++    ManagedIntakePolicyV1, ManagedLibraryStateV1, ManagedLibraryStatusV1,
++    ManagedProjectControllerV1, ManagedProjectStatusV1, commit_managed_intake_v1,
++    dry_run_external_adoption_v1, managed_library_status_v1, prepare_managed_intake_v1,
++    read_managed_registry_v1, run_concurrent_history_regression_v1,
++    run_external_fixture_acceptance_v1, run_managed_dependency_regression_v1,
++    run_mathlib_regression_v1, run_negative_fixture_regression_v1,
++    run_reservoir_loopback_regression_v1,
+ };
+ use leanbun_store::run_loopback_update_acceptance_v1;
+ use std::env;
+@@ -19,7 +22,7 @@ use std::os::unix::process::CommandExt;
+ use std::path::{Path, PathBuf};
+ use std::process::{Command, ExitCode};
+ 
+-const RELEASE_VERSION: &str = "0.20.0-m48-dev";
++const RELEASE_VERSION: &str = "0.22.0-m49-dev";
+ const M42_RELEASE_VERSION: &str = "0.11.0-m42-dev";
+ const M42_BINARY_SHA256: &str = "f6416817e2c893b311245c65f2a54668b0a633e028de1fe31e05701322670359";
+ const BUN_UPSTREAM_COMMIT: &str = "892b1dabc69e2a0a973244f772b84967c73ccad5";
+@@ -29,7 +32,7 @@ const LEAN_COMPILER_COMMIT: &str = "8c9756b28d64dab099da31a4c09229a9e6a2ef35";
+ const LAKE_VERSION: &str = "5.0.0-src+8c9756b";
+ const BUN_LOCK_FILE_SHA256: &str =
+     "d2292d26c8200f23db4fc4fc89237117f0d90a25821fb65b8fe009f0e9134ae4";
+-const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReaders=1,2\nlockReaders=leanbun-lock-v1,reservoir-bindings-v1\nmanagedProjectSchema=1\ndependencyClosure=registered-git-reservoir-companion-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-reservoir-loopback-v1\n";
++const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReaders=1,2\nlockReaders=leanbun-lock-v1,reservoir-bindings-v1\nmanagedProjectSchema=1\nmanagedRegistryReader=1\nmanagedIntake=1\ndependencyClosure=registered-git-reservoir-companion-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-reservoir-loopback-v1\n";
+ const M42_RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReader=1\nmanagedProjectSchema=1\ndependencyClosure=registered-git-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-v1\n";
+ 
+ fn main() -> ExitCode {
+@@ -41,6 +44,9 @@ fn main() -> ExitCode {
+     if command == OsStr::new("__leanbun-supervise") {
+         return supervise(arguments);
+     }
++    if command == OsStr::new("manage") {
++        return manage_command(arguments);
++    }
+     let result = match command.to_str() {
+         Some("version") => version(),
+         Some("doctor") => repository_argument(arguments).and_then(|root| doctor(&root)),
+@@ -99,6 +105,118 @@ fn main() -> ExitCode {
+     }
+ }
+ 
++fn manage_command(mut arguments: impl Iterator<Item = std::ffi::OsString>) -> ExitCode {
++    let Some(action) = arguments.next() else {
++        return manage_usage_error("manage requires add, list, or status");
++    };
++    let Ok(action) = action.into_string() else {
++        return manage_usage_error("manage action is not UTF-8");
++    };
++    let result = match action.as_str() {
++        "list" => match manage_list_arguments(arguments) {
++            Ok((repository, json)) => manage_list(&repository, json),
++            Err(error) => return manage_usage_error(&error),
++        },
++        "status" => match manage_status_arguments(arguments) {
++            Ok((repository, query, json)) => manage_status(&repository, &query, json),
++            Err(error) => return manage_usage_error(&error),
++        },
++        "add" => match manage_add_arguments(arguments) {
++            Ok((repository, project, target)) => manage_add(&repository, &project, &target),
++            Err(error) => return manage_usage_error(&error),
++        },
++        _ => return manage_usage_error("manage requires add, list, or status"),
++    };
++    match result {
++        Ok(true) => ExitCode::SUCCESS,
++        Ok(false) => ExitCode::from(2),
++        Err(error) => {
++            eprintln!("leanbun: {error}");
++            ExitCode::from(1)
++        }
++    }
++}
++
++fn manage_usage_error(error: &str) -> ExitCode {
++    eprintln!("leanbun: {error}");
++    ExitCode::from(64)
++}
++
++fn manage_list(repository: &Path, json: bool) -> Result<bool, String> {
++    validate_doctor(repository)?;
++    let report = read_managed_registry_v1(repository).map_err(managed_error)?;
++    if json {
++        println!("{}", report.to_canonical_json());
++    } else {
++        println!("PROJECT ID\tSTATUS\tPACKAGES\tTARGET\tPROJECT");
++        for status in &report.projects {
++            print_managed_library_row(status);
++        }
++    }
++    Ok(report.all_healthy())
++}
++
++fn manage_status(repository: &Path, query: &Path, json: bool) -> Result<bool, String> {
++    validate_doctor(repository)?;
++    let status = managed_library_status_v1(repository, query).map_err(managed_error)?;
++    if json {
++        println!("{}", status.to_canonical_json());
++    } else {
++        println!("PROJECT ID\tSTATUS\tPACKAGES\tTARGET\tPROJECT");
++        print_managed_library_row(&status);
++        for diagnostic in &status.diagnostics {
++            println!("diagnostic={}\t{}", diagnostic.code, diagnostic.message);
++        }
++    }
++    Ok(status.state == ManagedLibraryStateV1::Healthy)
++}
++
++fn manage_add(repository: &Path, project: &Path, target: &str) -> Result<bool, String> {
++    let repository = validate_doctor(repository)?;
++    let plan = prepare_managed_intake_v1(
++        &repository,
++        project,
++        target,
++        ManagedIntakePolicyV1::UserSelectedLocal,
++    )
++    .map_err(managed_error)?;
++    println!("managed-intake-plan=1");
++    println!("project-id={}", plan.project_id);
++    println!("project={}", plan.project_root.display());
++    println!("target={}", plan.target);
++    println!("input-state={}", plan.input_state_name());
++    println!("project-tree-sha256={}", plan.project_tree_sha256);
++    println!("root-declaration-sha256={}", plan.root_declaration_sha256);
++    println!("direct-dependency-count={}", plan.direct_dependency_count);
++    println!("mutation={}", plan.mutation);
++    let executable = env::current_exe()
++        .map_err(|error| format!("cannot identify managed intake supervisor: {error}"))?;
++    let result = commit_managed_intake_v1(&plan, executable, "--explicit-managed-project")
++        .map_err(managed_error)?;
++    println!("managed-intake-status=healthy");
++    println!("active-generation={}", result.generation_sha256);
++    println!("package-count={}", result.package_count);
++    Ok(true)
++}
++
++fn print_managed_library_row(status: &ManagedLibraryStatusV1) {
++    let project_id = status
++        .project_id
++        .map_or_else(|| "-".to_owned(), |value| value.to_string());
++    let packages = status
++        .package_count
++        .map_or_else(|| "-".to_owned(), |value| value.to_string());
++    let target = status.target.as_deref().unwrap_or("-");
++    let project = status
++        .project_root
++        .as_ref()
++        .map_or_else(|| "-".to_owned(), |value| value.display().to_string());
++    println!(
++        "{project_id}\t{}\t{packages}\t{target}\t{project}",
++        status.state.as_str()
++    );
++}
++
+ fn version() -> Result<(), String> {
+     println!("leanbun {RELEASE_VERSION}");
+     println!("bun-upstream-commit={BUN_UPSTREAM_COMMIT}");
+@@ -109,11 +227,24 @@ fn version() -> Result<(), String> {
+     println!("lock-readers=leanbun-lock-v1,reservoir-bindings-v1");
+     println!("active-generation-readers=1,2");
+     println!("managed-project-schema=1");
++    println!("managed-registry-reader=1");
++    println!("managed-intake=1");
+     println!("target={}-{}", env::consts::ARCH, env::consts::OS);
+     Ok(())
+ }
+ 
+ fn doctor(repository: &Path) -> Result<(), String> {
++    let repository = validate_doctor(repository)?;
++    println!("doctor-status=compatible");
++    println!("repository={}", repository.display());
++    println!("platform={}-{}", env::consts::ARCH, env::consts::OS);
++    println!("bun-source=locked");
++    println!("lake-source=locked");
++    println!("fixture=lake-basic");
++    Ok(())
++}
++
++fn validate_doctor(repository: &Path) -> Result<PathBuf, String> {
+     require_platform()?;
+     let repository = canonical_repository(repository)?;
+     require_hash(
+@@ -138,13 +269,7 @@ fn doctor(repository: &Path) -> Result<(), String> {
+     if fixture_toolchain.trim() != LEAN_TOOLCHAIN {
+         return Err("registered fixture uses an unsupported Lean toolchain".to_owned());
+     }
+-    println!("doctor-status=compatible");
+-    println!("repository={}", repository.display());
+-    println!("platform={}-{}", env::consts::ARCH, env::consts::OS);
+-    println!("bun-source=locked");
+-    println!("lake-source=locked");
+-    println!("fixture=lake-basic");
+-    Ok(())
++    Ok(repository)
+ }
+ 
+ fn fixture_accept(repository: &Path) -> Result<(), String> {
+@@ -453,11 +578,18 @@ fn managed_controller(
+     let project = project
+         .canonicalize()
+         .map_err(|error| format!("cannot canonicalize managed project: {error}"))?;
+-    if !project.starts_with(repository.join(".leanbun-dev-rust/managed-fixture")) {
+-        return Err(
+-            "generic managed commands permit only repository managed-fixture copies; M41 external acceptance uses its dedicated fixture command"
+-                .to_owned(),
+-        );
++    let authorization = managed_library_status_v1(&repository, &project).map_err(managed_error)?;
++    if authorization.project_id.is_none()
++        || authorization.project_root.as_deref() != Some(project.as_path())
++        || matches!(
++            authorization.state,
++            ManagedLibraryStateV1::InvalidRecord
++                | ManagedLibraryStateV1::Missing
++                | ManagedLibraryStateV1::Unsupported
++                | ManagedLibraryStateV1::Unmanaged
++        )
++    {
++        return Err("generic managed commands require an exact durable registry record".to_owned());
+     }
+     let executable = env::current_exe()
+         .map_err(|error| format!("cannot identify managed supervisor: {error}"))?;
+@@ -897,6 +1029,8 @@ fn export_evidence(repository: &Path) -> Result<(), String> {
+     println!("lockReaders=leanbun-lock-v1,reservoir-bindings-v1");
+     println!("activeGenerationReaders=1,2");
+     println!("managedProjectSchema=1");
++    println!("managedRegistryReader=1");
++    println!("managedIntake=1");
+     println!("target={}-{}", env::consts::ARCH, env::consts::OS);
+     println!("binarySha256={}", hash_file(&executable)?);
+     println!("repository={}", repository.display());
+@@ -946,6 +1080,76 @@ fn two_path_arguments(
+     Ok((PathBuf::from(first), PathBuf::from(second)))
+ }
+ 
++fn manage_list_arguments(
++    mut arguments: impl Iterator<Item = std::ffi::OsString>,
++) -> Result<(PathBuf, bool), String> {
++    let repository = arguments
++        .next()
++        .ok_or_else(|| "manage list requires one repository path".to_owned())?;
++    let json = match arguments.next() {
++        None => false,
++        Some(option) if option == OsStr::new("--json") => true,
++        Some(_) => return Err("manage list accepts only an optional --json flag".to_owned()),
++    };
++    if arguments.next().is_some() {
++        return Err("manage list accepts one repository path and optional --json".to_owned());
++    }
++    Ok((PathBuf::from(repository), json))
++}
++
++fn manage_status_arguments(
++    mut arguments: impl Iterator<Item = std::ffi::OsString>,
++) -> Result<(PathBuf, PathBuf, bool), String> {
++    let repository = arguments.next().ok_or_else(|| {
++        "manage status requires repository and project path or ProjectId".to_owned()
++    })?;
++    let query = arguments.next().ok_or_else(|| {
++        "manage status requires repository and project path or ProjectId".to_owned()
++    })?;
++    let json = match arguments.next() {
++        None => false,
++        Some(option) if option == OsStr::new("--json") => true,
++        Some(_) => return Err("manage status accepts only an optional --json flag".to_owned()),
++    };
++    if arguments.next().is_some() {
++        return Err(
++            "manage status accepts repository, project path or ProjectId, and optional --json"
++                .to_owned(),
++        );
++    }
++    Ok((PathBuf::from(repository), PathBuf::from(query), json))
++}
++
++fn manage_add_arguments(
++    mut arguments: impl Iterator<Item = std::ffi::OsString>,
++) -> Result<(PathBuf, PathBuf, String), String> {
++    let repository = arguments.next().ok_or_else(|| {
++        "manage add requires repository, project, --target=NAME, and exact confirmation".to_owned()
++    })?;
++    let project = arguments.next().ok_or_else(|| {
++        "manage add requires repository, project, --target=NAME, and exact confirmation".to_owned()
++    })?;
++    let target = arguments.next().ok_or_else(|| {
++        "manage add requires repository, project, --target=NAME, and exact confirmation".to_owned()
++    })?;
++    let confirmation = arguments.next().ok_or_else(|| {
++        "manage add requires repository, project, --target=NAME, and exact confirmation".to_owned()
++    })?;
++    if arguments.next().is_some() || confirmation != OsStr::new("--explicit-managed-project") {
++        return Err(
++            "manage add requires the exact --explicit-managed-project confirmation".to_owned(),
++        );
++    }
++    let target = target
++        .into_string()
++        .map_err(|_| "managed target option is not UTF-8".to_owned())?
++        .strip_prefix("--target=")
++        .filter(|target| !target.is_empty())
++        .ok_or_else(|| "manage add requires a nonempty --target=NAME option".to_owned())?
++        .to_owned();
++    Ok((PathBuf::from(repository), PathBuf::from(project), target))
++}
++
+ fn fixture_regression_arguments(
+     mut arguments: impl Iterator<Item = std::ffi::OsString>,
+ ) -> Result<(PathBuf, String), String> {
+@@ -1086,7 +1290,7 @@ fn hash_file(path: &Path) -> Result<Sha256, String> {
+ 
+ fn print_usage() {
+     eprintln!(
+-        "usage: leanbun <version|doctor|inspect|fixture-accept|fixture-regress|fixture-network-update|fixture-install-accept|fixture-m42-upgrade-accept|fixture-managed-recovery|fixture-external-accept|export-evidence|adopt-dry-run|adopt|update|build|managed-status|recover|rollback> ..."
++        "usage: leanbun <version|doctor|inspect|manage|fixture-accept|fixture-regress|fixture-network-update|fixture-install-accept|fixture-m42-upgrade-accept|fixture-managed-recovery|fixture-external-accept|export-evidence|adopt-dry-run|adopt|update|build|managed-status|recover|rollback> ..."
+     );
+ }
+ 
+@@ -1114,3 +1318,91 @@ fn make_writable(path: &Path) {
+         let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::{
++        manage_add_arguments, manage_command, manage_list_arguments, manage_status_arguments,
++    };
++    use std::ffi::OsString;
++    use std::path::PathBuf;
++
++    fn arguments(values: &[&str]) -> impl Iterator<Item = OsString> {
++        values
++            .iter()
++            .map(|value| OsString::from(*value))
++            .collect::<Vec<_>>()
++            .into_iter()
++    }
++
++    #[test]
++    fn manage_list_parser_accepts_only_the_optional_json_flag() {
++        assert_eq!(
++            manage_list_arguments(arguments(&["/repo", "--json"])),
++            Ok((PathBuf::from("/repo"), true))
++        );
++        assert!(manage_list_arguments(arguments(&["/repo", "--repair"])).is_err());
++        assert!(manage_list_arguments(arguments(&["/repo", "--json", "extra"])).is_err());
++    }
++
++    #[test]
++    fn manage_status_parser_requires_exact_query_shape() {
++        assert_eq!(
++            manage_status_arguments(arguments(&["/repo", "project-id", "--json"])),
++            Ok((PathBuf::from("/repo"), PathBuf::from("project-id"), true))
++        );
++        assert!(manage_status_arguments(arguments(&["/repo"])).is_err());
++        assert!(manage_status_arguments(arguments(&["/repo", "project-id", "--repair"])).is_err());
++    }
++
++    #[test]
++    fn manage_add_parser_requires_target_and_exact_confirmation() {
++        assert_eq!(
++            manage_add_arguments(arguments(&[
++                "/repo",
++                "/project",
++                "--target=Main",
++                "--explicit-managed-project",
++            ])),
++            Ok((
++                PathBuf::from("/repo"),
++                PathBuf::from("/project"),
++                "Main".to_owned(),
++            ))
++        );
++        assert!(
++            manage_add_arguments(arguments(&[
++                "/repo",
++                "/project",
++                "Main",
++                "--explicit-managed-project",
++            ]))
++            .is_err()
++        );
++        assert!(
++            manage_add_arguments(arguments(&[
++                "/repo",
++                "/project",
++                "--target=Main",
++                "--wrong-confirmation",
++            ]))
++            .is_err()
++        );
++    }
++
++    #[test]
++    fn manage_usage_errors_have_distinct_exit_code() {
++        assert_eq!(
++            manage_command(arguments(&[])),
++            std::process::ExitCode::from(64)
++        );
++        assert_eq!(
++            manage_command(arguments(&["list"])),
++            std::process::ExitCode::from(64)
++        );
++        assert_eq!(
++            manage_command(arguments(&["add"])),
++            std::process::ExitCode::from(64)
++        );
++    }
++}
+-- 
+2.55.0
+

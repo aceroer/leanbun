@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "version": "0.22.0-m49-dev",
+  "class": "explicit-managed-library-intake-and-registry",
+  "sourceBaseline": {
+    "commit": "4fbb4f362cb843a490bbf139840166250471d52c",
+    "status": "unified M49 delivery amends the local M49B phase commit"
+  },
+  "bun": {
+    "m48PairedForkCommit": "b5a75e921c10b912c10885207e49ef102ed9e874",
+    "m49PairedForkCommit": "d827bda214499ccabfe1a2ad8b4ff3e03979cc57",
+    "m49PairedForkTree": "7d8f8ea86822ee73aa52ddd4b36279f49f7ec36f",
+    "incrementalPatchCount": 1,
+    "incrementalPatchSha256": "17c964c10b1c0cee5ebd235163af4b889769f70745f2e2c388fd31b5f8079d92",
+    "patchReplayTree": "7d8f8ea86822ee73aa52ddd4b36279f49f7ec36f"
+  },
+  "toolchain": {
+    "rustc": "1.96.0 (ac68faa20 2026-05-25) (Homebrew)",
+    "host": "aarch64-apple-darwin"
+  },
+  "binary": {
+    "target": "aarch64-macos",
+    "size": 2056408,
+    "sha256": "46a95d8abcc4e6f127d7add6f17b83d3728b1d1475dad567ed44b55f747f5d9a",
+    "signatureStatus": "unsigned-development",
+    "notarizationStatus": "not-submitted"
+  },
+  "intake": {
+    "schemaVersion": 1,
+    "confirmation": "--explicit-managed-project",
+    "filesystemOnly": true,
+    "executesLake": false,
+    "networkDiscovery": false,
+    "pendingBeforeGeneration": true,
+    "authoritativeReread": true,
+    "implicitMoveOrRebind": false,
+    "productionMacosStateRoot": "~/Library/Application Support/LeanBun/managed-projects",
+    "requiredStateRootMode": "0700"
+  },
+  "identity": {
+    "cargoLockSha256": "f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07",
+    "intakeSourceSha256": "09a588e42dc469d8182d59ee14aaaf7dab28040706eb7680abce5d58959ef607",
+    "registryReaderSourceSha256": "d5f0e3216d6a699533795afb66e6492a554e9cbc34ccb1e77d2d231ddf00ae37",
+    "managedLibraryExportsSha256": "0c6ff245d0be8f2f687dea9afdf3de098b23c3064b1f3058c017b00a1bac42b7"
+  },
+  "validation": {
+    "publicGate": "passed",
+    "repositoryCheck": "passed",
+    "repositoryBunTestsPassed": 212,
+    "defaultLibraryTestsPassed": 70,
+    "historicalTestsPassed": 79,
+    "managedIntakeTestsPassed": 3,
+    "bunAdapterParserTestsPassed": 4,
+    "bunAdapterFmt": "passed",
+    "bunAdapterClippy": "passed",
+    "releaseBuild": "passed",
+    "realCliIntake": "healthy",
+    "realCliUpdateRollback": "passed",
+    "realCliProjectLakeCreated": false,
+    "registryHealthyEntries": 2
+  },
+  "boundaries": {
+    "m49Complete": true,
+    "m50BuildRunFrontDoor": "closed",
+    "urlIntake": "closed",
+    "implicitCurrentDirectoryAdoption": "closed",
+    "retargetRebindRemove": "closed",
+    "productionInstallerWiring": "closed",
+    "nextMilestone": "M50 managed build and run front door"
+  }
+}

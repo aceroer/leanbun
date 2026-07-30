@@ -54,3 +54,9 @@ path provenance 和 Bun 最终路径决定。
 * xref:RUST_RESERVOIR_LOOPBACK_REGRESSION_M46C.adoc[Reservoir loopback M46C]
 * xref:RUST_HISTORICAL_CRATE_DISPOSITION_M47.adoc[Historical crate disposition M47]
 * xref:RUST_POST_REFACTOR_DISTRIBUTION_M48.adoc[Post-refactor distribution M48]
+
+== M49--M50：受管库登记与日常前门
+
+* xref:RUST_MANAGED_LIBRARY_REGISTRY_M49B.adoc[Strict managed-library registry reader M49B]
+* xref:RUST_MANAGED_LIBRARY_INTAKE_M49C_M49D.adoc[Explicit intake and local-project authorization M49C/D]
+* M49 已闭包；M50 build/run 日常前门尚未完成。

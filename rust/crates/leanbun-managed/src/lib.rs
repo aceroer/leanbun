@@ -4,8 +4,10 @@ mod dry_run;
 mod external_acceptance;
 mod fixture_regression;
 mod history_regression;
+mod intake;
 mod negative_regression;
 mod registered;
+mod registry;
 mod reservoir_regression;
 
 pub use dry_run::{ExternalAdoptionDryRunV1, dry_run_external_adoption_v1};
@@ -14,7 +16,16 @@ pub use fixture_regression::{
     ManagedDependencyRegressionV1, run_managed_dependency_regression_v1, run_mathlib_regression_v1,
 };
 pub use history_regression::{ConcurrentHistoryRegressionV1, run_concurrent_history_regression_v1};
+pub use intake::{
+    ManagedIntakePlanV1, ManagedIntakePolicyV1, ManagedIntakeResultV1, commit_managed_intake_v1,
+    prepare_managed_intake_v1, review_macos_managed_state_root_v1,
+    select_macos_managed_state_root_v1,
+};
 pub use negative_regression::{NegativeFixtureRegressionV1, run_negative_fixture_regression_v1};
+pub use registry::{
+    ManagedLibraryDiagnosticV1, ManagedLibraryStateV1, ManagedLibraryStatusV1,
+    ManagedRegistryReportV1, managed_library_status_v1, read_managed_registry_v1,
+};
 pub use reservoir_regression::{
     ReservoirLoopbackRegressionV1, run_reservoir_loopback_regression_v1,
 };
@@ -28,8 +39,7 @@ use leanbun_core::{ExecutionId, ProjectId, Sha256, Sha256Hasher, project_id};
 use leanbun_generation::{LeanBunGenerationV1, LeanGenerationFaultV1, LeanGenerationManagerV1};
 use leanbun_lake_bridge::{
     LakeDependencySourceV1, LakeManifestProjectionV1, LakePackageProjectionMetadataV1,
-    LakeRootDeclarationV1, LakeRootProbeRequestV1, LakeRuntimePackagesProjectionV1,
-    run_lake_root_probe_v1,
+    LakeRootDeclarationV1, LakeRuntimePackagesProjectionV1,
 };
 use leanbun_lock::{
     LeanBunLockV1, LockedLeanPackageV1, PackageDependencyV1, PackageKeyV1,
@@ -54,7 +64,6 @@ use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -63,7 +72,6 @@ const COMPILER: &str = "8c9756b28d64dab099da31a4c09229a9e6a2ef35";
 const LAKE_VERSION: &str = "5.0.0-src+8c9756b";
 const MAX_RECORD_BYTES: u64 = 64 * 1024;
 const MAX_INPUT_FILE_BYTES: u64 = 256 * 1024 * 1024;
-static PROBE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ManagedProjectErrorKind {
@@ -114,7 +122,6 @@ pub struct ManagedBuildResultV1 {
 
 #[derive(Clone, Debug)]
 pub struct ManagedProjectControllerV1 {
-    repository: PathBuf,
     project: PathBuf,
     development: PathBuf,
     authority: PathBuf,
@@ -164,7 +171,6 @@ impl ManagedProjectControllerV1 {
         ensure_private_directory(&authority, &state)?;
         ensure_private_directory(&authority, &registry)?;
         Ok(Self {
-            repository,
             project,
             development,
             authority,
@@ -183,6 +189,21 @@ impl ManagedProjectControllerV1 {
         target: &str,
         fault: LeanGenerationFaultV1,
     ) -> Result<ManagedProjectStatusV1, ManagedProjectError> {
+        let project = leanbun_evidence::canonicalize_directory(&self.project)
+            .map_err(|error| input_error(error.to_string()))?;
+        let tree = leanbun_evidence::hash_project_input_tree(&project)
+            .map_err(|error| input_error(error.to_string()))?;
+        let declaration = intake::parse_filesystem_declaration_v1(&self.project)?;
+        self.adopt_declaration_with_fault(target, declaration, tree.tree_hash, fault)
+    }
+
+    pub(crate) fn adopt_declaration_with_fault(
+        &self,
+        target: &str,
+        declaration: LakeRootDeclarationV1,
+        expected_tree: Sha256,
+        fault: LeanGenerationFaultV1,
+    ) -> Result<ManagedProjectStatusV1, ManagedProjectError> {
         validate_target(target)?;
         let record_path = self.record_path()?;
         if record_path.exists() {
@@ -191,20 +212,35 @@ impl ManagedProjectControllerV1 {
                 "project already has a managed adoption record",
             ));
         }
-        let model = self.model()?;
         let transaction = new_transaction(&self.project, b"adopt")?;
-        let generation = model.generation(transaction)?;
+        let management_input_sha256 = management_input_sha256(
+            &self.project,
+            declaration.config_file(),
+            declaration.identity(),
+        )?;
         let preparing = ManagedRecordV1 {
             project_id: project_id(path_text(&self.project)?),
             project_root: self.project.clone(),
             target: target.to_owned(),
-            management_input_sha256: model.management_input_sha256,
+            management_input_sha256,
             baseline_transaction: transaction,
             active_transaction: transaction,
             previous_transaction: None,
             pending_transaction: Some(transaction),
         };
         create_record(&record_path, &preparing)?;
+        let project = leanbun_evidence::canonicalize_directory(&self.project)
+            .map_err(|error| input_error(error.to_string()))?;
+        let reserved_tree = leanbun_evidence::hash_project_input_tree(&project)
+            .map_err(|error| input_error(error.to_string()))?;
+        if reserved_tree.tree_hash != expected_tree {
+            return Err(input_error(
+                "managed intake candidate changed after pending reservation",
+            ));
+        }
+        let model = self.model_with_declaration(declaration)?;
+        require_model_identity(&preparing, &model)?;
+        let generation = model.generation(transaction)?;
         model
             .manager
             .publish(&generation.generation, fault)
@@ -290,6 +326,23 @@ impl ManagedProjectControllerV1 {
                 "managed project has no pending transaction",
             ));
         };
+        let initial = pending_transaction == record.baseline_transaction
+            && pending_transaction == record.active_transaction
+            && record.previous_transaction.is_none();
+        let transaction_record = self
+            .state
+            .join("projects")
+            .join(record.project_id.to_string())
+            .join("transactions")
+            .join(format!("{pending_transaction}.record"));
+        if initial && !transaction_record.exists() {
+            fs::remove_file(self.record_path()?).map_err(io_error)?;
+            sync_directory(&self.registry)?;
+            return Err(error(
+                ManagedProjectErrorKind::NotAdopted,
+                "failed initial intake reservation was removed; add again explicitly",
+            ));
+        }
         let model = self.model()?;
         require_model_identity(&record, &model)?;
         let pending = model.generation(pending_transaction)?;
@@ -297,11 +350,7 @@ impl ManagedProjectControllerV1 {
             .manager
             .active_generation_reference()
             .map_err(generation_error)?;
-        if active.is_none()
-            && pending_transaction == record.baseline_transaction
-            && pending_transaction == record.active_transaction
-            && record.previous_transaction.is_none()
-        {
+        if active.is_none() && initial {
             model
                 .manager
                 .recover(&pending.generation)
@@ -414,7 +463,14 @@ impl ManagedProjectControllerV1 {
     }
 
     fn model(&self) -> Result<ManagedModelV1, ManagedProjectError> {
-        let declaration = self.probe_declaration()?;
+        let declaration = intake::parse_filesystem_declaration_v1(&self.project)?;
+        self.model_with_declaration(declaration)
+    }
+
+    fn model_with_declaration(
+        &self,
+        declaration: LakeRootDeclarationV1,
+    ) -> Result<ManagedModelV1, ManagedProjectError> {
         let config = self.project.join(declaration.config_file());
         let config_sha256 = hash_file(&config, MAX_INPUT_FILE_BYTES)?;
         let management_input_sha256 = management_input_sha256(
@@ -581,42 +637,6 @@ impl ManagedProjectControllerV1 {
             registered_caches,
             management_input_sha256,
         })
-    }
-
-    fn probe_declaration(&self) -> Result<LakeRootDeclarationV1, ManagedProjectError> {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| input_error(format!("system clock precedes epoch: {error}")))?
-            .as_nanos();
-        let counter = PROBE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let staging = self.development.join(format!(
-            "tmp/m39-managed-probe-{}-{nonce}-{counter}",
-            std::process::id()
-        ));
-        let cleanup = Cleanup(staging.clone());
-        let toolchain = self
-            .development
-            .join("lean/elan-home/toolchains/leanprover--lean4---v4.32.0");
-        let source_root = self
-            .project
-            .parent()
-            .ok_or_else(|| boundary("managed project has no source parent"))?;
-        let request = LakeRootProbeRequestV1 {
-            source_fixture_root: source_root.to_path_buf(),
-            source_project: self.project.clone(),
-            development_root: self.development.clone(),
-            staging_directory: staging,
-            lean_executable: toolchain.join("bin/lean"),
-            elan_home: self.development.join("lean/elan-home"),
-            sandbox_executable: PathBuf::from("/usr/bin/sandbox-exec"),
-            sandbox_profile: self.repository.join("config/leanbun-dev.sb"),
-            probe_source: self.repository.join("lean/probes/M32RootDeclarations.lean"),
-            lake_source_root: toolchain.join("src/lean/lake"),
-        };
-        let declaration = run_lake_root_probe_v1(&request)
-            .map_err(|error| input_error(format!("Lake declaration probe failed: {error}")))?;
-        drop(cleanup);
-        Ok(declaration)
     }
 
     fn build_request(
@@ -1415,13 +1435,5 @@ fn error_with(kind: ManagedProjectErrorKind, message: impl Into<String>) -> Mana
     ManagedProjectError {
         kind,
         message: message.into(),
-    }
-}
-
-struct Cleanup(PathBuf);
-
-impl Drop for Cleanup {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }

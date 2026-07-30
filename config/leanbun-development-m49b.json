@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "version": "0.21.0-m49b-dev",
+  "class": "fixture-scoped-managed-library-registry-reader",
+  "sourceBaseline": {
+    "commit": "4fbb4f362cb843a490bbf139840166250471d52c",
+    "tree": "721de6b6d6edd5804d39d8ae2db0884d6f8f2972",
+    "status": "uncommitted M49B working-tree delivery"
+  },
+  "bun": {
+    "m48PairedForkCommit": "b5a75e921c10b912c10885207e49ef102ed9e874",
+    "m49bPairedForkCommit": "d85717309851950ad33df4ca3f40de56f9d2c17d",
+    "m49bPairedForkTree": "66425edcaa0e1658f87db48be6c827e85c297506",
+    "incrementalPatchCount": 1,
+    "incrementalPatchSha256": "bbcd858ae3330f1e13d282ef221a6df9826e9dd5bd39152e8d01a037ee1090bc",
+    "patchReplayTree": "66425edcaa0e1658f87db48be6c827e85c297506"
+  },
+  "toolchain": {
+    "rustc": "1.96.0 (ac68faa20 2026-05-25) (Homebrew)",
+    "host": "aarch64-apple-darwin"
+  },
+  "binary": {
+    "target": "aarch64-macos",
+    "size": 2017496,
+    "sha256": "eb99c3f13191f3782baac1934694e8931978092ef895bb5791fa473b44f49a42",
+    "signatureStatus": "unsigned-development",
+    "notarizationStatus": "not-submitted"
+  },
+  "reader": {
+    "schemaVersion": 1,
+    "recordSchema": 1,
+    "registryEntryLimit": 10000,
+    "states": [
+      "invalid-record",
+      "missing",
+      "pending-recovery",
+      "unsupported",
+      "drifted",
+      "healthy",
+      "unmanaged"
+    ],
+    "executesLake": false,
+    "networkAccess": false,
+    "repair": false,
+    "writesState": false
+  },
+  "identity": {
+    "cargoLockSha256": "f0c08f3f91ed0626fc29cde449a44cb5592a8241a75655c5992144ab09eded07",
+    "registryReaderSourceSha256": "d5f0e3216d6a699533795afb66e6492a554e9cbc34ccb1e77d2d231ddf00ae37",
+    "managedLibraryExportsSha256": "0010675088678a76ec2665a9a76ffc223302c17f49da3e0dae66e46cae333b77"
+  },
+  "focusedValidation": {
+    "leanbunManagedTestsPassed": 7,
+    "registryTestsPassed": 4,
+    "bunAdapterParserTestsPassed": 3,
+    "pairedForkFmt": "passed",
+    "pairedForkClippy": "passed",
+    "debugBuild": "passed",
+    "releaseBuild": "passed",
+    "strictJson": "passed",
+    "fixtureStatus": "healthy",
+    "fixturePackageCount": 1,
+    "readOnlyContentDigest": "unchanged",
+    "readOnlyMetadataDigest": "unchanged"
+  },
+  "boundaries": {
+    "fixtureScoped": true,
+    "manageAdd": "reserved-for-m49c",
+    "externalProjectAuthorization": "closed",
+    "nextMilestone": "M49C explicit fixture intake"
+  }
+}

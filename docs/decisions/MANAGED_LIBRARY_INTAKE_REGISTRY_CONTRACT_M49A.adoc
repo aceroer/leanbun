@@ -94,9 +94,9 @@ project identity or the public status schema.
 . reread both authorities before reporting success.
 
 The command does not execute `lakefile.lean`, `lake env`, or `lake query` during
-intake. A `lakefile.lean` candidate therefore requires an explicit target.
-Safely parsed `lakefile.toml` targets may be proposed, but still require explicit
-confirmation. Intake writes no project source and creates no project `.lake`.
+intake. M49 therefore rejects `lakefile.lean`; safely parsed `lakefile.toml`
+targets may be proposed, but still require an explicit target and confirmation.
+Intake writes no project source and creates no project `.lake`.
 
 Re-adding an already managed path, changing its target, or transferring a record
 to a moved path is rejected. Future `retarget`, `rebind`, and `remove` operations

@@ -1,0 +1,80 @@
+= LeanBun Managed-Library Intake and Local Authorization M49C/D
+:toc: left
+:sectnums:
+
+== Status
+
+M49C and M49D are complete in the `0.22.0-m49-dev` source snapshot. M49 now
+provides an explicit, fail-closed path from a deliberately named supported local
+project to one durable managed registration. M50 build/run front-door work is
+not included.
+
+== Intake boundary
+
+`prepare_managed_intake_v1` canonicalizes only the caller-supplied directory,
+rejects authority-root containment, reads stable toolchain/manifest/source
+evidence, and parses a deliberately narrow `lakefile.toml` dependency subset.
+It does not execute `lakefile.lean`, Lake, project scripts, network discovery or
+the current directory. The registered-fixture policy additionally requires an
+exact source-tree match to an isolated copy of
+`test/fixtures/lake-managed-dependency`.
+
+The user-selected policy accepts a local directory only after exact toolchain
+and dependency-provider preflight. M49 supports homogeneous resolved local-path
+or registered Git dependency inputs already represented by the retained V1
+model. Mixed/unresolved providers, Reservoir intake, URL input and implicit
+discovery remain closed.
+
+== Transaction order
+
+The commit path requires `--explicit-managed-project`, rereads the complete
+snapshot, creates the per-ProjectId pending record as the exclusive reservation,
+rereads the source tree after reservation, publishes Store and generation
+objects, activates the generation, publishes the active registry record, and
+finally rereads through the strict M49B reader. A pre-activation fault remains
+`pending-recovery`; recovery of an initial reservation with no completed
+transaction removes only that failed reservation and returns the project to
+`unmanaged`.
+
+Duplicate registration, target change and concurrent add have one winner at
+most. If any durable registration points to a missing path, a new intake is
+refused rather than interpreting the new path as an implicit move or rebind.
+
+== State authority
+
+The source-tree adapter retains the repository-local private development
+authority. The production selector resolves the macOS authority to
+`~/Library/Application Support/LeanBun/managed-projects`; its permissions review
+accepts only an existing, nonsymlink `0700` directory. Installer/runtime wiring
+to that production root is not claimed by M49.
+
+== Validation evidence
+
+Focused M49 tests cover:
+
+* exact fixture intake, restart reconstruction and authoritative reread;
+* wrong confirmation, duplicate, retarget and moved-path rejection;
+* failure before activation and restart recovery;
+* concurrent intake with exactly one success;
+* user-selected local project status, explicit package update, rollback and
+  source integrity while an unrelated project remains unmanaged;
+* production state-root selection and private-mode rejection;
+* exact `manage add/list/status` parser and exit-code behavior.
+
+The paired release binary was also exercised against a fresh copy under
+`.leanbun-dev-rust/m49-managed-library/project`: `manage add` reported one
+healthy package, restart status was healthy, explicit `managed_dep` update and
+rollback succeeded, registry enumeration returned the retained M41 and M49
+records as healthy, and no project `.lake` was created.
+
+Final closure additionally requires the public repository gate, full Rust
+workspace tests, paired-adapter fmt/clippy/tests, release build, patch replay and
+documentation checks. Their exact counts and hashes are recorded in the M49
+development manifest after the unified commit is prepared.
+
+== Remaining boundary
+
+M49 does not provide public registry search, remote URL intake, automatic
+adoption, retarget, rebind, remove, production installation, signing/notarizing,
+or the M50 managed build/run front door. Lean remains the compiler and proof
+checker; Lake remains the general declaration authority and build executor.

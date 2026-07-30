@@ -24,6 +24,48 @@ $BIN export-evidence "$REPO"
 
 `doctor` 对 Bun lock 与 Lake source hash fail closed。`inspect` 必须报告 `managed-external-projects=0`；`export-evidence` 输出当前 binary SHA 和签名/notarization 状态。
 
+=== M49 managed-library registry and intake
+
+The M49 development adapter adds strict registry inspection and explicit local
+project intake:
+
+[source,shell]
+----
+$BIN manage list "$REPO"
+$BIN manage list "$REPO" --json
+$BIN manage status "$REPO" <project-path-or-project-id>
+$BIN manage status "$REPO" <project-path-or-project-id> --json
+$BIN manage add "$REPO" <project-path> --target=<target> \
+  --explicit-managed-project
+----
+
+`list` only reports durable per-project records. `status` accepts the canonical
+project path or exact ProjectId; a path without a record is `unmanaged`. Exit 0
+means the selected result set is entirely `healthy`, exit 2 means operator
+attention is required, and exit 1 means command/authority failure.
+
+The precedence is `invalid-record`, `missing`, `pending-recovery`, `unsupported`,
+`drifted`, `healthy`; `unmanaged` exists only for direct query. JSON mode writes
+one canonical JSON document to stdout, without `doctor` preamble. Neither form
+executes Lake, accesses a network, repairs data or writes the registry/project.
+
+`manage add` canonicalizes only the named local directory, parses the supported
+`lakefile.toml` subset without executing it, verifies exact toolchain/provider
+inputs, prints its plan, and requires the exact confirmation token. It writes a
+pending registry reservation before publishing Store/generation state, then
+activates and rereads the durable record. Duplicate add, retarget, implicit
+move/rebind, URL input and silent current-directory adoption fail closed. The
+current development adapter writes only its private repository-local authority;
+the production state-root selector requires
+`~/Library/Application Support/LeanBun/managed-projects` to be a real `0700`
+directory before use.
+
+For `missing`, restore the exact canonical path or stop and design an explicit
+rebind; do not add the moved copy. For `drifted`, inspect and restore declared
+inputs before update. For `unsupported`, upgrade only to a binary that documents
+the required schema/provider. For `pending-recovery`, run `recover` on the exact
+registered path; do not edit authority files manually.
+
 == Update and build acceptance
 
 [source,shell]

@@ -27,7 +27,7 @@ No new command or external mutation authority is delivered by M49A.
 
 == M49B — Strict registry reader
 
-Status: *pending*.
+Status: *complete*.
 
 Deliverables:
 
@@ -45,9 +45,11 @@ Exit gate:
 * an unsafe authority-directory failure cannot be reported as an empty list;
 * all tests use repository-owned fixture copies and private development state.
 
+Closure evidence: xref:../milestones/RUST_MANAGED_LIBRARY_REGISTRY_M49B.adoc[M49B milestone].
+
 == M49C — Explicit fixture intake
 
-Status: *pending*.
+Status: *complete*.
 
 Deliverables:
 
@@ -65,9 +67,11 @@ Exit gate:
 * successful intake appears exactly once with the expected ProjectId and
   generation.
 
+Closure evidence: xref:../milestones/RUST_MANAGED_LIBRARY_INTAKE_M49C_M49D.adoc[M49C/D milestone].
+
 == M49D — User-selected local-project authorization
 
-Status: *pending*.
+Status: *complete*.
 
 Deliverables:
 
@@ -84,6 +88,13 @@ Exit gate:
 * unrelated projects remain unobserved and unmanaged;
 * URLs, public registry discovery, silent current-directory adoption, rebind,
   retarget, and remove remain closed unless separately authorized.
+
+The source-tree development adapter keeps its explicit repository argument and
+private repository-local authority. The production selector names
+`~/Library/Application Support/LeanBun/managed-projects` and requires a real
+`0700` directory; installation/runtime wiring remains a later release task.
+
+Closure evidence: xref:../milestones/RUST_MANAGED_LIBRARY_INTAKE_M49C_M49D.adoc[M49C/D milestone].
 
 == M50 — Managed build and run front door
 

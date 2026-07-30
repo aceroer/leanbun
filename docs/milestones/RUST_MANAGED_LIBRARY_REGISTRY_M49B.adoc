@@ -1,0 +1,65 @@
+= LeanBun Strict Managed-Library Registry Reader M49B
+:toc: left
+:sectnums:
+
+== Result
+
+M49B is complete as the fixture-scoped development reader `0.21.0-m49b-dev`.
+`leanbun-managed` now enumerates the durable per-project V1 records and derives
+one deterministic status for each entry without executing Lake, contacting a
+network, repairing state or writing project/registry files.
+
+The public commands are:
+
+[source,shell]
+----
+leanbun manage list <leanbun-repository> [--json]
+leanbun manage status <leanbun-repository> <project-path-or-project-id> [--json]
+----
+
+The explicit repository argument is a development-adapter boundary. It is not
+the final installed-runtime interface planned after registry intake closes.
+
+== Classification and failure boundary
+
+The reader applies the M49A precedence exactly: `invalid-record`, `missing`,
+`pending-recovery`, `unsupported`, `drifted`, then `healthy`. A direct query
+that has no registry entry reports `unmanaged`. Attention states exit 2;
+malformed command or unsafe authority failures exit 1; only `healthy` exits 0.
+
+Registry enumeration is bounded to 10,000 entries and compares directory
+identity and modification time before and after enumeration. Every record is a
+stable bounded regular-file read with exact filename, ProjectId, canonical path
+and canonical V1 byte checks. One malformed or symlink entry remains visible as
+`invalid-record` and cannot suppress valid entries. An unsafe registry directory
+is a command failure, never an empty registry.
+
+For a valid record, status verification reads and binds the active transaction,
+generation metadata, domain-separated lock-bytes digest, canonical lock,
+project inputs, projections and package source trees. The normalized package
+tree check excludes derived `.git` and `.lake` state according to the existing
+Store contract.
+
+== Validation
+
+The focused Rust reader suite passed seven `leanbun-managed` library tests,
+including four M49B registry tests. The paired Bun adapter passed three exact
+CLI parser/exit-code tests, format, Clippy and debug/release builds. The repository-owned
+M41 acceptance copy was enumerated as `healthy` with one package and generation
+`78d69e5ea57927b3f2222387c98f9f8b1c5106fecd85f859fb12ab51aab78b64`.
+
+Content and metadata digests of the managed authority and fixture project were
+identical before and after `manage list --json`. The JSON output parsed as one
+document; a direct unmanaged fixture query returned `unmanaged`; `manage add`
+remained explicitly rejected for M49C.
+
+The M48 seven-patch source baseline is unchanged. One redacted incremental M49
+patch replays on top of the M48 paired fork and reproduces tree
+`66425edcaa0e1658f87db48be6c827e85c297506`.
+
+== Remaining boundary
+
+M49B does not register a new library and does not authorize arbitrary local
+projects. M49C is the next milestone: exact-confirmation fixture intake,
+pending-state publication, atomic activation, restart reconstruction and
+concurrent/crash rejection. M50 build/run work remains downstream of M49.

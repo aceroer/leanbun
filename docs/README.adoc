@@ -30,7 +30,7 @@
 |在代码移动或格式变化之前冻结的架构决定。
 
 |xref:milestones/README.adoc[`milestones/`]
-|M0--M48 的实施与验收证据；M49A 当前只冻结设计契约。它们不是 README 的当前使用说明。
+|M0--M49 的实施与验收证据，包括 M49 registry reader 与显式本地项目 intake。它们不是 README 的当前使用说明。
 
 |xref:development/README.adoc[`development/`]
 |隔离环境、fixture 和仓库守卫的开发约束。
