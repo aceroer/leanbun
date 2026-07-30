@@ -1,0 +1,105 @@
+= LeanBun Managed Library Roadmap M49--M50
+:toc: left
+:sectnums:
+
+== Purpose
+
+M49 turns the existing fixture-scoped single-project controller into an
+explicit, enumerable managed-library registry. M50 adds the everyday build/run
+front door only after a project is registered and verified `healthy`.
+
+The governing contract is
+xref:../decisions/MANAGED_LIBRARY_INTAKE_REGISTRY_CONTRACT_M49A.adoc[Managed Library Intake and Registry Contract M49A].
+
+== M49A — Contract freeze
+
+Status: *complete*.
+
+Deliverables:
+
+* canonical local-directory input boundary;
+* per-project records as the only registry truth, with no aggregate writer;
+* exhaustive status vocabulary and classification precedence;
+* `manage add/list/status` command and JSON-output contract;
+* explicit preservation of the Lean/Lake execution boundary.
+
+No new command or external mutation authority is delivered by M49A.
+
+== M49B — Strict registry reader
+
+Status: *pending*.
+
+Deliverables:
+
+* a bounded, stable registry enumerator in `leanbun-managed`;
+* retained managed-record V1 compatibility;
+* deterministic `ManagedLibraryStatusV1` classification;
+* fixture-scoped `manage list` and `manage status`, including strict JSON;
+* corrupt, symlink, filename mismatch, missing path, drift, pending, and mixed
+  healthy/unhealthy enumeration tests.
+
+Exit gate:
+
+* list/status execute no Lake command, network request, repair, or write;
+* one invalid entry is visible and cannot hide valid entries;
+* an unsafe authority-directory failure cannot be reported as an empty list;
+* all tests use repository-owned fixture copies and private development state.
+
+== M49C — Explicit fixture intake
+
+Status: *pending*.
+
+Deliverables:
+
+* `manage add` parser and exact confirmation token;
+* double stable snapshot around confirmation and lock acquisition;
+* pending registration, generation publication, atomic activation, and reread;
+* duplicate-add, retarget, moved-path, crash, and concurrent-add rejection;
+* process-restart reconstruction followed by list/status verification.
+
+Exit gate:
+
+* only a registered copy of `test/fixtures/lake-managed-dependency` is accepted;
+* intake creates no source change or project `.lake`;
+* failed initial intake is recoverable and never appears `healthy`;
+* successful intake appears exactly once with the expected ProjectId and
+  generation.
+
+== M49D — User-selected local-project authorization
+
+Status: *pending*.
+
+Deliverables:
+
+* explicit local path authorization outside repository fixture roots;
+* provider/toolchain and supported dependency preflight;
+* production state-root selection and permissions review;
+* migration/replay evidence for retained V1 registrations;
+* operator guidance for missing, drifted, unsupported, and recovery states.
+
+Exit gate:
+
+* a deliberately selected small local test project passes intake, restart,
+  status, update/recovery, rollback, and source-integrity checks;
+* unrelated projects remain unobserved and unmanaged;
+* URLs, public registry discovery, silent current-directory adoption, rebind,
+  retarget, and remove remain closed unless separately authorized.
+
+== M50 — Managed build and run front door
+
+Status: *pending after M49*.
+
+Planned commands:
+
+[source,shell]
+----
+leanbun build <project-path-or-project-id>
+leanbun run <project-path-or-project-id> [-- <program-arguments>...]
+----
+
+Both commands must resolve the registry entry, require `healthy`, reverify the
+active generation and final paths, and only then supervise Lake. Direct `lake`
+commands remain outside LeanBun and are never claimed to be intercepted.
+
+M50 cannot begin by weakening M49 status checks or accepting an unregistered
+path as a convenience fallback.

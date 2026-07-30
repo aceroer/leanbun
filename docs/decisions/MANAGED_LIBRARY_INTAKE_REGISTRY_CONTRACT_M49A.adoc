@@ -1,0 +1,195 @@
+= LeanBun Managed Library Intake and Registry Contract M49A
+:toc: left
+:sectnums:
+
+== Decision status
+
+This contract is accepted before implementation. M49A fixes the authority model,
+status vocabulary, and public CLI shape for user-selected Lean libraries. It does
+not enable external-project mutation, add a registry writer, or make ordinary
+`lake` commands enter LeanBun.
+
+The existing M39--M48 commands remain restricted to registered repository
+fixtures until later M49 phases satisfy this contract.
+
+== Scope and terminology
+
+A _candidate_ is a user-supplied local directory that may contain a Lean/Lake
+project. A _managed library_ is a candidate for which LeanBun has atomically
+published an active registration and generation. Merely inspecting a path does
+not make it managed.
+
+M49 accepts canonical local directories only. Git URLs, Reservoir coordinates,
+archive URLs, registry search, and implicit current-directory adoption are not
+M49 intake forms. A path alias resolves to one canonical project path and one
+`ProjectId`; moving that directory later does not silently transfer authority.
+
+== Authority and storage
+
+The durable registry lives in a private LeanBun authority root outside every
+managed project. Development and acceptance continue to use
+`.leanbun-dev-rust/managed-projects`; an installed release must resolve a
+platform-appropriate user state root separately from Bun's purgeable download
+cache.
+
+The authoritative set is the set of canonical per-project records:
+
+[source,text]
+----
+managed-projects/
+  registry/
+    <project-id>.record
+  generation-state/
+  project-control/
+----
+
+There is no independently writable aggregate `index.json`. `manage list` derives
+its view from the per-project records so an interrupted second index update
+cannot add, hide, or resurrect a project.
+
+Registry enumeration must:
+
+* use bounded stable reads and reject symlinks and non-regular entries;
+* require a lowercase SHA-256 `ProjectId` filename to match the decoded record;
+* bind the record's canonical project path back to the same `ProjectId`;
+* retain the M39 managed-record V1 reader;
+* sort valid results by UTF-8 bytes of `ProjectId`;
+* surface an invalid entry without suppressing other safely decoded entries;
+* report abandoned transaction temporary files, but never activate or delete
+  them during a read-only command.
+
+The registry directory is `0700`; mutable active records are `0600`. Immutable
+history and audit records remain `0400`. Authoritative records must never be
+stored only in a Bun cache that a normal cache-clean operation may remove.
+
+== Intake transaction
+
+The public intake command is:
+
+[source,shell]
+----
+leanbun manage add <project-path> \
+  --target=<target> \
+  --explicit-managed-project
+----
+
+An installed binary resolves its provider and authority root from its configured
+runtime context. The repository development adapter may supply an explicit
+source repository and development state root, but those values are not part of
+project identity or the public status schema.
+
+`manage add` follows this order:
+
+. canonicalize the candidate and reject authority-root containment;
+. take two stable, filesystem-only snapshots of config, toolchain, manifest,
+  dependency declarations, and source inputs;
+. construct and print the exact target, provider, dependency, path-provenance,
+  and mutation plan;
+. require the exact confirmation token and revalidate the candidate snapshot;
+. acquire the exclusive Bun/LeanBun registry lock;
+. publish a pending registration before generation work;
+. resolve identities, publish verified store objects, and construct exactly one
+  complete generation;
+. atomically activate the generation and then the managed registration;
+. reread both authorities before reporting success.
+
+The command does not execute `lakefile.lean`, `lake env`, or `lake query` during
+intake. A `lakefile.lean` candidate therefore requires an explicit target.
+Safely parsed `lakefile.toml` targets may be proposed, but still require explicit
+confirmation. Intake writes no project source and creates no project `.lake`.
+
+Re-adding an already managed path, changing its target, or transferring a record
+to a moved path is rejected. Future `retarget`, `rebind`, and `remove` operations
+require separate contracts; they are not overloaded onto `manage add`.
+
+== Status model
+
+Every listed registration has exactly one status. Classification uses this
+precedence so a weaker label cannot hide a stronger failure:
+
+. `invalid-record`: a registry entry is unreadable, noncanonical, mismatched,
+  unbounded, linked, or otherwise untrusted;
+. `missing`: the valid record's canonical project directory no longer exists;
+. `pending-recovery`: a valid record names an unfinished intake or update
+  transaction;
+. `unsupported`: the record is readable but the current binary cannot reconstruct
+  its schema, provider, toolchain, or dependency capability;
+. `drifted`: the project exists but stable input identity, active generation, or
+  final-path evidence differs from the registered authority;
+. `healthy`: record, project identity, stable inputs, active generation, and
+  final-path evidence all agree.
+
+`unmanaged` is returned only by a direct status query for a canonical path with
+no record. It never appears as an item in `manage list`.
+
+`healthy` is a verified state, not a synonym for “record exists.” Status
+classification is read-only, offline, and filesystem-only. It must not load Lake
+configuration, fetch metadata, repair state, publish records, or update a
+last-checked timestamp.
+
+== CLI and machine output
+
+The remaining public commands are:
+
+[source,shell]
+----
+leanbun manage list
+leanbun manage list --json
+leanbun manage status <project-path-or-project-id>
+leanbun manage status <project-path-or-project-id> --json
+----
+
+Human output is a table. JSON is the stable automation surface. Each project
+object contains exactly these semantic fields, with unavailable identities
+represented by `null` rather than invented values:
+
+[source,json]
+----
+{
+  "schemaVersion": 1,
+  "projectId": "<sha256-or-null>",
+  "projectPath": "<canonical-path-or-null>",
+  "target": "<target-or-null>",
+  "toolchain": "<toolchain-or-null>",
+  "status": "healthy",
+  "activeGenerationSha256": "<sha256-or-null>",
+  "packageCount": 0,
+  "pendingTransaction": null,
+  "diagnostics": []
+}
+----
+
+`manage list --json` wraps the sorted objects in a schema-versioned `projects`
+array. Diagnostics use stable codes and bounded messages. JSON goes to stdout;
+operational diagnostics go to stderr. No credential, environment dump, provider
+secret, or source-file content is emitted.
+
+Exit status is `0` only when the command completes and every selected managed
+project is `healthy`. A completed query containing `unmanaged` or any attention
+state returns `2` after emitting its safe result. Usage errors return `64`;
+failure to enumerate the authority safely returns `1` and must not be presented
+as an empty registry.
+
+The legacy `managed-status REPO PROJECT` command remains a fixture-only
+compatibility surface. It is not the implementation of this contract and does
+not imply that `manage add`, `manage list`, or `manage status` exists yet.
+
+== Bun and Lean authority boundary
+
+Bun supplies the command runtime, cross-process locking, concurrent fetch and
+deduplication, cache/store publication, and atomic transaction machinery.
+LeanBun translates Lean/Lake dependency requests into exact commits, content
+identities, provenance decisions, and one final path per package.
+
+Lean dependencies are not encoded as npm semantic versions and the managed
+registry is not projected into `bun.lock`. Lake remains the build-graph and
+target authority after LeanBun has activated a complete generation; Lean remains
+the compiler and kernel authority.
+
+== M49A exit gate
+
+M49A is complete when this decision and the M49--M50 roadmap are linked from the
+documentation indexes and repository document checks pass. Completion freezes
+intent only. The next phase must first implement a read-only registry reader plus
+fixture-scoped `manage list/status`; it must not open external mutation as a side
+effect.
