@@ -19,6 +19,13 @@ if git grep -n -F -e "$USER_ROOT" -e "$VOLUME_ROOT" -- .; then
   echo "public source contains a personal absolute path" >&2
   exit 1
 fi
+UNAPPROVED_HISTORY_EMAILS=$(git log HEAD --format='%ae%n%ce' | sort -u | \
+  grep -Ev '^(278689273\+aceroer@users\.noreply\.github\.com|leanbun-contributors@users\.noreply\.github\.com)$' || true)
+if [ -n "$UNAPPROVED_HISTORY_EMAILS" ]; then
+  echo "public branch history contains an unapproved author or committer email" >&2
+  echo "$UNAPPROVED_HISTORY_EMAILS" >&2
+  exit 1
+fi
 if git ls-files --error-unmatch config/leanbun-local-provider.json >/dev/null 2>&1; then
   echo "local provider configuration is tracked" >&2
   exit 1
@@ -43,7 +50,13 @@ if grep -R -n -F -e "$USER_ROOT" -e "$VOLUME_ROOT" \
   echo "Bun fork patch series contains a personal absolute path" >&2
   exit 1
 fi
+if grep -R -h '^From:' \
+  distribution/bun-fork-patches distribution/bun-fork-m49-patches | \
+  grep -Ev '^From: LeanBun contributors <noreply@invalid>$'; then
+  echo "Bun fork patch series contains an unapproved author identity" >&2
+  exit 1
+fi
 
 ./scripts/check-crate-layering
 ./scripts/check-docs
-echo "public-source=passed protected-m42-disclosure=redacted-and-bound m48-patch-count=$M48_PATCH_COUNT m49-patch-count=$M49_PATCH_COUNT"
+echo "public-source=passed history-identities=noreply-only protected-m42-disclosure=redacted-and-bound m48-patch-count=$M48_PATCH_COUNT m49-patch-count=$M49_PATCH_COUNT"
