@@ -61,6 +61,14 @@ APFS clone 初始共享物理数据块，但目录、inode 和后续写入彼此
 `./scripts/dev test` 同时运行 TypeScript unit tests 和 `test/fixtures/` 下的真实 Lean/Lake integration
 projects；构建发生在 `.leanbun-dev/tmp` 的临时副本中。
 
+所有 `dev test/check` Bun 进程都进入独立进程组，并由独立于 Bun runtime 的 watchdog 监督。默认硬超时
+为 600 秒；超时或监督父进程消失时，watchdog 对整个进程组执行 `SIGTERM`，等待有限 grace period，
+再以 `SIGKILL` 回收仍存活的进程。诊断只记录 PID、PPID、process group、CPU、内存、运行时长和程序名，
+不写入完整命令参数或本机路径。可用 `LEANBUN_TEST_TIMEOUT_SECONDS` 在 1--7200 秒之间调整超时，
+用 `LEANBUN_TEST_TERMINATION_GRACE_SECONDS` 在 0--60 秒之间调整 grace period。
+`./scripts/check-test-supervisor` 使用故意忽略 `SIGTERM` 的登记 fixture，验证 timeout、升级终止和后代
+进程回收；`./scripts/dev check` 会自动执行该回归。
+
 `./scripts/rust-dev check` 只编译 Cargo 的 10 个默认主线成员；
 `./scripts/dev historical-check` 显式编译并测试五个保留历史成员。clean clone 若只验证 Rust 源码，可在
 `rust/` 直接运行 `cargo test`，无需本地 provider 配置、生产凭据、签名或 notarization 身份。

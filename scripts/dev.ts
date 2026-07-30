@@ -4,9 +4,18 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 const repository = resolve(import.meta.dir, "..");
 const developmentRoot = join(repository, ".leanbun-dev");
 const sandboxProfile = join(repository, "config/leanbun-dev.sb");
+const processWatchdog = join(repository, "scripts/process-watchdog");
 const localProviderConfig =
   process.env.LEANBUN_LOCAL_PROVIDER_CONFIG ??
   join(repository, "config/leanbun-local-provider.json");
+const cargoExecutable = (() => {
+  const configured = process.env.CARGO;
+  if (configured !== undefined) {
+    if (!isAbsolute(configured)) throw new Error("CARGO must be an absolute executable path");
+    return configured;
+  }
+  return Bun.which("cargo");
+})();
 
 type LocalProviderConfig = {
   bun: string;
@@ -167,7 +176,7 @@ async function writeJson(path: string, value: unknown): Promise<void> {
 
 function isolatedEnvironment(): Record<string, string> {
   const systemPath = "/usr/bin:/bin:/usr/sbin:/sbin";
-  return {
+  const environment: Record<string, string> = {
     PATH: `${dirname(development.bun)}:${join(development.elanHome, "bin")}:${systemPath}`,
     ELAN_HOME: development.elanHome,
     MATHLIB_CACHE_DIR: development.downloadCache,
@@ -192,6 +201,8 @@ function isolatedEnvironment(): Record<string, string> {
     LEANBUN_PROVIDER_PACKAGE_ROOT: join(development.packageSet, "packages"),
     LEANBUN_PROVIDER_CACHE_ROOT: development.downloadCache,
   };
+  if (cargoExecutable !== null) environment.CARGO = cargoExecutable;
+  return environment;
 }
 
 async function setup(): Promise<void> {
@@ -346,7 +357,14 @@ async function spawnDevelopmentTool(tool: "bun" | "lean" | "lake", args: string[
   const executable =
     tool === "bun" ? development.bun : join(development.elanHome, `bin/${tool}`);
   const commandArgs = tool === "bun" ? ["--no-install", "--no-env-file", ...args] : args;
-  const process = Bun.spawn({
+  const isTest = tool === "bun" && args[0] === "test";
+  const timeoutSeconds = isTest
+    ? boundedSeconds("LEANBUN_TEST_TIMEOUT_SECONDS", 600, 1, 7_200)
+    : undefined;
+  const terminationGraceSeconds = isTest
+    ? boundedSeconds("LEANBUN_TEST_TERMINATION_GRACE_SECONDS", 5, 0, 60)
+    : undefined;
+  const child = Bun.spawn({
     cmd: [
       "/usr/bin/sandbox-exec",
       "-D",
@@ -361,8 +379,63 @@ async function spawnDevelopmentTool(tool: "bun" | "lean" | "lake", args: string[
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
+    detached: isTest,
   });
-  return await process.exited;
+  if (!isTest || timeoutSeconds === undefined || terminationGraceSeconds === undefined) {
+    return await child.exited;
+  }
+
+  const watchdog = Bun.spawn({
+    cmd: [
+      "/bin/sh",
+      processWatchdog,
+      String(process.pid),
+      String(child.pid),
+      String(timeoutSeconds),
+      String(terminationGraceSeconds),
+      args.includes("--rerun-each") ? "bun-check" : "bun-test",
+    ],
+    cwd: repository,
+    env: {
+      PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+      LC_ALL: "C.UTF-8",
+      LANG: "C.UTF-8",
+    },
+    stdin: null,
+    stdout: "ignore",
+    stderr: "inherit",
+    detached: true,
+  });
+  const exitCode = await child.exited;
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch (error) {
+    const code =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : undefined;
+    if (code !== "ESRCH") throw error;
+  }
+  await watchdog.exited;
+  return exitCode;
+}
+
+function boundedSeconds(
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  if (!/^(0|[1-9][0-9]*)$/.test(raw)) {
+    throw new Error(`${name} must be an integer number of seconds`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be between ${minimum} and ${maximum} seconds`);
+  }
+  return value;
 }
 
 function help(): void {

@@ -145,7 +145,11 @@ cp config/leanbun-local-provider.example.json \
 ----
 
 `./scripts/dev check` runs Bun/Lean tests, documentation link checks, Rust fmt,
-Clippy, and default Rust tests inside the repository-isolated environment. See
+Clippy, and default Rust tests inside the repository-isolated environment. Bun
+tests run in a dedicated process group under an external watchdog: timeout or
+supervisor loss triggers `SIGTERM`, a bounded grace period, and then `SIGKILL`
+for any surviving descendants. The default timeout is 600 seconds and can be
+bounded explicitly with `LEANBUN_TEST_TIMEOUT_SECONDS`. See
 xref:docs/development/DEVELOPMENT_ENVIRONMENT.adoc[Development environment] and
 xref:TEST_PROJECT_BOUNDARY.adoc[Test project boundary] for fixture rules.
 
@@ -162,6 +166,7 @@ Do not treat a temporary local Bun fork or development binary as a repository re
 ./scripts/check-docs
 ./scripts/check-crate-layering
 ./scripts/check-public-source
+./scripts/check-test-supervisor
 ./scripts/dev check
 ./scripts/dev historical-check
 ----

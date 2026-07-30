@@ -1,0 +1,88 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 5 ]; then
+  echo "usage: process-watchdog <parent-pid> <process-group-id> <timeout-seconds> <grace-seconds> <label>" >&2
+  exit 64
+fi
+
+parent_pid=$1
+process_group_id=$2
+timeout_seconds=$3
+grace_seconds=$4
+label=$5
+
+case "$parent_pid:$process_group_id:$timeout_seconds:$grace_seconds" in
+  *[!0-9:]* | :* | *::* | *:)
+    echo "process-watchdog requires non-negative integer arguments" >&2
+    exit 64
+    ;;
+esac
+
+if [ "$parent_pid" -le 1 ] || [ "$process_group_id" -le 1 ] || [ "$timeout_seconds" -le 0 ]; then
+  echo "process-watchdog received an unsafe pid or timeout" >&2
+  exit 64
+fi
+case "$label" in
+  "" | *[!a-z0-9-]*)
+    echo "process-watchdog label must use lowercase letters, digits, or hyphens" >&2
+    exit 64
+    ;;
+esac
+
+group_alive() {
+  /bin/kill -0 "-$process_group_id" 2>/dev/null
+}
+
+parent_alive() {
+  /bin/kill -0 "$parent_pid" 2>/dev/null
+}
+
+signal_group() {
+  signal=$1
+  /bin/kill "-$signal" "-$process_group_id" 2>/dev/null || true
+}
+
+report_group() {
+  echo "leanbun-test-supervisor label=$label reason=$1 parent=$parent_pid process-group=$process_group_id" >&2
+  ps -axo pid=,ppid=,pgid=,%cpu=,%mem=,etime=,stat=,ucomm= 2>/dev/null |
+    awk -v group="$process_group_id" '$3 == group { print "leanbun-test-process", $0 }' >&2 || true
+}
+
+elapsed=0
+reason=""
+while group_alive; do
+  if ! parent_alive; then
+    reason="parent-exited"
+    break
+  fi
+  if [ "$elapsed" -ge "$timeout_seconds" ]; then
+    reason="timeout"
+    break
+  fi
+  sleep 1
+  elapsed=$((elapsed + 1))
+done
+
+if [ -z "$reason" ]; then
+  exit 0
+fi
+
+report_group "$reason"
+signal_group TERM
+
+elapsed=0
+while group_alive && [ "$elapsed" -lt "$grace_seconds" ]; do
+  sleep 1
+  elapsed=$((elapsed + 1))
+done
+
+if group_alive; then
+  echo "leanbun-test-supervisor label=$label escalation=SIGKILL process-group=$process_group_id" >&2
+  signal_group KILL
+fi
+
+if [ "$reason" = "timeout" ]; then
+  exit 124
+fi
+exit 125
