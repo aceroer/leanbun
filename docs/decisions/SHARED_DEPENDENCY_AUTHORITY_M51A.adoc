@@ -1,0 +1,133 @@
+= LeanBun Lake Environment and Package Sharing Authority M51A
+:toc: left
+:sectnums:
+
+== Problem
+
+One Lake workspace is one isolated LeanBun environment. The environment owns
+its resolution, lock, generation, update, rollback, final path projection and
+root `.lake/build`. Two environments may nevertheless resolve the same exact
+Mathlib packages. Re-downloading and rebuilding those immutable packages for
+every environment wastes storage and work.
+
+The repository fixtures `mathlib-project` and `mathlib-shared-consumer` fix the
+minimal case. They have different root packages and private build outputs, but
+byte-identical nine-package Mathlib manifests and the same Lean toolchain.
+
+== Governing rule
+
+Isolation is environment-level. Sharing is package-level. Bun owns both the
+private environment lifecycle and the global immutable package authorities;
+Lake still interprets package configuration and builds Lean targets.
+
+No package name, version label, environment-resolution digest or whole-closure
+digest authorizes reuse by itself.
+
+[cols="2,3,3",options="header"]
+|===
+|Layer |Identity |Mutation rule
+
+|Lake environment
+|ProjectId, root inputs, selected lock and active generation
+|Private and atomically switchable. Update and rollback affect only this
+environment.
+
+|Environment resolution
+|Lean toolchain, exact compiler Git hash, Lake version and canonical package
+graph digest
+|`LakeEnvironmentResolutionKeyV1` records the selected dependency set. Two
+environments may have the same value, but equality grants no Store, build or
+execution authority.
+
+|Package source object
+|Canonical repository URL, exact commit, repository subdirectory and normalized
+source-tree digest
+|Globally content addressed and immutable. It contains no writable `.lake`
+output. Equivalent tree bytes may share physical content while their provenance
+records remain distinct.
+
+|Package build object
+|Package source identity, Lean compiler, Lake version, target platform and ABI,
+build policy and facets, environment/tool identities, and the ordered direct
+dependency package-build identities
+|Built privately, verified and atomically published as immutable. Matching
+source commits alone do not authorize compiled-artifact reuse.
+
+|Environment generation and projection
+|ProjectId, transaction, exact lock, package source/build references and final
+path decision
+|Private, auditable and rollbackable. It refers to compatible global objects
+without making them writable.
+
+|Root build output
+|Environment generation plus root source inputs
+|Remains under that environment's `.lake/build`; never shared by M51.
+|===
+
+== Identity contracts
+
+=== Package source identity
+
+For a Git package, `PackageSourceKeyV1` will bind the canonical repository URL,
+the resolved exact commit, the normalized repository subdirectory and the
+normalized source-tree digest. URL aliases cannot silently collapse provenance.
+Different commits remain different source authorities even if a later physical
+content layer deduplicates identical normalized trees.
+
+Reservoir `version` is an input claim, not object identity. Its exact commit
+binding is frozen when accepted and revalidated on later resolution. A changed
+upstream `version` to commit mapping is drift and must fail closed rather than
+rewrite an existing lock.
+
+Path dependencies are not globally shareable in M51. They remain environment
+and snapshot scoped until a separate portable snapshot authority exists.
+
+=== Package build identity
+
+`PackageBuildKeyV1` will bind one `PackageSourceKeyV1`, the complete compatible
+Lean/Lake/platform/build context and the ordered direct dependency
+`PackageBuildKeyV1` values. The recursive dependency binding makes package-level
+reuse exact without publishing one indivisible whole-closure image.
+
+An environment-resolution match is useful comparison evidence only. Build reuse
+still requires equality of the individual package build identity and successful
+artifact attestation.
+
+== Final-path rule
+
+Lake 5.0.0 accepts a JSON package override file through `--packages`; its
+workspace derives `LEAN_PATH` from the selected package roots. Each LeanBun
+generation therefore emits its own final projection from Lake package identities
+to verified immutable source and compatible build objects.
+
+M51 must not share a writable `.lake`, use a mutable cross-project symlink farm,
+or permit a project build to modify published objects. The M50 pre-build path
+comparison remains mandatory. Bun is the final authority when competing path
+provenances exist; Lake receives the already selected projection.
+
+== Transaction, update and lifetime rules
+
+* a writer acquires a lease for one exact package source or build key;
+* concurrent environments read a committed object or wait/fail without creating
+  a second writer;
+* a crash before atomic publication leaves no visible object;
+* a committed object is revalidated from its immutable record and digest;
+* updating environment A publishes or selects new package objects and switches
+  only A's generation; environment B retains its old references;
+* rollback changes only the selected environment generation;
+* active and retained generations publish durable package-object references;
+* automatic deletion remains disabled in M51. Later garbage collection must
+  reconcile every durable reference under an exclusive maintenance gate.
+
+== M51A exit gate
+
+M51A is complete when:
+
+* the second Mathlib fixture builds against the unchanged provider cache;
+* its package array equals the original fixture while its root identity and
+  `.lake/build` remain private;
+* `LakeEnvironmentResolutionKeyV1` ignores root identity differences but changes
+  for toolchain, compiler, Lake or package-graph drift;
+* the package source and package build identity contracts above are fixed for
+  M51B and M51C;
+* no global writer, shared writable `.lake` or production-path change exists.

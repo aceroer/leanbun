@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "version": "0.28.0-m51d-dev",
+  "class": "two-environment-shared-package-lifecycle",
+  "sourceBaseline": {
+    "commit": "d81e0d75b5f27bba62d6414e0f851c14d4bbcc55",
+    "status": "uncommitted M51A-M51D working-tree delivery"
+  },
+  "generationReferences": {
+    "schemaVersion": 1,
+    "implementationSha256": "d0eeb385b4e71f82958ba12f56a2c51dc9c354eb9fae73451fb5f1f36db4944e",
+    "publication": "owner-only-temp-sync-atomic-rename-strict-reread",
+    "binds": [
+      "generation-sha256",
+      "exact-package-source-keys",
+      "recursive-package-build-keys",
+      "artifact-sha256",
+      "first-admitted-cache-outcomes"
+    ],
+    "automaticDeletion": false
+  },
+  "managedStatus": {
+    "schemaVersion": 2,
+    "implementationSha256": "92aefc6734a9118b3b044a39e700f716422bee35f1f6610244b9b6024c2bfc95",
+    "fields": [
+      "activeGenerationSha256",
+      "previousTransaction",
+      "rollbackAvailable",
+      "exactPackageSourceKeys",
+      "activePackageBuildKeys",
+      "sourceReferenceCount",
+      "artifactReferenceCount",
+      "artifactCacheHits",
+      "artifactPublications",
+      "artifactReuses",
+      "automaticDeletion"
+    ]
+  },
+  "twoEnvironmentAcceptance": {
+    "packagesPerEnvironment": 9,
+    "eligibleArtifactsPerEnvironment": 8,
+    "emptyStoreConcurrent": {
+      "environmentAPublications": 4,
+      "environmentAReuses": 4,
+      "environmentBPublications": 4,
+      "environmentBReuses": 4,
+      "physicalObjects": 8,
+      "artifactRecordSetSha256": "a7e34687afbe96fafb873a363645e62a90eb3e938812028c371e0964128ad5a2"
+    },
+    "singleEnvironmentUpdate": "passed-other-environment-unchanged",
+    "offlineArtifactHits": 8,
+    "rollback": "passed-original-generation-reactivated",
+    "retainedReferenceRecords": 3
+  },
+  "defectClosure": {
+    "generationExecutableMode": "preserved-and-regressed",
+    "proofwidgetsDerivedCache": "exact-package-and-path-exclusion-only",
+    "artifactLease": "stage-and-full-verify-outside-short-publication-lease"
+  },
+  "bunAdapter": {
+    "commit": "6595522dda75c371000d1bda9191454172681260",
+    "tree": "463bed7fdd462a2c335b1f8e2440d7efb8bd8f3c",
+    "patch": "distribution/bun-fork-m51-patches/0001-feat-close-shared-package-lifecycle.patch",
+    "patchSha256": "3e831d79488130a39a6b05396997040bba1f8c63ffc0a1d8a1b84baa1a094ecf",
+    "patchReplay": "passed-exact-tree",
+    "binarySha256": "252393a08b29df925190fbfd0b8b2056d0ed04eada886c8aac42b747fd751e07"
+  },
+  "validation": {
+    "repositoryBunTestsPassed": 214,
+    "repositoryRustTestsPassed": 149,
+    "repositoryRustTestsIgnored": 1,
+    "documentationFilesPassed": 146,
+    "documentationCrossReferencesPassed": 440,
+    "adapterTestsPassed": 5,
+    "emptyStoreConcurrentMathlibBuilds": 2,
+    "patchReplay": "passed-exact-tree",
+    "testSupervisor": "passed-descendants-reaped",
+    "clippy": "passed",
+    "rustFmt": "passed",
+    "crateLayering": "passed"
+  },
+  "boundaries": {
+    "m51Complete": true,
+    "lakeWorkspaceIsEnvironment": true,
+    "sharedRootBuild": false,
+    "sharedWritableLake": false,
+    "automaticDeletion": false,
+    "garbageCollection": "not-authorized"
+  }
+}

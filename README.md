@@ -2,7 +2,7 @@
 
 LeanBun is an experimental Rust control layer for Lean/Lake package workflows. It uses Bun's package-management model for locking, deterministic path selection, concurrent fetch, immutable cache publication, transactions, recovery and rollback, while leaving Lean compilation and Lake project interpretation to Lean/Lake.
 
-The current development snapshot is `0.24.0-m50c-dev`, with the complete M50 source-distribution and lifecycle gate closed. In addition to the M49 managed-library registry and explicit intake, it provides generation-bound managed build and non-interactive run front doors for deliberately selected, supported local projects. It is not yet a general-purpose package manager: discovery, URL intake, implicit current-directory adoption, rebind, retarget and removal remain closed.
+The current development snapshot is `0.28.0-m51d-dev`. M51 is closed: one Lake workspace is one isolated environment, while eligible exact Git sources and compatible package-level compiled artifacts are globally deduplicated by content-bound identities. M51D adds durable per-generation references, cache/rollback CLI status, two-environment concurrency, single-environment update and rollback evidence, and keeps every writable `.lake` and root build private. It is not a general-purpose package manager: discovery, URL intake, implicit current-directory adoption, rebind, retarget, removal and automatic garbage collection remain closed.
 
 ## Why LeanBun
 
@@ -25,7 +25,7 @@ Requirements: macOS, Rust 1.96.0, Cargo and Bun 1.3.14. The default public gate 
 cargo build --locked --manifest-path rust/Cargo.toml
 ```
 
-Reconstructing the integrated executable and running deeper fixture acceptance requires separately initialized, revision-locked Bun and Lean/Lake source/toolchain snapshots. See `docs/operator/LEANBUN_SOURCE_INSTALL_M48.adoc`, then apply the M49 patch followed by the M50 patch from their respective `distribution/` directories. Do not point these commands at a personal or production project.
+Reconstructing the integrated executable and running deeper fixture acceptance requires separately initialized, revision-locked Bun and Lean/Lake source/toolchain snapshots. See `docs/operator/LEANBUN_SOURCE_INSTALL_M48.adoc` and `docs/operator/LEANBUN_SOURCE_REPLAY_M51.adoc`, then apply the M49, M50 and M51 patch series in order from their respective `distribution/` directories. Do not point these commands at a personal or production project.
 
 With the paired development binary built, copy the small registered test project and explicitly place that copy under management:
 
@@ -49,6 +49,8 @@ The first path is the explicit repository/configuration argument required by the
 
 `build` accepts only the exact registered path or ProjectId. It requires a stable `healthy` selection, holds the per-project operation lease against update/recovery/rollback, reverifies the same active generation and all final paths, and then runs the existing offline supervised Lake build.
 
+After a successful build, `manage status --json` returns schema version 2 with the active generation, exact package source/build keys, cache hits/publications/reuses and rollback availability. These are durable generation references, not a claim that writable `.lake` trees are shared. Reference records and global objects are retained; automatic deletion is disabled.
+
 `run` accepts the same selectors and requires the recorded target to be exactly one `[[lean_exe]]`. It builds and runs under one operation lease, selects only `.lake/build/bin/<target>`, clears the environment, denies network and project writes, uses null stdin, bounds captured stdout/stderr, and reverifies generation, artifact and executable identities afterward. Program arguments require `--`. This remains a cooperative source-tree development boundary; it does not claim OS-enforced protection from a malicious process running as the same user.
 
 ## Repository map
@@ -60,12 +62,23 @@ The first path is the explicit repository/configuration argument required by the
 - `distribution/bun-fork-patches/`: seven redacted patches that reproduce the paired Bun adapter tree from the pinned upstream commit.
 - `distribution/bun-fork-m49-patches/`: one redacted unified M49 patch applied after the frozen M48 series.
 - `distribution/bun-fork-m50-patches/`: two redacted M50 build/run front-door patches applied after M49.
+- `distribution/bun-fork-m51-patches/`: one redacted M51 shared-package lifecycle patch applied after M50.
 - `docs/decisions/MANAGED_LIBRARY_INTAKE_REGISTRY_CONTRACT_M49A.adoc`: registry and intake authority contract.
 - `docs/milestones/RUST_MANAGED_LIBRARY_REGISTRY_M49B.adoc`: M49B implementation and validation evidence.
 - `docs/milestones/RUST_MANAGED_LIBRARY_INTAKE_M49C_M49D.adoc`: M49C/D intake and lifecycle closure evidence.
 - `docs/milestones/RUST_MANAGED_BUILD_FRONT_DOOR_M50B.adoc`: M50A/B selection, operation-lease and real-build closure evidence.
 - `docs/milestones/RUST_MANAGED_RUN_FRONT_DOOR_M50C.adoc`: M50C executable classification, supervised run and real-run closure evidence.
 - `docs/milestones/RUST_MANAGED_DISTRIBUTION_CLOSURE_M50D.adoc`: clean-clone, patch-replay and update/rollback/build/run lifecycle closure evidence.
+- `docs/decisions/SHARED_DEPENDENCY_AUTHORITY_M51A.adoc`: Lake-environment isolation and package-level sharing authority.
+- `docs/roadmaps/LEANBUN_SHARED_DEPENDENCY_ROADMAP_M51.adoc`: M51A--D environment, source Store, package build Store and lifecycle sequence.
+- `docs/milestones/RUST_SHARED_DEPENDENCY_IDENTITY_M51A.adoc`: two-environment Mathlib baseline and resolution-key evidence.
+- `docs/milestones/RUST_GLOBAL_PACKAGE_SOURCE_STORE_M51B.adoc`: package source identity, global Store, lease and recovery evidence.
+- `docs/milestones/RUST_PACKAGE_ARTIFACT_STORE_M51C.adoc`: recursive package-build identity, immutable artifact Store and private materialization evidence.
+- `docs/milestones/RUST_TWO_ENVIRONMENT_LIFECYCLE_M51D.adoc`: durable references, two-environment lifecycle, defect closure and distribution evidence.
+- `config/leanbun-development-m51a.json`: M51A fixture, provider artifact and validation provenance.
+- `config/leanbun-development-m51b.json`: M51B source-key, Store-layout and regression provenance.
+- `config/leanbun-development-m51c.json`: M51C build-key, artifact Store and regression provenance.
+- `config/leanbun-development-m51d.json`: M51D reference, concurrency, rollback, adapter and boundary provenance.
 - `config/leanbun-development-m50.json`: unified M50 source, paired-patch, binary, lifecycle and clean-clone provenance.
 - `config/leanbun-development-m50c.json`: M50C source, paired-patch, binary and validation provenance.
 - `config/leanbun-development-m50b.json`: M50B source, paired-patch, binary and validation provenance.

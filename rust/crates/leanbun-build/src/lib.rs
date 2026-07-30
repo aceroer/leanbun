@@ -2,6 +2,7 @@
 
 mod acceptance;
 mod model;
+mod package_reuse;
 mod process;
 mod regression;
 mod reuse;
@@ -12,6 +13,11 @@ pub use model::{
     BuildError, BuildErrorKind, BuildImageV1, BuildInputsV1, BuildResultV1, ProgramRunResultV1,
     ProgramTerminationReasonV1, ProjectBuildOutputV1, SupervisedLakeBuildV1,
     SupervisedProgramRunV1, TerminationReasonV1,
+};
+pub use package_reuse::{
+    PackageArtifactObjectV1, PackageArtifactOutcomeV1, PackageArtifactStoreFaultV1,
+    PackageArtifactStoreV1, PackageBuildContextV1, PackageBuildDependencyV1, PackageBuildKeyV1,
+    package_build_keys_v1,
 };
 pub use process::{
     run_supervised_lake_build_v1, run_supervised_program_v1, verify_lake_workspace_paths_v1,

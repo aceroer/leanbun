@@ -1,0 +1,89 @@
+= LeanBun Package-level Compiled Artifact Store M51C
+:toc: left
+:sectnums:
+
+== Status
+
+M51C is complete in the `0.27.0-m51c-dev` working-tree snapshot. Compatible
+exact Git packages may reuse compiled output across Lake environments. Each
+environment still owns its lock, generation, root `.lake/build`, update and
+rollback state, and receives only a private writable materialization.
+
+== Recursive package-build identity
+
+`PackageBuildKeyV1` lives in `leanbun-build` rather than reusing the historical
+environment-wide `BuildImageV1`. It binds:
+
+* one exact `PackageSourceKeyV1`;
+* Lean toolchain and compiler Git hash;
+* Lake version and exact Lake executable digest;
+* platform and platform/ABI digest;
+* normalized build-policy, facet and controlled-environment digests;
+* ordered direct dependency package keys and their `PackageBuildKeyV1` values.
+
+ProjectId, generation identity, root target name, filesystem path and artifact
+bytes are excluded. Artifact bytes are separately attested. Root target names
+do not affect a dependency's default facet policy and therefore cannot prevent
+two otherwise compatible Lake environments from sharing it.
+
+Path packages do not receive a global source key. A Git package above a path
+dependency is also ineligible because its complete recursive dependency build
+identity cannot be global.
+
+== Artifact Store and transaction
+
+The development authority is fixed at
+`.leanbun-dev-rust/store-fixture/m51-package-builds`:
+
+* `objects/<package-build-key>/tree/` is the sealed compiled artifact tree;
+* `objects/<package-build-key>/artifact.meta` binds the key to the independently
+  computed artifact-tree SHA-256;
+* `leases/<package-build-key>.lock` uses owner-only `O_NOFOLLOW` and an exclusive
+  kernel `flock` across Store instances and processes;
+* `slots/<pid>-<counter>/` contains private incomplete publications.
+
+A publisher hashes the candidate, acquires the exact-key lease, copies into a
+private slot, syncs and seals every entry, atomically renames the object, syncs
+the object directory and reverifies the record and complete tree. A same-key
+candidate with different bytes fails closed. An interrupted pre-rename slot is
+not visible as an object; an already published object is always reverified.
+
+== Managed build integration
+
+The managed build front door derives all eligible package keys from the active
+canonical lock. Before Lake starts, an exact hit is copied through a private
+temporary directory and atomically materialized into that environment's own
+package `.lake/build`. After Lake succeeds and the active generation is
+reverified, each eligible package build is attested and published or compared
+with the existing immutable object.
+
+Only the environment-private project and package `.lake` directories remain in
+the Lake sandbox write allowlist. The global source and artifact Store paths are
+never writable build paths. Root project output remains unshared.
+
+M51C does not enable automatic deletion. Durable reference accounting, two
+environment concurrent lifecycle/update/rollback evidence and CLI cache status
+belong to M51D.
+
+== Regression evidence
+
+The repository-owned M51C suite proves:
+
+* changing one source changes that package and its dependant while leaving an
+  unrelated package key stable;
+* changing a compatible build-context input invalidates every affected package;
+* independently opened Store instances and two real operating-system processes
+  serialize the same key and produce one publication plus one reuse;
+* materialization creates a writable environment-private copy while the global
+  object and every descendant remain read-only;
+* interrupted pre-rename publication exposes no object and can be retried;
+* the same key with different artifact bytes is rejected as drift;
+* a symlinked lease path is rejected without modifying its external target;
+* the existing managed fixture still completes adoption, update, recovery,
+  rollback and supervised Lake build after mainline integration.
+
+== Next gate
+
+M51D closes concurrent two-environment lifecycle evidence, offline restart,
+one-environment update and rollback, durable reference accounting without
+automatic deletion, CLI visibility and distribution evidence.

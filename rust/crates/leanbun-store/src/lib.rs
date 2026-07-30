@@ -7,7 +7,10 @@ mod model;
 mod store;
 
 pub use acceptance::{LoopbackUpdateAcceptanceV1, run_loopback_update_acceptance_v1};
-pub use archive::{normalized_directory_tree_sha256_v1, normalized_tar_tree_sha256_v1};
+pub use archive::{
+    normalized_directory_tree_sha256_excluding_exact_files_v1, normalized_directory_tree_sha256_v1,
+    normalized_tar_tree_sha256_v1,
+};
 pub use model::{
     LeanFetchCancellationV1, LeanFetchFaultV1, LeanFetchRequestV1, LeanFetchSourceV1,
     LeanStoreError, LeanStoreErrorKind, LeanStoreLimitsV1, LeanStorePublicationV1,

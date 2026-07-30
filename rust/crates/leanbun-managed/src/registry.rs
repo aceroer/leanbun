@@ -2,9 +2,14 @@ use super::{
     MAX_INPUT_FILE_BYTES, MAX_RECORD_BYTES, ManagedProjectError, ManagedProjectErrorKind,
     ManagedRecordV1, TOOLCHAIN, input_error, parse_record, path_text,
 };
+use crate::references::read_generation_reference_summary_v1;
 use leanbun_core::{ExecutionId, ProjectId, Sha256, Sha256Hasher, project_id};
 use leanbun_lock::LeanBunLockV1;
-use leanbun_store::{LeanStoreLimitsV1, normalized_directory_tree_sha256_v1};
+use leanbun_lock::PackageSourceKeyV1;
+use leanbun_store::{
+    LeanStoreLimitsV1, normalized_directory_tree_sha256_excluding_exact_files_v1,
+    normalized_directory_tree_sha256_v1,
+};
 use std::fs;
 use std::io::Read;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -56,6 +61,15 @@ pub struct ManagedLibraryStatusV1 {
     pub active_generation_sha256: Option<Sha256>,
     pub package_count: Option<usize>,
     pub pending_transaction: Option<ExecutionId>,
+    pub previous_transaction: Option<ExecutionId>,
+    pub rollback_available: bool,
+    pub exact_package_source_keys: Vec<Sha256>,
+    pub active_package_build_keys: Vec<Sha256>,
+    pub source_reference_count: Option<usize>,
+    pub artifact_reference_count: Option<usize>,
+    pub artifact_cache_hits: Option<usize>,
+    pub artifact_publications: Option<usize>,
+    pub artifact_reuses: Option<usize>,
     pub diagnostics: Vec<ManagedLibraryDiagnosticV1>,
 }
 
@@ -81,6 +95,20 @@ impl ManagedLibraryStatusV1 {
                 .map(|value| value.to_string())
                 .as_deref(),
         );
+        let previous = optional_json_string(
+            self.previous_transaction
+                .map(|value| value.to_string())
+                .as_deref(),
+        );
+        let source_keys = json_sha_array(&self.exact_package_source_keys);
+        let build_keys = json_sha_array(&self.active_package_build_keys);
+        let state = json_string(self.state.as_str());
+        let rollback = self.rollback_available;
+        let source_references = optional_json_usize(self.source_reference_count);
+        let artifact_references = optional_json_usize(self.artifact_reference_count);
+        let artifact_hits = optional_json_usize(self.artifact_cache_hits);
+        let artifact_publications = optional_json_usize(self.artifact_publications);
+        let artifact_reuses = optional_json_usize(self.artifact_reuses);
         let diagnostics = self
             .diagnostics
             .iter()
@@ -94,8 +122,7 @@ impl ManagedLibraryStatusV1 {
             .collect::<Vec<_>>()
             .join(",");
         format!(
-            "{{\"schemaVersion\":1,\"projectId\":{project_id},\"projectPath\":{project_path},\"target\":{target},\"toolchain\":{toolchain},\"status\":{},\"activeGenerationSha256\":{generation},\"packageCount\":{package_count},\"pendingTransaction\":{pending},\"diagnostics\":[{diagnostics}]}}",
-            json_string(self.state.as_str())
+            "{{\"schemaVersion\":2,\"projectId\":{project_id},\"projectPath\":{project_path},\"target\":{target},\"toolchain\":{toolchain},\"status\":{state},\"activeGenerationSha256\":{generation},\"packageCount\":{package_count},\"pendingTransaction\":{pending},\"previousTransaction\":{previous},\"rollbackAvailable\":{rollback},\"exactPackageSourceKeys\":{source_keys},\"activePackageBuildKeys\":{build_keys},\"sourceReferenceCount\":{source_references},\"artifactReferenceCount\":{artifact_references},\"artifactCacheHits\":{artifact_hits},\"artifactPublications\":{artifact_publications},\"artifactReuses\":{artifact_reuses},\"automaticDeletion\":false,\"diagnostics\":[{diagnostics}]}}"
         )
     }
 }
@@ -121,7 +148,7 @@ impl ManagedRegistryReportV1 {
             .map(ManagedLibraryStatusV1::to_canonical_json)
             .collect::<Vec<_>>()
             .join(",");
-        format!("{{\"schemaVersion\":1,\"projects\":[{projects}]}}")
+        format!("{{\"schemaVersion\":2,\"projects\":[{projects}]}}")
     }
 }
 
@@ -255,6 +282,15 @@ pub fn managed_library_status_v1(
         active_generation_sha256: None,
         package_count: None,
         pending_transaction: None,
+        previous_transaction: None,
+        rollback_available: false,
+        exact_package_source_keys: Vec::new(),
+        active_package_build_keys: Vec::new(),
+        source_reference_count: None,
+        artifact_reference_count: None,
+        artifact_cache_hits: None,
+        artifact_publications: None,
+        artifact_reuses: None,
         diagnostics: vec![diagnostic(
             "MANAGED_PROJECT_UNMANAGED",
             "project has no managed registry record",
@@ -359,6 +395,41 @@ fn inspect_registry_entry_result(
             status.toolchain = Some(summary.toolchain);
             status.active_generation_sha256 = Some(summary.identity);
             status.package_count = Some(summary.package_count);
+            status.exact_package_source_keys = lock
+                .packages()
+                .iter()
+                .filter_map(PackageSourceKeyV1::from_locked_package)
+                .map(PackageSourceKeyV1::digest)
+                .collect();
+            status.exact_package_source_keys.sort();
+            let project_control = authority
+                .join("project-control")
+                .join(record.project_id.to_string());
+            if let Some(references) =
+                read_generation_reference_summary_v1(&project_control, summary.identity)?
+            {
+                status.active_package_build_keys = references.build_keys;
+                status.active_package_build_keys.sort();
+                status.source_reference_count = Some(references.source_references);
+                status.artifact_reference_count = Some(references.artifact_references);
+                status.artifact_cache_hits = Some(references.artifact_cache_hits);
+                status.artifact_publications = Some(references.artifact_publications);
+                status.artifact_reuses = Some(references.artifact_reuses);
+                let mut recorded_sources = references.source_keys;
+                recorded_sources.sort();
+                if references.source_references != status.exact_package_source_keys.len()
+                    || recorded_sources.iter().any(|source| {
+                        status
+                            .exact_package_source_keys
+                            .binary_search(source)
+                            .is_err()
+                    })
+                {
+                    return Err(input_error(
+                        "active generation source references differ from exact lock",
+                    ));
+                }
+            }
             if lock.lean_toolchain() != TOOLCHAIN
                 || lock.lean_compiler_githash() != super::COMPILER
                 || lock.lake_version() != super::LAKE_VERSION
@@ -552,10 +623,17 @@ fn verify_generation_files(summary: &GenerationSummaryV1) -> Result<(), ManagedP
         {
             return Err(input_error("generation package final path drifted"));
         }
-        let observed = normalized_directory_tree_sha256_v1(
-            &package.final_path,
-            LeanStoreLimitsV1::registered_provider(),
-        )
+        let limits = LeanStoreLimitsV1::registered_provider();
+        let observed = if package.scope == "leanprover-community" && package.name == "proofwidgets"
+        {
+            normalized_directory_tree_sha256_excluding_exact_files_v1(
+                &package.final_path,
+                limits,
+                &["widget/package-lock.json.hash"],
+            )
+        } else {
+            normalized_directory_tree_sha256_v1(&package.final_path, limits)
+        }
         .map_err(|error| input_error(error.to_string()))?;
         if observed != package.source_tree_sha256 {
             return Err(input_error("generation package source tree drifted"));
@@ -827,6 +905,15 @@ fn status_from_record(record: &ManagedRecordV1) -> ManagedLibraryStatusV1 {
         active_generation_sha256: None,
         package_count: None,
         pending_transaction: record.pending_transaction,
+        previous_transaction: record.previous_transaction,
+        rollback_available: record.previous_transaction.is_some(),
+        exact_package_source_keys: Vec::new(),
+        active_package_build_keys: Vec::new(),
+        source_reference_count: None,
+        artifact_reference_count: None,
+        artifact_cache_hits: None,
+        artifact_publications: None,
+        artifact_reuses: None,
         diagnostics: Vec::new(),
     }
 }
@@ -855,6 +942,15 @@ fn invalid_status(filename: Option<&str>, code: &str, message: &str) -> ManagedL
         active_generation_sha256: None,
         package_count: None,
         pending_transaction: None,
+        previous_transaction: None,
+        rollback_available: false,
+        exact_package_source_keys: Vec::new(),
+        active_package_build_keys: Vec::new(),
+        source_reference_count: None,
+        artifact_reference_count: None,
+        artifact_cache_hits: None,
+        artifact_publications: None,
+        artifact_reuses: None,
         diagnostics: vec![diagnostic(code, message)],
     }
 }
@@ -1040,6 +1136,21 @@ fn status_sort_key(status: &ManagedLibraryStatusV1) -> (u8, String) {
 
 fn optional_json_string(value: Option<&str>) -> String {
     value.map_or_else(|| "null".to_owned(), json_string)
+}
+
+fn optional_json_usize(value: Option<usize>) -> String {
+    value.map_or_else(|| "null".to_owned(), |value| value.to_string())
+}
+
+fn json_sha_array(values: &[Sha256]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(|value| json_string(&value.to_string()))
+            .collect::<Vec<_>>()
+            .join(",")
+    )
 }
 
 fn json_string(value: &str) -> String {

@@ -1,0 +1,40 @@
+= LeanBun M51 Incremental Source Replay
+:toc: left
+:sectnums:
+
+== Scope
+
+This note extends the source-only M48 reconstruction through M49, M50 and M51.
+It does not install a production binary or authorize an unmanaged project.
+
+== Patch order
+
+Start from the exact M48 tree documented in
+xref:LEANBUN_SOURCE_INSTALL_M48.adoc[M48 source installation], then apply every
+patch in lexical order within each directory, and apply the directories in this
+order:
+
+. `distribution/bun-fork-m49-patches/`
+. `distribution/bun-fork-m50-patches/`
+. `distribution/bun-fork-m51-patches/`
+
+The M51 series contains exactly one patch. Applying it to the frozen M50 commit
+`951e4966` must produce tree
+`463bed7fdd462a2c335b1f8e2440d7efb8bd8f3c`. The commit SHA may differ because
+`git am` records the local committer identity and time; the tree is the
+reproducibility authority.
+
+== Verification
+
+Run the public repository gate before reconstruction:
+
+[source,sh]
+----
+./scripts/check-public-source
+----
+
+After applying the incremental patch, build the adapter from the Bun checkout
+with Cargo offline and compare its `version`/`export-evidence` fields with
+`config/leanbun-development-m51d.json`. A local binary hash is supporting
+evidence only; the source tree, lock file, compiler/toolchain identity and
+repository tests remain the reconstruction inputs.

@@ -9,5 +9,6 @@
 * xref:MANAGED_LIBRARY_INTAKE_REGISTRY_CONTRACT_M49A.adoc[Managed library intake and registry M49A]
 * xref:MANAGED_EXECUTION_FRONT_DOOR_M50A.adoc[Managed execution front door M50A]
 * xref:MANAGED_RUN_FRONT_DOOR_M50C.adoc[Managed run front door M50C]
+* xref:SHARED_DEPENDENCY_AUTHORITY_M51A.adoc[Lake environment and package sharing authority M51A]
 
 这些决定在相应代码移动或行为实现之前固定，后续 milestone 文档负责证明实现满足决定。

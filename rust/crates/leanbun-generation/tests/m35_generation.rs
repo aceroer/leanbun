@@ -22,6 +22,7 @@ use leanbun_store::{
     normalized_directory_tree_sha256_v1,
 };
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -102,6 +103,11 @@ impl Fixture {
         .unwrap_or_else(|error| panic!("source file failed: {error}"));
         fs::write(source.join("lakefile.toml"), b"name = \"fixture\"\n")
             .unwrap_or_else(|error| panic!("lakefile failed: {error}"));
+        let executable = source.join("tool.sh");
+        fs::write(&executable, b"#!/bin/sh\nexit 0\n")
+            .unwrap_or_else(|error| panic!("executable source failed: {error}"));
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755))
+            .unwrap_or_else(|error| panic!("executable mode failed: {error}"));
 
         let tree = normalized_directory_tree_sha256_v1(&source, LeanStoreLimitsV1::default())
             .unwrap_or_else(|error| panic!("source tree failed: {error}"));
@@ -304,6 +310,14 @@ fn generation_publishes_atomically_and_retains_previous_generations() {
             .generation_root()
             .join("packages/fixture/Fixture/Main.lean")
             .is_file()
+    );
+    assert_ne!(
+        fs::metadata(outcome.generation_root().join("packages/fixture/tool.sh"))
+            .unwrap_or_else(|error| panic!("generated executable metadata failed: {error}"))
+            .permissions()
+            .mode()
+            & 0o111,
+        0
     );
 
     let second = fixture.generation("20000000-0000-4000-8000-000000000002");

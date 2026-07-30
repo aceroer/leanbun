@@ -315,6 +315,8 @@ impl LeanBunGenerationV1 {
                 || graph_candidate.selected_source_identity() != locked.selected_source_identity()
                 || locked_dependencies != graph_dependencies
                 || object.candidate_identity() != resolved.candidate_identity()
+                || object.package_source_key()
+                    != leanbun_lock::PackageSourceKeyV1::from_locked_package(locked)
             {
                 return Err(incompatible(
                     "M31 lock, M33 graph and M34 object package facts differ",

@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "version": "0.27.0-m51c-dev",
+  "class": "recursive-package-build-artifact-store",
+  "sourceBaseline": {
+    "commit": "d81e0d75b5f27bba62d6414e0f851c14d4bbcc55",
+    "status": "uncommitted M51A-M51C working-tree delivery"
+  },
+  "packageBuildKey": {
+    "schemaVersion": 1,
+    "domain": "leanbun-package-build-v1",
+    "implementationSha256": "83c8484520f4f230b88d7a5781a39f580d85673b488b6395d71840d997430f07",
+    "binds": [
+      "package-source-key",
+      "lean-toolchain",
+      "compiler-githash",
+      "lake-version-and-executable",
+      "platform-and-abi",
+      "build-policy",
+      "facets",
+      "controlled-environment",
+      "ordered-direct-dependency-package-build-keys"
+    ],
+    "excludes": [
+      "project-id",
+      "environment-generation",
+      "root-target-name",
+      "filesystem-path",
+      "artifact-bytes"
+    ],
+    "pathSnapshotEligibility": "ineligible-and-propagated-to-dependants"
+  },
+  "globalArtifactStore": {
+    "root": ".leanbun-dev-rust/store-fixture/m51-package-builds",
+    "physicalObjects": "objects/<package-build-key>",
+    "artifactRecord": "objects/<package-build-key>/artifact.meta",
+    "writerLeases": "leases/<package-build-key>.lock",
+    "transactionSlots": "slots/<pid>-<counter>",
+    "publication": "private-stage-hash-sync-seal-atomic-rename-reverify",
+    "materialization": "private-stage-hash-atomic-rename-writable-environment-copy",
+    "lease": "nofollow-owner-only-nonblocking-exclusive-flock",
+    "automaticDeletion": "disabled"
+  },
+  "managedIntegration": {
+    "implementationSha256": "785d850bcc99924e273dd9422f60a5d9537866add39ff3f063e72aba703d6b19",
+    "preBuild": "derive-active-lock-package-keys-and-materialize-exact-hits",
+    "postBuild": "reverify-generation-attest-and-publish-eligible-package-artifacts",
+    "globalStoreWriteAllowlist": "excluded",
+    "environmentPackageLakeCache": "private-writable",
+    "rootBuildOutput": "private-unshared"
+  },
+  "regression": {
+    "sourceSha256": "55871150e49e95aa5ded2696326403393b97c7339292f6331867cb4665c24840",
+    "testsPassed": 7,
+    "recursivePartialInvalidation": "passed",
+    "environmentRootExclusion": "passed",
+    "pathIneligibilityPropagation": "passed",
+    "independentStoreInstances": "passed",
+    "crossProcessSinglePublication": "passed",
+    "privateMaterialization": "passed",
+    "preRenameFailureRecovery": "passed",
+    "artifactDrift": "rejected",
+    "symlinkLeaseRedirect": "rejected"
+  },
+  "validation": {
+    "repositoryBunTestsPassed": 214,
+    "repositoryRustTestsPassed": 145,
+    "repositoryRustTestsIgnored": 1,
+    "documentationFilesPassed": 144,
+    "documentationCrossReferencesPassed": 435,
+    "managedLakeIntegrationTestsPassed": 3,
+    "testSupervisor": "passed-descendants-reaped",
+    "clippy": "passed",
+    "rustFmt": "passed",
+    "crateLayering": "passed"
+  },
+  "boundaries": {
+    "m51cComplete": true,
+    "globalPackageSourceStore": "implemented-development-authority",
+    "globalPackageArtifactStore": "implemented-development-authority",
+    "sharedWritableLakeCache": "forbidden",
+    "durableReferenceAccounting": "deferred-to-m51d",
+    "automaticDeletion": "disabled",
+    "nextMilestone": "M51D two-environment lifecycle and distribution closure"
+  }
+}

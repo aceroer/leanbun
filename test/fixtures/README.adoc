@@ -11,6 +11,8 @@ Bun、Elan、Lean、Lake 与 Mathlib package override 构建副本。
 * `lake-managed-dependency/`：一个 root、一个无传递依赖的 vendored Lake package 与锁定 manifest；验证 M40 store、Bun final path、derived `.lake` cache 和实际编译，并在 M41 Phase A 充当唯一获准的外部采用 dry-run 模拟器；
 * `mathlib-project/`：锁定 Lean/Mathlib `v4.32.0` 正式九包 manifest；测试开发 override 和一个
   最小 Mathlib import。
+* `mathlib-shared-consumer/`：与 `mathlib-project/` 锁定完全相同的 Mathlib 九包闭包，但使用不同 root
+  package、Lean 模块和定理；只用于验证两个独立项目的共享依赖身份、共享 cache 命中与项目构件隔离。
 * `m42-negative/`：只供 `fixture-regress --fixture=negative-matrix` 使用的五类登记负输入；分别固定 malformed
   manifest、local path escape、registered revision drift、resolver cycle 与 provider closure missing package。
   聚合器只能写独立 negative regression evidence，不得修改正向 regression records/latest。

@@ -36,6 +36,35 @@ pub fn normalized_directory_tree_sha256_v1(
     Ok(plan_directory(root, limits.validate()?)?.digest)
 }
 
+/// Recomputes a normalized directory digest while excluding a finite set of
+/// exact, caller-authorized derived-cache paths.
+///
+/// This is deliberately path-exact: directory exclusions, `.git`, `.lake`,
+/// absolute paths and non-canonical relative paths are rejected.  It exists so
+/// a higher layer can admit a known tool-generated cache file without weakening
+/// source identity for any other package entry.
+pub fn normalized_directory_tree_sha256_excluding_exact_files_v1(
+    root: &Path,
+    limits: LeanStoreLimitsV1,
+    excluded_files: &[&str],
+) -> Result<Sha256, LeanStoreError> {
+    let requested_count = excluded_files.len();
+    let excluded_files = excluded_files
+        .iter()
+        .map(|path| {
+            validate_relative_entry_path(path)?;
+            if path.split('/').any(|part| matches!(part, ".git" | ".lake")) {
+                return Err(boundary("derived-cache exclusion overlaps reserved state"));
+            }
+            Ok((*path).to_owned())
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    if excluded_files.len() != requested_count {
+        return Err(boundary("derived-cache exclusions contain a duplicate"));
+    }
+    Ok(plan_directory_excluding(root, limits.validate()?, &excluded_files)?.digest)
+}
+
 pub(crate) fn parse_tar(
     bytes: &[u8],
     limits: LeanStoreLimitsV1,
@@ -229,6 +258,14 @@ pub(crate) fn plan_directory(
     root: &Path,
     limits: LeanStoreLimitsV1,
 ) -> Result<TreePlan, LeanStoreError> {
+    plan_directory_excluding(root, limits, &BTreeSet::new())
+}
+
+fn plan_directory_excluding(
+    root: &Path,
+    limits: LeanStoreLimitsV1,
+    excluded_files: &BTreeSet<String>,
+) -> Result<TreePlan, LeanStoreError> {
     let metadata = fs::symlink_metadata(root)
         .map_err(|error| boundary(format!("cannot inspect source directory: {error}")))?;
     if !metadata.file_type().is_dir() {
@@ -236,7 +273,14 @@ pub(crate) fn plan_directory(
     }
     let mut entries = BTreeMap::new();
     let mut expanded = 0u64;
-    collect_directory(root, root, limits, &mut expanded, &mut entries)?;
+    collect_directory(
+        root,
+        root,
+        limits,
+        excluded_files,
+        &mut expanded,
+        &mut entries,
+    )?;
     if entries.len() > limits.maximum_entries {
         return Err(limit("normalized directory entry count exceeds limit"));
     }
@@ -254,6 +298,7 @@ fn collect_directory(
     root: &Path,
     directory: &Path,
     limits: LeanStoreLimitsV1,
+    excluded_files: &BTreeSet<String>,
     expanded: &mut u64,
     entries: &mut BTreeMap<String, PlannedTreeEntry>,
 ) -> Result<(), LeanStoreError> {
@@ -275,6 +320,14 @@ fn collect_directory(
             continue;
         }
         validate_relative_entry_path(&relative)?;
+        if excluded_files.contains(&relative) {
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|error| boundary(format!("cannot inspect derived cache: {error}")))?;
+            if !metadata.file_type().is_file() {
+                return Err(boundary("excluded derived cache is not a regular file"));
+            }
+            continue;
+        }
         let metadata = fs::symlink_metadata(&path)
             .map_err(|error| boundary(format!("cannot inspect local source entry: {error}")))?;
         if metadata.file_type().is_symlink() {
@@ -285,7 +338,7 @@ fn collect_directory(
         }
         if metadata.file_type().is_dir() {
             insert_directory(entries, relative)?;
-            collect_directory(root, &path, limits, expanded, entries)?;
+            collect_directory(root, &path, limits, excluded_files, expanded, entries)?;
         } else if metadata.file_type().is_file() {
             let size = metadata.len();
             if size > limits.maximum_file_bytes {

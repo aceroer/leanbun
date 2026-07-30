@@ -1,0 +1,79 @@
+= LeanBun Global Immutable Package Source Store M51B
+:toc: left
+:sectnums:
+
+== Status
+
+M51B is complete in the `0.26.0-m51b-dev` working-tree snapshot. Eligible exact
+Git packages now use one development-global immutable source authority while
+each Lake workspace retains its private lock, generation, update, rollback and
+root build state. Package-level compiled artifacts remain an M51C task.
+
+== Source identity
+
+`PackageSourceKeyV1` lives in `leanbun-lock`. Its V1 digest binds:
+
+* canonical HTTPS repository URL;
+* exact 40-hex Git commit;
+* normalized optional repository subdirectory;
+* normalized source-tree SHA-256.
+
+The package name, ProjectId, Lake environment-resolution key, requested version
+label, generation path and compiler inputs are excluded. Path snapshots do not
+produce a global package source key.
+
+== Store layout and authority
+
+The development authority is fixed at
+`.leanbun-dev-rust/store-fixture/m51-package-sources`:
+
+* `objects/<source-tree-sha256>/` stores one sealed physical normalized tree;
+* `sources/<package-source-key>.meta` stores the immutable URL/commit/subdir/tree
+  provenance record and its physical object digest;
+* `leases/<package-source-key>.lock` serializes writers across Store instances
+  and operating-system processes;
+* `slots/` contains private incomplete transactions and is cleaned after every
+  terminal result.
+
+Lease files are opened with `O_NOFOLLOW`, restricted to owner read/write and
+locked with a nonblocking advisory exclusive lock. Process death releases the
+kernel lock. A waiting operation remains cancellation-aware.
+
+The physical tree key and provenance key are intentionally separate. Different
+commits with identical normalized tree bytes retain two source records but reuse
+one physical object. A source record is never inferred merely because matching
+tree bytes already exist: a new provenance authority is fetched and verified
+before publication.
+
+== Managed integration
+
+The managed mainline routes Git fetch requests to the global source Store.
+Path dependencies continue to use the ProjectId-scoped M40 Store. Generation
+admission verifies that every `VerifiedPackageObjectV1` source key equals the key
+derived from its exact locked package. The private generation's canonical lock
+therefore remains the durable environment reference to global source authority.
+
+No project receives write permission to the global object, source-record or
+lease directories. Generation materialization remains a private copy in M51B.
+
+== Regression evidence
+
+The repository-owned M51B suite proves:
+
+* two different Lake environment graphs with the same exact Git source return
+  one source key, one source record and one physical tree;
+* two independently opened Store instances and two real child processes publish
+  only once under the same lease;
+* a different commit produces a different source authority while identical tree
+  bytes still occupy one physical object;
+* failure immediately before source-record rename leaves no visible authority;
+  reopening the Store recovers by re-fetching, revalidating and publishing the
+  missing record;
+* record drift fails closed;
+* a symlinked lease path is rejected before fetch without modifying its target.
+
+== Next gate
+
+M51C is closed by
+xref:RUST_PACKAGE_ARTIFACT_STORE_M51C.adoc[Package-level compiled artifact Store M51C].
+Source-key equality alone never authorizes compiled artifact reuse.

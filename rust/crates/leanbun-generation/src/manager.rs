@@ -883,6 +883,7 @@ fn materialize_package(package: &GenerationPackageV1) -> Result<(), LeanGenerati
                 if copied != entry.size() {
                     return Err(drift("M34 object file changed while copying"));
                 }
+                set_mode(&destination, entry.mode())?;
             }
         }
     }
@@ -1244,7 +1245,15 @@ fn make_generation_read_only(root: &Path) -> Result<(), LeanGenerationError> {
                 directories.push(path.clone());
                 pending.push(path);
             } else {
-                set_mode(&path, 0o444)?;
+                let metadata = fs::symlink_metadata(&path).map_err(io_error)?;
+                #[cfg(unix)]
+                let executable = {
+                    use std::os::unix::fs::PermissionsExt;
+                    metadata.permissions().mode() & 0o111 != 0
+                };
+                #[cfg(not(unix))]
+                let executable = false;
+                set_mode(&path, if executable { 0o555 } else { 0o444 })?;
             }
         }
     }

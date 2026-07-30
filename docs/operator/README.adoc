@@ -2,6 +2,7 @@
 
 * xref:LEANBUN_OPERATOR_MANUAL_V1.adoc[Operator manual]
 * xref:LEANBUN_SOURCE_INSTALL_M48.adoc[M48 source-only installation]
+* xref:LEANBUN_SOURCE_REPLAY_M51.adoc[M49--M51 incremental source replay]
 
-当前 operator 范围是登记 fixture、开发状态与 source-only M48 重建。任意公网 registry discovery 和
+当前 operator 范围是登记 fixture、开发状态与 source-only M48--M51 重建。任意公网 registry discovery 和
 未登记外部项目 adoption 不在本手册授权范围内。

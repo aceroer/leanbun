@@ -1,0 +1,145 @@
+From 6595522dda75c371000d1bda9191454172681260 Mon Sep 17 00:00:00 2001
+From: LeanBun contributors <noreply@invalid>
+Date: Thu, 30 Jul 2026 17:28:02 +0800
+Subject: [PATCH] feat: close shared package lifecycle
+
+---
+ Cargo.lock          |  1 +
+ src/lean_pm/main.rs | 51 ++++++++++++++++++++++++++++++++++++++++-----
+ 2 files changed, 47 insertions(+), 5 deletions(-)
+
+diff --git a/Cargo.lock b/Cargo.lock
+index d6b832c5..7a19d78d 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3008,6 +3008,7 @@ dependencies = [
+  "leanbun-lake-bridge",
+  "leanbun-lock",
+  "leanbun-resolver",
++ "rustix 1.1.4",
+ ]
+ 
+ [[package]]
+diff --git a/src/lean_pm/main.rs b/src/lean_pm/main.rs
+index 7067cf77..63dc1ce1 100644
+--- a/src/lean_pm/main.rs
++++ b/src/lean_pm/main.rs
+@@ -23,7 +23,7 @@ use std::os::unix::process::CommandExt;
+ use std::path::{Path, PathBuf};
+ use std::process::{Command, ExitCode};
+ 
+-const RELEASE_VERSION: &str = "0.24.0-m50c-dev";
++const RELEASE_VERSION: &str = "0.28.0-m51d-dev";
+ const M42_RELEASE_VERSION: &str = "0.11.0-m42-dev";
+ const M42_BINARY_SHA256: &str = "f6416817e2c893b311245c65f2a54668b0a633e028de1fe31e05701322670359";
+ const BUN_UPSTREAM_COMMIT: &str = "892b1dabc69e2a0a973244f772b84967c73ccad5";
+@@ -33,7 +33,7 @@ const LEAN_COMPILER_COMMIT: &str = "8c9756b28d64dab099da31a4c09229a9e6a2ef35";
+ const LAKE_VERSION: &str = "5.0.0-src+8c9756b";
+ const BUN_LOCK_FILE_SHA256: &str =
+     "d2292d26c8200f23db4fc4fc89237117f0d90a25821fb65b8fe009f0e9134ae4";
+-const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReaders=1,2\nlockReaders=leanbun-lock-v1,reservoir-bindings-v1\nmanagedProjectSchema=1\nmanagedRegistryReader=1\nmanagedIntake=1\nmanagedBuildFrontDoor=1\nmanagedRunFrontDoor=1\ndependencyClosure=registered-git-reservoir-companion-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-reservoir-loopback-v1\n";
++const RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReaders=1,2\nlockReaders=leanbun-lock-v1,reservoir-bindings-v1\nmanagedProjectSchema=1\nmanagedRegistryReader=1\nmanagedStatusSchema=2\nmanagedIntake=1\nmanagedBuildFrontDoor=1\nmanagedRunFrontDoor=1\npackageSourceStore=1\npackageArtifactStore=1\ngenerationPackageReferences=1\nautomaticDeletion=0\ndependencyClosure=registered-git-reservoir-companion-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-reservoir-loopback-v1\n";
+ const M42_RELEASE_CONFIG: &str = "schemaVersion=1\nactiveGenerationReader=1\nmanagedProjectSchema=1\ndependencyClosure=registered-git-v1\nexternalProjectAdoption=fixture-acceptance-v1\nfixtureRegression=lake-basic-managed-dependency-mathlib-negative-concurrent-history-v1\n";
+ 
+ fn main() -> ExitCode {
+@@ -165,7 +165,7 @@ fn manage_list(repository: &Path, json: bool) -> Result<bool, String> {
+     if json {
+         println!("{}", report.to_canonical_json());
+     } else {
+-        println!("PROJECT ID\tSTATUS\tPACKAGES\tTARGET\tPROJECT");
++        println!("PROJECT ID\tSTATUS\tPACKAGES\tSOURCES\tBUILDS\tHITS\tROLLBACK\tTARGET\tPROJECT");
+         for status in &report.projects {
+             print_managed_library_row(status);
+         }
+@@ -179,8 +179,14 @@ fn manage_status(repository: &Path, query: &Path, json: bool) -> Result<bool, St
+     if json {
+         println!("{}", status.to_canonical_json());
+     } else {
+-        println!("PROJECT ID\tSTATUS\tPACKAGES\tTARGET\tPROJECT");
++        println!("PROJECT ID\tSTATUS\tPACKAGES\tSOURCES\tBUILDS\tHITS\tROLLBACK\tTARGET\tPROJECT");
+         print_managed_library_row(&status);
++        for source in &status.exact_package_source_keys {
++            println!("package-source={source}");
++        }
++        for build in &status.active_package_build_keys {
++            println!("package-build={build}");
++        }
+         for diagnostic in &status.diagnostics {
+             println!("diagnostic={}\t{}", diagnostic.code, diagnostic.message);
+         }
+@@ -224,12 +230,26 @@ fn print_managed_library_row(status: &ManagedLibraryStatusV1) {
+         .package_count
+         .map_or_else(|| "-".to_owned(), |value| value.to_string());
+     let target = status.target.as_deref().unwrap_or("-");
++    let sources = status
++        .source_reference_count
++        .map_or_else(|| "-".to_owned(), |value| value.to_string());
++    let builds = status
++        .artifact_reference_count
++        .map_or_else(|| "-".to_owned(), |value| value.to_string());
++    let hits = status
++        .artifact_cache_hits
++        .map_or_else(|| "-".to_owned(), |value| value.to_string());
++    let rollback = if status.rollback_available {
++        "yes"
++    } else {
++        "no"
++    };
+     let project = status
+         .project_root
+         .as_ref()
+         .map_or_else(|| "-".to_owned(), |value| value.display().to_string());
+     println!(
+-        "{project_id}\t{}\t{packages}\t{target}\t{project}",
++        "{project_id}\t{}\t{packages}\t{sources}\t{builds}\t{hits}\t{rollback}\t{target}\t{project}",
+         status.state.as_str()
+     );
+ }
+@@ -245,9 +265,14 @@ fn version() -> Result<(), String> {
+     println!("active-generation-readers=1,2");
+     println!("managed-project-schema=1");
+     println!("managed-registry-reader=1");
++    println!("managed-status-schema=2");
+     println!("managed-intake=1");
+     println!("managed-build-front-door=1");
+     println!("managed-run-front-door=1");
++    println!("package-source-store=1");
++    println!("package-artifact-store=1");
++    println!("generation-package-references=1");
++    println!("automatic-deletion=0");
+     println!("target={}-{}", env::consts::ARCH, env::consts::OS);
+     Ok(())
+ }
+@@ -562,6 +587,17 @@ fn build_project(repository: &Path, project: &Path) -> Result<(), String> {
+     println!("target={}", result.selection.target);
+     println!("generation={}", result.build.generation_sha256);
+     println!("project-artifact={}", result.build.project_artifact_sha256);
++    println!("source-references={}", result.build.source_reference_count);
++    println!(
++        "artifact-references={}",
++        result.build.artifact_reference_count
++    );
++    println!("artifact-cache-hits={}", result.build.artifact_cache_hits);
++    println!(
++        "artifact-publications={}",
++        result.build.artifact_publications
++    );
++    println!("artifact-reuses={}", result.build.artifact_reuses);
+     Ok(())
+ }
+ 
+@@ -1074,9 +1110,14 @@ fn export_evidence(repository: &Path) -> Result<(), String> {
+     println!("activeGenerationReaders=1,2");
+     println!("managedProjectSchema=1");
+     println!("managedRegistryReader=1");
++    println!("managedStatusSchema=2");
+     println!("managedIntake=1");
+     println!("managedBuildFrontDoor=1");
+     println!("managedRunFrontDoor=1");
++    println!("packageSourceStore=1");
++    println!("packageArtifactStore=1");
++    println!("generationPackageReferences=1");
++    println!("automaticDeletion=0");
+     println!("target={}-{}", env::consts::ARCH, env::consts::OS);
+     println!("binarySha256={}", hash_file(&executable)?);
+     println!("repository={}", repository.display());

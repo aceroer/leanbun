@@ -6,5 +6,6 @@
 * xref:LEANBUN_PRODUCTION_ENTRY_ROADMAP_M39_M41.adoc[M39--M41 production-entry roadmap]
 * xref:LEANBUN_VERSION_ROADMAP_M43_M48.adoc[M43--M48 version roadmap]
 * xref:LEANBUN_MANAGED_LIBRARY_ROADMAP_M49_M50.adoc[M49--M50 managed-library roadmap]
+* xref:LEANBUN_SHARED_DEPENDENCY_ROADMAP_M51.adoc[M51 environment-isolation and package-sharing roadmap]
 
 路线图记录阶段顺序和 exit gate；已完成阶段的详细证据位于 `../milestones/`。

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "version": "0.25.0-m51a-dev",
+  "class": "lake-environment-fixture-and-resolution-identity",
+  "sourceBaseline": {
+    "commit": "d81e0d75b5f27bba62d6414e0f851c14d4bbcc55",
+    "status": "uncommitted M51A working-tree delivery"
+  },
+  "toolchain": {
+    "lean": "4.32.0",
+    "compilerCommit": "8c9756b28d64dab099da31a4c09229a9e6a2ef35",
+    "lake": "5.0.0-src+8c9756b",
+    "mathlibCommit": "81a5d257c8e410db227a6665ed08f64fea08e997"
+  },
+  "fixtures": {
+    "first": "mathlib-project",
+    "second": "mathlib-shared-consumer",
+    "rootNamesDiffer": true,
+    "exactPackageCount": 9,
+    "canonicalPackageArraySha256": "2b0385ca613b0b1e91b3bec0791099786d3aef5270a31dac7e78d3d30fc5ad4c",
+    "secondManifestSha256": "21fef7ee3b8c59612acdd411c23a3cd22f82327c41103ebeb71b971b3f395f67",
+    "secondLakefileSha256": "9f2bae5748ae120e05b0d3cea20ba850c6d75a0c5c7b40dd0ac9f89b3e28d32a"
+  },
+  "providerArtifacts": {
+    "primeOleanSha256": "85d3d754aca70ec23592c7c2ccb60324f67e4536c8a0365ef2ec64303f1ec9c6",
+    "gcdOleanSha256": "823dbab0d8c4e79d9bfc8aaa5637d880364bb11374210059fbd1884e94197e6f",
+    "unchangedAcrossBothBuilds": true
+  },
+  "lakeEnvironmentResolutionKey": {
+    "schemaVersion": 1,
+    "domain": "leanbun-lake-environment-resolution-v1",
+    "sourceSha256": "3e74c1ffdbb167919b0e68458063c15d6f636e19c3bedef818f78909e5c9e7e2",
+    "binds": [
+      "lean-toolchain",
+      "lean-compiler-githash",
+      "lake-version",
+      "package-graph-sha256"
+    ],
+    "excludes": [
+      "root-config-sha256",
+      "root-declaration-sha256",
+      "project-id",
+      "transaction-id",
+      "absolute-path"
+    ],
+    "authority": "comparison-only-not-a-shared-object-key"
+  },
+  "nextIdentityContracts": {
+    "packageSourceKeyV1": {
+      "milestone": "M51B",
+      "binds": [
+        "canonical-repository-url",
+        "exact-commit",
+        "normalized-repository-subdirectory",
+        "normalized-source-tree-sha256"
+      ]
+    },
+    "packageBuildKeyV1": {
+      "milestone": "M51C",
+      "binds": [
+        "package-source-key",
+        "lean-compiler-identity",
+        "lake-version",
+        "target-platform-and-abi",
+        "build-policy-and-facets",
+        "environment-and-tool-identities",
+        "ordered-direct-dependency-package-build-keys"
+      ]
+    }
+  },
+  "validation": {
+    "focusedLeanLakeTestsPassed": 3,
+    "focusedLeanLakeAssertionsPassed": 18,
+    "leanbunLockUnitTestsPassed": 8,
+    "reservoirBindingTestsPassed": 4,
+    "repositoryBunTestsPassed": 214,
+    "repositoryRustTestsPassed": 131,
+    "repositoryRustTestsIgnored": 1,
+    "documentationFilesPassed": 142,
+    "documentationCrossReferencesPassed": 429,
+    "leanbunLockClippy": "passed",
+    "rustFmt": "passed"
+  },
+  "boundaries": {
+    "m51aComplete": true,
+    "globalPackageSourceStore": "not-implemented",
+    "packageCompiledArtifactStore": "not-implemented",
+    "sharedWritableLakeCache": "forbidden",
+    "lakeEnvironmentLifecycle": "isolated",
+    "environmentRootBuildOutput": "isolated",
+    "wholeClosureCompiledImage": "not-planned",
+    "automaticDeletion": "disabled",
+    "nextMilestone": "M51B global immutable source Store"
+  }
+}

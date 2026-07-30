@@ -1,5 +1,5 @@
 use leanbun_core::{Sha256, Sha256Hasher};
-use leanbun_lock::PackageKeyV1;
+use leanbun_lock::{PackageKeyV1, PackageSourceKeyV1};
 use leanbun_resolver::{LeanExactSourceV1, LeanPackageCandidateV1, LeanResolutionGraphV1};
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -39,7 +39,9 @@ pub enum LeanStoreErrorKind {
     ExpansionLimit,
     TreeDigestMismatch,
     TreeDrift,
+    SourceRecordDrift,
     StoreObjectConflict,
+    LeaseFailed,
     FileSyncFailed,
     DirectorySyncFailed,
     RenameFailed,
@@ -155,6 +157,7 @@ pub struct LeanFetchRequestV1 {
     source: LeanFetchSourceV1,
     allowed_source_root: PathBuf,
     limits: LeanStoreLimitsV1,
+    package_source_key: Option<PackageSourceKeyV1>,
     identity: Sha256,
 }
 
@@ -193,6 +196,24 @@ impl LeanFetchRequestV1 {
             }
         }
         let allowed_source_root = allowed_source_root.into();
+        let package_source_key = match resolved.candidate().resolved_source() {
+            LeanExactSourceV1::Git {
+                url,
+                exact_revision,
+                subdir,
+            } => Some(
+                PackageSourceKeyV1::from_git(
+                    url,
+                    exact_revision,
+                    subdir.as_deref(),
+                    resolved.candidate().source_tree_sha256(),
+                )
+                .map_err(|error| {
+                    LeanStoreError::new(LeanStoreErrorKind::InvalidField, error.to_string())
+                })?,
+            ),
+            LeanExactSourceV1::Path { .. } => None,
+        };
         let identity = request_identity(
             graph.identity(),
             package,
@@ -208,6 +229,7 @@ impl LeanFetchRequestV1 {
             source,
             allowed_source_root,
             limits,
+            package_source_key,
             identity,
         })
     }
@@ -237,6 +259,10 @@ impl LeanFetchRequestV1 {
         self.limits
     }
     #[must_use]
+    pub const fn package_source_key(&self) -> Option<PackageSourceKeyV1> {
+        self.package_source_key
+    }
+    #[must_use]
     pub const fn identity(&self) -> Sha256 {
         self.identity
     }
@@ -264,6 +290,7 @@ pub enum LeanFetchFaultV1 {
     FileSync,
     DirectorySync,
     Rename,
+    SourceRecordRename,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -335,6 +362,7 @@ impl NormalizedTreeEntryV1 {
 pub struct VerifiedPackageObjectV1 {
     package: PackageKeyV1,
     candidate_identity: Sha256,
+    package_source_key: Option<PackageSourceKeyV1>,
     source_tree_sha256: Sha256,
     store_object_sha256: Sha256,
     object_path: PathBuf,
@@ -352,6 +380,10 @@ impl VerifiedPackageObjectV1 {
     #[must_use]
     pub const fn candidate_identity(&self) -> Sha256 {
         self.candidate_identity
+    }
+    #[must_use]
+    pub const fn package_source_key(&self) -> Option<PackageSourceKeyV1> {
+        self.package_source_key
     }
     #[must_use]
     pub const fn source_tree_sha256(&self) -> Sha256 {
@@ -389,6 +421,7 @@ impl VerifiedPackageObjectV1 {
     pub(crate) fn new(
         package: PackageKeyV1,
         candidate_identity: Sha256,
+        package_source_key: Option<PackageSourceKeyV1>,
         source_tree_sha256: Sha256,
         store_object_sha256: Sha256,
         object_path: PathBuf,
@@ -400,6 +433,7 @@ impl VerifiedPackageObjectV1 {
         Self {
             package,
             candidate_identity,
+            package_source_key,
             source_tree_sha256,
             store_object_sha256,
             object_path,

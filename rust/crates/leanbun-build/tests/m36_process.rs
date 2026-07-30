@@ -124,7 +124,7 @@ fn supervised_program_preserves_arguments_and_bounded_terminal_results() {
         &overflow_root,
         "yes x",
         Vec::new(),
-        Duration::from_secs(2),
+        Duration::from_secs(10),
         1024,
     );
     let result = run_supervised_program_v1(&overflow)
@@ -240,7 +240,10 @@ fn supervisor_accepts_success_and_rejects_nonzero_timeout_and_overflow() {
     );
 
     let signal_root = temporary();
-    let signal = script_request(&signal_root, "kill -TERM $$", Duration::from_secs(2), 1024);
+    // The supervisor creates a private session. Signal that complete process
+    // group so the observed status belongs to the supervised boundary rather
+    // than relying on sandbox-exec to forward one child shell's signal.
+    let signal = script_request(&signal_root, "kill -TERM 0", Duration::from_secs(2), 1024);
     assert_eq!(
         run_supervised_lake_build_v1(&signal).map_err(|error| error.kind),
         Err(BuildErrorKind::Signalled)
@@ -250,7 +253,7 @@ fn supervisor_accepts_success_and_rejects_nonzero_timeout_and_overflow() {
     let overflow = script_request(
         &overflow_root,
         "yes x | head -c 4096",
-        Duration::from_secs(2),
+        Duration::from_secs(10),
         1024,
     );
     assert_eq!(

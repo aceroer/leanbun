@@ -6,6 +6,9 @@ use crate::model::{
     VerifiedDownloadBlobV1, VerifiedPackageObjectV1, sha256,
 };
 use leanbun_core::Sha256;
+use leanbun_resolver::LeanExactSourceV1;
+use rustix::fd::OwnedFd;
+use rustix::fs::{FlockOperation, Mode, OFlags};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -37,6 +40,10 @@ enum TaskState {
     Terminal(Box<Result<VerifiedPackageObjectV1, LeanStoreError>>),
 }
 
+struct SourceLease {
+    _descriptor: OwnedFd,
+}
+
 impl LeanImmutableStoreV1 {
     pub fn open(
         development_root: impl AsRef<Path>,
@@ -65,6 +72,8 @@ impl LeanImmutableStoreV1 {
             ));
         }
         create_private_directory(&store_root.join("objects"))?;
+        create_private_directory(&store_root.join("sources"))?;
+        create_private_directory(&store_root.join("leases"))?;
         create_private_directory(&store_root.join("slots"))?;
         Ok(Self {
             development_root,
@@ -73,6 +82,15 @@ impl LeanImmutableStoreV1 {
                 tasks: Mutex::new(HashMap::new()),
             }),
         })
+    }
+
+    pub fn open_global_package_sources(
+        development_root: impl AsRef<Path>,
+    ) -> Result<Self, LeanStoreError> {
+        let store_root = development_root
+            .as_ref()
+            .join("store-fixture/m51-package-sources");
+        Self::open(development_root, store_root)
     }
 
     #[must_use]
@@ -91,9 +109,12 @@ impl LeanImmutableStoreV1 {
         cancellation: &LeanFetchCancellationV1,
         fault: LeanFetchFaultV1,
     ) -> Result<VerifiedPackageObjectV1, LeanStoreError> {
+        let task_identity = request
+            .package_source_key()
+            .map_or_else(|| request.identity(), |key| key.digest());
         let (task, runner) = {
             let mut tasks = self.shared.tasks.lock().map_err(lock_error)?;
-            if let Some(task) = tasks.get(&request.identity()) {
+            if let Some(task) = tasks.get(&task_identity) {
                 (Arc::clone(task), false)
             } else {
                 if tasks.len() >= MAX_RETAINED_TASKS {
@@ -106,7 +127,7 @@ impl LeanImmutableStoreV1 {
                     state: Mutex::new(TaskState::Running),
                     ready: Condvar::new(),
                 });
-                tasks.insert(request.identity(), Arc::clone(&task));
+                tasks.insert(task_identity, Arc::clone(&task));
                 (task, true)
             }
         };
@@ -135,8 +156,15 @@ impl LeanImmutableStoreV1 {
         cancellation: &LeanFetchCancellationV1,
         fault: LeanFetchFaultV1,
     ) -> Result<VerifiedPackageObjectV1, LeanStoreError> {
+        let _lease = request
+            .package_source_key()
+            .map(|key| self.acquire_source_lease(key.digest(), cancellation))
+            .transpose()?;
+        if request.package_source_key().is_some() && self.source_record_path(request).exists() {
+            return self.verify_existing(request, LeanStorePublicationV1::Reused);
+        }
         let destination = self.object_path(request.candidate().source_tree_sha256());
-        if destination.exists() {
+        if request.package_source_key().is_none() && destination.exists() {
             return self.verify_existing(request, LeanStorePublicationV1::Reused);
         }
         let slot = self.create_slot()?;
@@ -182,7 +210,7 @@ impl LeanImmutableStoreV1 {
             return Err(injected("rename"));
         }
 
-        match fs::rename(&object, destination) {
+        let verified = match fs::rename(&object, destination) {
             Ok(()) => {
                 let sealed = make_tree_read_only(&destination.join("tree"), &fetched.plan)
                     .and_then(|()| set_mode(&destination.join("object.meta"), 0o444))
@@ -201,17 +229,18 @@ impl LeanImmutableStoreV1 {
                     }
                     return Err(error);
                 }
-                Ok(build_verified(
+                build_verified(
                     request,
                     destination.to_path_buf(),
                     fetched.plan,
                     object_digest,
                     fetched.download,
                     LeanStorePublicationV1::Published,
-                ))
+                )
             }
             Err(rename_error) if destination.exists() => {
-                let existing = self.verify_existing(request, LeanStorePublicationV1::Reused)?;
+                let existing =
+                    self.verify_existing_object(request, LeanStorePublicationV1::Reused, false)?;
                 if existing.store_object_sha256() != object_digest {
                     return Err(LeanStoreError::new(
                         LeanStoreErrorKind::StoreObjectConflict,
@@ -219,19 +248,32 @@ impl LeanImmutableStoreV1 {
                     ));
                 }
                 let _ = rename_error;
-                Ok(existing)
+                existing
             }
-            Err(error) => Err(LeanStoreError::new(
-                LeanStoreErrorKind::RenameFailed,
-                format!("cannot atomically publish store object: {error}"),
-            )),
-        }
+            Err(error) => {
+                return Err(LeanStoreError::new(
+                    LeanStoreErrorKind::RenameFailed,
+                    format!("cannot atomically publish store object: {error}"),
+                ));
+            }
+        };
+        self.publish_source_record(request, &verified, slot, fault)?;
+        Ok(verified)
     }
 
     fn verify_existing(
         &self,
         request: &LeanFetchRequestV1,
         publication: LeanStorePublicationV1,
+    ) -> Result<VerifiedPackageObjectV1, LeanStoreError> {
+        self.verify_existing_object(request, publication, true)
+    }
+
+    fn verify_existing_object(
+        &self,
+        request: &LeanFetchRequestV1,
+        publication: LeanStorePublicationV1,
+        verify_source: bool,
     ) -> Result<VerifiedPackageObjectV1, LeanStoreError> {
         let object = self.object_path(request.candidate().source_tree_sha256());
         let object_metadata = fs::symlink_metadata(&object).map_err(|error| {
@@ -256,18 +298,129 @@ impl LeanImmutableStoreV1 {
         if metadata != expected_metadata {
             return Err(tree_drift("published store metadata changed"));
         }
-        Ok(build_verified(
-            request,
-            object,
-            plan,
-            sha256(&metadata),
-            None,
-            publication,
-        ))
+        let verified = build_verified(request, object, plan, sha256(&metadata), None, publication);
+        if verify_source {
+            self.verify_source_record(request, &verified)?;
+        }
+        Ok(verified)
     }
 
     fn object_path(&self, digest: Sha256) -> PathBuf {
         self.store_root.join("objects").join(digest.to_string())
+    }
+
+    fn source_record_path(&self, request: &LeanFetchRequestV1) -> PathBuf {
+        request.package_source_key().map_or_else(
+            || self.store_root.join("sources/ineligible"),
+            |key| {
+                self.store_root
+                    .join("sources")
+                    .join(format!("{}.meta", key.digest()))
+            },
+        )
+    }
+
+    fn acquire_source_lease(
+        &self,
+        key: Sha256,
+        cancellation: &LeanFetchCancellationV1,
+    ) -> Result<SourceLease, LeanStoreError> {
+        let path = self.store_root.join("leases").join(format!("{key}.lock"));
+        let descriptor = rustix::fs::open(
+            &path,
+            OFlags::CREATE | OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+            Mode::RUSR | Mode::WUSR,
+        )
+        .map_err(|error| lease_error(format!("cannot open source lease: {error}")))?;
+        rustix::fs::fchmod(&descriptor, Mode::RUSR | Mode::WUSR)
+            .map_err(|error| lease_error(format!("cannot restrict source lease: {error}")))?;
+        loop {
+            match rustix::fs::flock(&descriptor, FlockOperation::NonBlockingLockExclusive) {
+                Ok(()) => {
+                    return Ok(SourceLease {
+                        _descriptor: descriptor,
+                    });
+                }
+                Err(error)
+                    if error == rustix::io::Errno::AGAIN
+                        || error == rustix::io::Errno::WOULDBLOCK =>
+                {
+                    if cancellation.is_cancelled() {
+                        return Err(LeanStoreError::new(
+                            LeanStoreErrorKind::Cancelled,
+                            "source lease wait was cancelled",
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                }
+                Err(error) => {
+                    return Err(lease_error(format!("cannot acquire source lease: {error}")));
+                }
+            }
+        }
+    }
+
+    fn publish_source_record(
+        &self,
+        request: &LeanFetchRequestV1,
+        object: &VerifiedPackageObjectV1,
+        slot: &Path,
+        fault: LeanFetchFaultV1,
+    ) -> Result<(), LeanStoreError> {
+        if request.package_source_key().is_none() {
+            return Ok(());
+        }
+        let bytes = encode_source_record(request, object)?;
+        let destination = self.source_record_path(request);
+        if destination.exists() {
+            return verify_source_record_bytes(&destination, &bytes);
+        }
+        let temporary = slot.join("source.meta");
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary)
+            .map_err(store_error)?;
+        file.write_all(&bytes).map_err(store_error)?;
+        file.sync_all().map_err(|error| {
+            LeanStoreError::new(
+                LeanStoreErrorKind::FileSyncFailed,
+                format!("cannot sync package source record: {error}"),
+            )
+        })?;
+        drop(file);
+        set_mode(&temporary, 0o444)?;
+        fs::File::open(&temporary)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| {
+                LeanStoreError::new(
+                    LeanStoreErrorKind::FileSyncFailed,
+                    format!("cannot seal package source record: {error}"),
+                )
+            })?;
+        if fault == LeanFetchFaultV1::SourceRecordRename {
+            return Err(injected("source record rename"));
+        }
+        match fs::rename(&temporary, &destination) {
+            Ok(()) => sync_directory(&self.store_root.join("sources")),
+            Err(_) if destination.exists() => verify_source_record_bytes(&destination, &bytes),
+            Err(error) => Err(LeanStoreError::new(
+                LeanStoreErrorKind::RenameFailed,
+                format!("cannot atomically publish package source record: {error}"),
+            )),
+        }
+    }
+
+    fn verify_source_record(
+        &self,
+        request: &LeanFetchRequestV1,
+        object: &VerifiedPackageObjectV1,
+    ) -> Result<(), LeanStoreError> {
+        if request.package_source_key().is_none() {
+            return Ok(());
+        }
+        let expected = encode_source_record(request, object)?;
+        verify_source_record_bytes(&self.source_record_path(request), &expected)
     }
 
     fn create_slot(&self) -> Result<PathBuf, LeanStoreError> {
@@ -376,6 +529,81 @@ fn encode_public_metadata(entries: &[NormalizedTreeEntryV1]) -> Vec<u8> {
     bytes
 }
 
+fn encode_source_record(
+    request: &LeanFetchRequestV1,
+    object: &VerifiedPackageObjectV1,
+) -> Result<Vec<u8>, LeanStoreError> {
+    let Some(key) = request.package_source_key() else {
+        return Err(LeanStoreError::new(
+            LeanStoreErrorKind::InvalidField,
+            "path package cannot produce a global source record",
+        ));
+    };
+    let LeanExactSourceV1::Git {
+        url,
+        exact_revision,
+        subdir,
+    } = request.candidate().resolved_source()
+    else {
+        return Err(LeanStoreError::new(
+            LeanStoreErrorKind::InvalidField,
+            "package source key is present for a non-Git package",
+        ));
+    };
+    if object.package_source_key() != Some(key)
+        || object.source_tree_sha256() != request.candidate().source_tree_sha256()
+    {
+        return Err(LeanStoreError::new(
+            LeanStoreErrorKind::StoreObjectConflict,
+            "verified object differs from package source authority",
+        ));
+    }
+    let mut bytes = b"leanbun-package-source-record-v1\0".to_vec();
+    bytes.extend_from_slice(key.digest().as_bytes());
+    encode_record_string(&mut bytes, url.as_str());
+    encode_record_string(&mut bytes, exact_revision);
+    match subdir.as_deref() {
+        Some(value) => {
+            bytes.push(1);
+            encode_record_string(&mut bytes, value);
+        }
+        None => bytes.push(0),
+    }
+    bytes.extend_from_slice(object.source_tree_sha256().as_bytes());
+    bytes.extend_from_slice(object.store_object_sha256().as_bytes());
+    Ok(bytes)
+}
+
+fn encode_record_string(bytes: &mut Vec<u8>, value: &str) {
+    bytes.extend_from_slice(&(value.len() as u64).to_be_bytes());
+    bytes.extend_from_slice(value.as_bytes());
+}
+
+fn verify_source_record_bytes(path: &Path, expected: &[u8]) -> Result<(), LeanStoreError> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        source_record_drift(format!("package source record is unavailable: {error}"))
+    })?;
+    if !metadata.file_type().is_file() {
+        return Err(source_record_drift(
+            "package source record is not a regular file",
+        ));
+    }
+    if !metadata.permissions().readonly() {
+        return Err(source_record_drift(
+            "package source record is not sealed read-only",
+        ));
+    }
+    let observed = fs::read(path).map_err(|error| {
+        source_record_drift(format!("cannot read package source record: {error}"))
+    })?;
+    if observed != expected {
+        return Err(source_record_drift(
+            "package source record differs from exact provenance",
+        ));
+    }
+    Ok(())
+}
+
 fn build_verified(
     request: &LeanFetchRequestV1,
     object: PathBuf,
@@ -392,6 +620,7 @@ fn build_verified(
     VerifiedPackageObjectV1::new(
         request.package().clone(),
         request.candidate().identity(),
+        request.package_source_key(),
         plan.digest,
         object_digest,
         object.clone(),
@@ -614,6 +843,14 @@ fn store_error(error: std::io::Error) -> LeanStoreError {
 
 fn tree_drift(message: impl Into<String>) -> LeanStoreError {
     LeanStoreError::new(LeanStoreErrorKind::TreeDrift, message)
+}
+
+fn source_record_drift(message: impl Into<String>) -> LeanStoreError {
+    LeanStoreError::new(LeanStoreErrorKind::SourceRecordDrift, message)
+}
+
+fn lease_error(message: impl Into<String>) -> LeanStoreError {
+    LeanStoreError::new(LeanStoreErrorKind::LeaseFailed, message)
 }
 
 fn lock_error<T>(_error: T) -> LeanStoreError {

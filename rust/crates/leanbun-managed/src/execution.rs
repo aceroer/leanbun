@@ -191,6 +191,15 @@ mod tests {
             ),
             package_count: Some(1),
             pending_transaction: None,
+            previous_transaction: None,
+            rollback_available: false,
+            exact_package_source_keys: Vec::new(),
+            active_package_build_keys: Vec::new(),
+            source_reference_count: None,
+            artifact_reference_count: None,
+            artifact_cache_hits: None,
+            artifact_publications: None,
+            artifact_reuses: None,
             diagnostics: Vec::new(),
         }
     }

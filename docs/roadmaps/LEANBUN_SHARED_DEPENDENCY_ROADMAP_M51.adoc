@@ -1,0 +1,77 @@
+= LeanBun Environment Isolation and Package Sharing Roadmap M51
+:toc: left
+:sectnums:
+
+== Goal
+
+M51 treats each Lake workspace as an isolated LeanBun environment while
+deduplicating exact immutable dependency packages through Bun-managed global
+authorities. It does not share root build output, a writable `.lake`, or one
+indivisible compiled closure. The governing boundary is
+xref:../decisions/SHARED_DEPENDENCY_AUTHORITY_M51A.adoc[Lake Environment and Package Sharing Authority M51A].
+
+== M51A — Environment model, fixture and resolution identity
+
+Status: *complete*.
+
+* define one Lake workspace as one isolated environment;
+* add a second repository-owned Mathlib consumer with the same exact nine-package
+  dependency set and a different root package;
+* prove both build against one unchanged provider cache with separate root
+  outputs;
+* add `LakeEnvironmentResolutionKeyV1` in `leanbun-lock` and make explicit that
+  it is comparison evidence, not a shared-object key;
+* freeze separate package source and package build identity contracts;
+* retain the existing per-project Store and generation writers.
+
+Evidence:
+xref:../milestones/RUST_SHARED_DEPENDENCY_IDENTITY_M51A.adoc[M51A milestone].
+
+== M51B — Global immutable package source Store
+
+Status: *complete*.
+
+Introduce `PackageSourceKeyV1` and move eligible registered Git source objects
+from the ProjectId-scoped fixture Store to one private global authority. Bind
+canonical URL, exact commit, subdirectory and normalized source-tree digest.
+Add cross-process deduplication, private staging, atomic publication, crash
+recovery, exact-object revalidation and two-environment reference evidence.
+
+Environment generations may still materialize private build trees in this
+phase. Path dependencies remain private and snapshot scoped.
+
+Closure evidence:
+xref:../milestones/RUST_GLOBAL_PACKAGE_SOURCE_STORE_M51B.adoc[M51B milestone].
+
+== M51C — Package-level compiled artifact Store
+
+Status: *complete*.
+
+Introduce recursive `PackageBuildKeyV1` identities. Bind each package source to
+the Lean/Lake/platform/build context and its ordered direct dependency build
+identities. Build one package in a private transaction directory, attest and
+publish its artifacts atomically, then let each environment's private projection
+refer to compatible immutable package artifacts.
+
+Prove partial reuse: changing one package or build input invalidates that package
+and its dependants without invalidating unrelated packages. Remove published
+dependency artifact paths from every project build sandbox write allowlist.
+
+Closure evidence:
+xref:../milestones/RUST_PACKAGE_ARTIFACT_STORE_M51C.adoc[M51C milestone].
+
+== M51D — Two-environment lifecycle and distribution closure
+
+Status: *complete*.
+
+Run two managed environments concurrently and prove one source/build object per
+exact identity. Restart offline, update only environment A, retain environment
+B's old package references, roll A back, and reverify both builds. Freeze durable
+reference accounting while keeping automatic deletion disabled.
+
+Expose managed environments, active generations, exact package sources, cache
+hits, drift and rollback state through the CLI. Close clean-clone, patch-replay,
+operator and source-distribution evidence before marking M51 complete.
+
+Closure evidence:
+xref:../milestones/RUST_TWO_ENVIRONMENT_LIFECYCLE_M51D.adoc[M51D milestone].

@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "version": "0.26.0-m51b-dev",
+  "class": "global-immutable-package-source-store",
+  "sourceBaseline": {
+    "commit": "d81e0d75b5f27bba62d6414e0f851c14d4bbcc55",
+    "status": "uncommitted M51A-M51B working-tree delivery"
+  },
+  "packageSourceKey": {
+    "schemaVersion": 1,
+    "domain": "leanbun-package-source-v1",
+    "sourceSha256": "387a4f7b96693a8c701952cd94221bc228c30b9aa2f00df7b44e7db1e6cf26cb",
+    "binds": [
+      "canonical-repository-url",
+      "exact-commit",
+      "normalized-repository-subdirectory",
+      "normalized-source-tree-sha256"
+    ],
+    "excludes": [
+      "package-name",
+      "project-id",
+      "lake-environment-resolution-key",
+      "requested-version-label",
+      "generation-path",
+      "compiler-and-build-inputs"
+    ],
+    "pathSnapshotEligibility": "ineligible"
+  },
+  "globalSourceStore": {
+    "root": ".leanbun-dev-rust/store-fixture/m51-package-sources",
+    "implementationSha256": "c8ecf17921505ef1112c9e62cf7a6004835a6a47ca2cf9be167ab888d4b61222",
+    "physicalObjects": "objects/<normalized-source-tree-sha256>",
+    "sourceAuthorities": "sources/<package-source-key>.meta",
+    "writerLeases": "leases/<package-source-key>.lock",
+    "transactionSlots": "slots/<pid>-<counter>",
+    "publication": "private-stage-verify-sync-atomic-rename-read-only",
+    "lease": "nofollow-owner-only-nonblocking-exclusive-flock",
+    "automaticDeletion": "disabled"
+  },
+  "routing": {
+    "exactGitPackages": "global-package-source-store",
+    "pathDependencies": "project-id-scoped-m40-store",
+    "generationMaterialization": "private-copy",
+    "compiledArtifactReuse": "not-implemented"
+  },
+  "regression": {
+    "sourceSha256": "edc5aadba18ea35c079bedf0d77ac1c82ad6e92e5fb4438ec176aa1a81b0d800",
+    "testsPassed": 5,
+    "twoEnvironmentGraphs": "passed",
+    "independentStoreInstances": "passed",
+    "crossProcessSinglePublication": "passed",
+    "differentCommitSeparateAuthority": "passed",
+    "identicalTreePhysicalDeduplication": "passed",
+    "sourceRecordCrashRecovery": "passed",
+    "sourceRecordDrift": "rejected",
+    "symlinkLeaseRedirect": "rejected-before-fetch"
+  },
+  "validation": {
+    "leanbunLockUnitTestsPassed": 10,
+    "reservoirBindingTestsPassed": 4,
+    "leanbunStoreTestsPassed": 10,
+    "repositoryBunTestsPassed": 214,
+    "repositoryRustTestsPassed": 138,
+    "repositoryRustTestsIgnored": 1,
+    "documentationFilesPassed": 143,
+    "documentationCrossReferencesPassed": 432,
+    "affectedCratesClippy": "passed",
+    "rustFmt": "passed",
+    "crateLayering": "passed"
+  },
+  "boundaries": {
+    "m51bComplete": true,
+    "globalPackageSourceStore": "implemented-development-authority",
+    "packageCompiledArtifactStore": "not-implemented",
+    "sharedWritableLakeCache": "forbidden",
+    "lakeEnvironmentLifecycle": "isolated",
+    "environmentRootBuildOutput": "isolated",
+    "nextMilestone": "M51C package-level compiled artifact Store"
+  }
+}

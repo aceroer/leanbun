@@ -63,3 +63,11 @@ path provenance 和 Bun 最终路径决定。
 * xref:RUST_MANAGED_RUN_FRONT_DOOR_M50C.adoc[Generation-bound managed run front door M50C]
 * xref:RUST_MANAGED_DISTRIBUTION_CLOSURE_M50D.adoc[Managed front-door distribution closure M50D]
 * M49 与 M50 均已闭包；生产安装器、自动发现和 hostile same-UID 防护仍不在主线授权内。
+
+== M51：Lake 环境隔离与 package 共享
+
+* xref:RUST_SHARED_DEPENDENCY_IDENTITY_M51A.adoc[Lake environment fixture and resolution identity M51A]
+* xref:RUST_GLOBAL_PACKAGE_SOURCE_STORE_M51B.adoc[Global immutable package source Store M51B]
+* xref:RUST_PACKAGE_ARTIFACT_STORE_M51C.adoc[Recursive package build identity and artifact Store M51C]
+* xref:RUST_TWO_ENVIRONMENT_LIFECYCLE_M51D.adoc[Two-environment lifecycle, references and distribution M51D]
+* M51A--M51D 已闭包：Lake workspace 环境隔离、全局精确 source/build object、持久 generation reference、双环境并发、单边更新与回滚、CLI 和分发证据均已验证；自动删除仍禁用。

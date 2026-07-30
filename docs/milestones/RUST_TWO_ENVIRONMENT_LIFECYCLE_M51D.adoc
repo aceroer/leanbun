@@ -1,0 +1,79 @@
+= LeanBun Two-environment Shared-package Lifecycle M51D
+:toc: left
+:sectnums:
+
+== Status
+
+M51D is complete in the `0.28.0-m51d-dev` working-tree snapshot. Two explicitly
+managed Lake environments may share exact immutable Git source and compiled
+package objects while retaining separate project identity, generation history,
+root output, update and rollback state. Automatic deletion remains disabled.
+
+== Durable generation references
+
+After a supervised build succeeds and the active generation is reverified,
+LeanBun publishes one sealed record at
+`.leanbun-dev-rust/managed-projects/project-control/<ProjectId>/package-references/<generation>.record`.
+The record binds the generation to its exact package source keys, recursive
+package build keys and artifact digests. It also freezes the first admitted
+build observation: cache hits, publications and reuses. Records are owner-only
+regular files, published through a private temporary file and atomic rename,
+strictly parsed on status reads, and never removed automatically.
+
+The managed status JSON schema is version 2. It exposes the active generation,
+previous transaction, rollback availability, exact source/build key sets,
+reference counts and cache outcomes. `manage list` renders the compact counts;
+`manage status` additionally prints each exact key. A missing reference record
+is valid before a generation's first build, but a malformed or lock-inconsistent
+record fails closed.
+
+== Two-environment acceptance
+
+The repository-owned `mathlib-project` and `mathlib-shared-consumer` fixtures
+were copied into two new managed environments. Both resolve the same exact
+nine-package source closure and retain distinct root projects and generations.
+
+With an empty artifact Store, both builds ran concurrently. Each environment
+reported eight eligible package artifacts, four publications and four reuses;
+the global Store contained exactly eight objects. Thus the aggregate result was
+one publication and one reuse per exact build key, not two physical objects.
+All eight artifact records matched the earlier independently produced Store.
+
+Environment A was then updated alone. Environment B remained healthy on its
+original generation and exact references. A's new generation materialized all
+eight eligible artifacts from the global Store (`artifact-cache-hits=8`), built
+its private root target, published no duplicate object, and was rolled back to
+its original generation. Both A generation-reference records and B's record
+remained sealed after rollback.
+
+== Defects found by the lifecycle test
+
+The acceptance test exposed and closed three defects rather than treating a
+smaller unit test as lifecycle completion:
+
+* generation materialization now preserves source executable provenance and
+  read-only sealing preserves the execute bit;
+* the registry and generation verifier now agree on ProofWidgets'
+  `widget/package-lock.json.hash` derived cache. The Store exclusion API accepts
+  only exact canonical regular-file paths, and it is invoked only for that
+  package/path pair;
+* artifact publishers stage, hash, sync and seal large candidates outside the
+  per-key lease. The lease covers only compare-and-publish, permission sealing
+  and directory sync; complete immutable-object verification occurs after the
+  lease is released. This removes Mathlib-sized false timeouts without allowing
+  concurrent writers.
+
+== Distribution
+
+`distribution/bun-fork-m51-patches/` contains one noreply-authored incremental
+patch applied after the M50 series. It adds the M51D CLI/status surface and the
+Cargo lock dependency required by the Rust Store. The public-source gate checks
+its count, author identity and absence of personal absolute paths.
+
+== Boundary after M51
+
+M51 is closed for fixture-scoped source/build sharing and lifecycle evidence.
+Lake still interprets and builds projects; Lean remains the compiler and proof
+checker. Root build products and writable `.lake` directories are never global.
+Garbage collection, automatic deletion, arbitrary URL intake, production
+installation and hostile same-UID containment remain outside this milestone.

@@ -1,0 +1,60 @@
+= LeanBun Lake Environment Fixture and Resolution Identity M51A
+:toc: left
+:sectnums:
+
+== Status
+
+M51A is complete in the `0.25.0-m51a-dev` working-tree snapshot. It establishes
+the two-environment Mathlib fixture, the environment-resolution comparison key,
+and separate source/build package identity contracts. It does not yet install a
+global Store writer or publish compiled package artifacts.
+
+== Fixture result
+
+`mathlib-shared-consumer` is a second repository-owned Lean library. It imports
+`Mathlib.Data.Nat.GCD.Basic` and proves small decidable GCD/coprimality facts.
+Its root package name, modules and project build output differ from
+`mathlib-project`; both manifests contain the same nine exact Git packages and
+use Lean `v4.32.0` with Mathlib commit
+`81a5d257c8e410db227a6665ed08f64fea08e997`.
+
+The canonical JSON package arrays have the same SHA-256:
+`2b0385ca613b0b1e91b3bec0791099786d3aef5270a31dac7e78d3d30fc5ad4c`.
+
+An isolated Lake integration built both projects with one provider override.
+The provider's Prime and GCD `.olean` evidence remained unchanged across both
+builds, while each project produced its own root `.olean` beneath its private
+temporary `.lake/build`. The focused suite passed 3/3 tests and 18 assertions.
+
+== Rust resolution identity
+
+`LakeEnvironmentResolutionKeyV1` lives in `leanbun-lock`, below resolver, Store,
+generation and managed policy. Its V1 digest binds:
+
+* Lean toolchain;
+* exact Lean compiler Git hash;
+* Lake version;
+* the existing canonical package graph digest.
+
+It deliberately excludes root config/declaration digests, ProjectId,
+transaction and absolute path. Tests prove that different root environments
+produce different full lock identities but the same dependency-resolution key,
+while toolchain or package-tree drift changes the key. Equality is comparison
+evidence only: it is neither a package source key nor a compiled-artifact key
+and grants no filesystem or execution authority.
+
+== Frozen next identities
+
+M51B introduces `PackageSourceKeyV1`, binding canonical repository URL, exact
+commit, normalized subdirectory and normalized source-tree digest.
+
+M51C introduces recursive `PackageBuildKeyV1`, binding the package source, exact
+Lean/Lake/platform/build context and ordered direct dependency build identities.
+This is package-level reuse; M51 no longer plans one whole-closure compiled image.
+
+== Successor
+
+M51B now provides the global immutable package source Store described by
+xref:RUST_GLOBAL_PACKAGE_SOURCE_STORE_M51B.adoc[Global Immutable Package Source Store M51B].
+Environment build trees and writable caches remain private until M51C separately
+publishes attested, read-only package artifacts.

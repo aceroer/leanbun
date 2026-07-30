@@ -171,6 +171,7 @@ dependencies = [
  "leanbun-lake-bridge",
  "leanbun-lock",
  "leanbun-resolver",
+ "rustix",
 ]
 
 [[package]]

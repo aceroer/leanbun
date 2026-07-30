@@ -7,6 +7,7 @@ mod fixture_regression;
 mod history_regression;
 mod intake;
 mod negative_regression;
+mod references;
 mod registered;
 mod registry;
 mod reservoir_regression;
@@ -37,9 +38,11 @@ pub use reservoir_regression::{
 };
 
 use leanbun_build::{
-    BuildErrorKind, ProgramRunResultV1, SupervisedLakeBuildV1, SupervisedProgramRunV1,
-    project_artifact_sha256_v1, run_supervised_lake_build_v1, run_supervised_program_v1,
-    verify_active_generation_build_gate_v1, verify_lake_workspace_paths_v1,
+    BuildErrorKind, PackageArtifactOutcomeV1, PackageArtifactStoreV1, PackageBuildContextV1,
+    PackageBuildKeyV1, ProgramRunResultV1, SupervisedLakeBuildV1, SupervisedProgramRunV1,
+    package_build_keys_v1, project_artifact_sha256_v1, run_supervised_lake_build_v1,
+    run_supervised_program_v1, verify_active_generation_build_gate_v1,
+    verify_lake_workspace_paths_v1,
 };
 use leanbun_core::{ExecutionId, ProjectId, Sha256, Sha256Hasher, project_id};
 use leanbun_generation::{LeanBunGenerationV1, LeanGenerationFaultV1, LeanGenerationManagerV1};
@@ -50,7 +53,7 @@ use leanbun_lake_bridge::{
 use leanbun_lock::{
     LeanBunLockV1, LockedLeanPackageV1, PackageDependencyV1, PackageKeyV1,
     PackagePathDecisionSetV1, PackagePathDecisionV1, PackagePathProvenanceSetV1,
-    PackagePathProvenanceV1, RequestedPackageSourceV1, ResolvedPackageSourceV1,
+    PackagePathProvenanceV1, PackageSourceKeyV1, RequestedPackageSourceV1, ResolvedPackageSourceV1,
 };
 use leanbun_resolver::{
     LeanDependencyRequirementV1, LeanExactSourceV1, LeanPackageCandidateV1, LeanResolutionModeV1,
@@ -61,6 +64,9 @@ use leanbun_store::{
     LeanFetchCancellationV1, LeanFetchFaultV1, LeanFetchRequestV1, LeanFetchSourceV1,
     LeanImmutableStoreV1, LeanStoreLimitsV1, VerifiedPackageObjectV1,
     normalized_directory_tree_sha256_v1,
+};
+use references::{
+    GenerationReferenceReportV1, PackageReferenceV1, publish_generation_references_v1,
 };
 use registered::{RegisteredGitInputV1, load_registered_git_closure};
 use std::collections::{BTreeMap, BTreeSet};
@@ -125,6 +131,11 @@ pub struct ManagedProjectStatusV1 {
 pub struct ManagedBuildResultV1 {
     pub generation_sha256: Sha256,
     pub project_artifact_sha256: Sha256,
+    pub source_reference_count: usize,
+    pub artifact_reference_count: usize,
+    pub artifact_cache_hits: usize,
+    pub artifact_publications: usize,
+    pub artifact_reuses: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -505,19 +516,45 @@ impl ManagedProjectControllerV1 {
             .manager
             .prepare_active_build_caches(&generation.generation)
             .map_err(generation_error)?;
-        self.seed_registered_caches(&model, &generation)?;
         let request = self.build_request(&record, &generation.generation)?;
+        let package_context = package_build_context_v1(&generation.generation, &request);
+        let package_keys =
+            package_build_keys_v1(&model.lock, &package_context).map_err(build_error)?;
+        let artifact_store =
+            PackageArtifactStoreV1::open_global(self.global_store_root()?).map_err(build_error)?;
+        let artifact_cache_hits =
+            self.restore_package_artifacts(&generation, &package_keys, &artifact_store)?;
+        self.seed_registered_caches(&model, &generation)?;
         verify_lake_workspace_paths_v1(&request, &paths).map_err(build_error)?;
         run_supervised_lake_build_v1(&request).map_err(build_error)?;
         model
             .manager
             .verify_active_generation(&generation.generation)
             .map_err(generation_error)?;
+        let (package_references, artifact_publications, artifact_reuses) = self
+            .publish_package_artifacts(&generation, &model.lock, &package_keys, &artifact_store)?;
+        publish_generation_references_v1(
+            &self.project_state_root()?,
+            record.project_id,
+            &GenerationReferenceReportV1 {
+                generation: generation.generation.identity(),
+                source_references: package_keys.len(),
+                artifact_cache_hits,
+                artifact_publications,
+                artifact_reuses,
+                packages: package_references,
+            },
+        )?;
         let artifact =
             project_artifact_sha256_v1(&self.project.join(".lake/build")).map_err(build_error)?;
         Ok(ManagedBuildResultV1 {
             generation_sha256: generation.generation.identity(),
             project_artifact_sha256: artifact,
+            source_reference_count: package_keys.len(),
+            artifact_reference_count: artifact_publications + artifact_reuses,
+            artifact_cache_hits,
+            artifact_publications,
+            artifact_reuses,
         })
     }
 
@@ -906,7 +943,10 @@ impl ManagedProjectControllerV1 {
             .map_err(|error| input_error(error.to_string()))?;
         let manifest = LakeManifestProjectionV1::new(&declaration, &lock, metadata.clone())
             .map_err(|error| input_error(error.to_string()))?;
-        let store = LeanImmutableStoreV1::open(
+        let global_source_store =
+            LeanImmutableStoreV1::open_global_package_sources(self.global_store_root()?)
+                .map_err(store_error)?;
+        let project_store = LeanImmutableStoreV1::open(
             &self.development,
             self.development
                 .join("store-fixture/m40-managed")
@@ -923,13 +963,17 @@ impl ManagedProjectControllerV1 {
             let fetch =
                 LeanFetchRequestV1::from_graph(&graph, &package, source, allowed_root, limits)
                     .map_err(store_error)?;
-            fetches.push(fetch);
+            let store = if fetch.package_source_key().is_some() {
+                global_source_store.clone()
+            } else {
+                project_store.clone()
+            };
+            fetches.push((store, fetch));
         }
         let objects = thread::scope(|scope| {
             let handles = fetches
                 .into_iter()
-                .map(|fetch| {
-                    let store = store.clone();
+                .map(|(store, fetch)| {
                     scope.spawn(move || {
                         store.fetch_and_publish(
                             &fetch,
@@ -1061,6 +1105,12 @@ impl ManagedProjectControllerV1 {
         Ok(root)
     }
 
+    fn global_store_root(&self) -> Result<&Path, ManagedProjectError> {
+        self.authority
+            .parent()
+            .ok_or_else(|| boundary("managed authority has no global Store parent"))
+    }
+
     fn seed_registered_caches(
         &self,
         model: &ManagedModelV1,
@@ -1120,6 +1170,135 @@ impl ManagedProjectControllerV1 {
         }
         Ok(())
     }
+
+    fn restore_package_artifacts(
+        &self,
+        generation: &ManagedGenerationV1,
+        keys: &BTreeMap<PackageKeyV1, PackageBuildKeyV1>,
+        store: &PackageArtifactStoreV1,
+    ) -> Result<usize, ManagedProjectError> {
+        let mut hits = 0;
+        for (package, key) in keys {
+            let final_path = generation
+                .decisions
+                .decisions()
+                .iter()
+                .find(|decision| decision.package() == package)
+                .map(|decision| PathBuf::from(decision.final_path()))
+                .ok_or_else(|| input_error("package build key lacks final path decision"))?;
+            let destination = final_path.join(".lake/build");
+            if destination.exists() {
+                if !destination.is_dir() {
+                    return Err(input_error(
+                        "private package build cache is not a directory",
+                    ));
+                }
+                continue;
+            }
+            if store
+                .materialize_if_present(*key, &destination)
+                .map_err(build_error)?
+                .is_some()
+            {
+                hits += 1;
+            }
+        }
+        Ok(hits)
+    }
+
+    fn publish_package_artifacts(
+        &self,
+        generation: &ManagedGenerationV1,
+        lock: &LeanBunLockV1,
+        keys: &BTreeMap<PackageKeyV1, PackageBuildKeyV1>,
+        store: &PackageArtifactStoreV1,
+    ) -> Result<(Vec<PackageReferenceV1>, usize, usize), ManagedProjectError> {
+        let mut references = Vec::with_capacity(keys.len());
+        let mut publications = 0;
+        let mut reuses = 0;
+        for (package, key) in keys {
+            let build = generation
+                .decisions
+                .decisions()
+                .iter()
+                .find(|decision| decision.package() == package)
+                .map(|decision| PathBuf::from(decision.final_path()).join(".lake/build"))
+                .ok_or_else(|| input_error("package build key lacks final path decision"))?;
+            if build.is_dir() {
+                let object = store.publish_or_reuse(*key, &build).map_err(build_error)?;
+                match object.outcome() {
+                    PackageArtifactOutcomeV1::Published => publications += 1,
+                    PackageArtifactOutcomeV1::Reused => reuses += 1,
+                    PackageArtifactOutcomeV1::Materialized => {
+                        return Err(input_error("package publication reported materialization"));
+                    }
+                }
+                let source = lock
+                    .packages()
+                    .iter()
+                    .find(|locked| locked.key() == package)
+                    .and_then(PackageSourceKeyV1::from_locked_package)
+                    .ok_or_else(|| {
+                        input_error("package build reference lacks global source key")
+                    })?;
+                references.push(PackageReferenceV1 {
+                    package: package.clone(),
+                    source,
+                    build: *key,
+                    artifact: object.artifact_sha256(),
+                });
+            }
+        }
+        Ok((references, publications, reuses))
+    }
+}
+
+fn package_build_context_v1(
+    generation: &LeanBunGenerationV1,
+    request: &SupervisedLakeBuildV1,
+) -> PackageBuildContextV1 {
+    PackageBuildContextV1 {
+        lean_toolchain: generation.lean_toolchain().to_owned(),
+        compiler_githash: generation.compiler_githash().to_owned(),
+        lake_version: generation.lake_version().to_owned(),
+        platform: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
+        platform_abi_sha256: hash_package_build_field(
+            b"leanbun-package-platform-abi-v1\0",
+            &[
+                generation.compiler_githash(),
+                std::env::consts::ARCH,
+                std::env::consts::OS,
+            ],
+        ),
+        build_policy_sha256: hash_package_build_field(
+            b"leanbun-package-build-policy-v1\0",
+            &["offline", "no-cache", "keep-toolchain"],
+        ),
+        facets_sha256: hash_package_build_field(
+            b"leanbun-package-facets-v1\0",
+            &["lake-default-build-facets"],
+        ),
+        environment_sha256: hash_package_build_field(
+            b"leanbun-package-environment-v1\0",
+            &[
+                "LC_ALL=C.UTF-8",
+                "LANG=C.UTF-8",
+                "LAKE_NO_CACHE=1",
+                "LAKE_ARTIFACT_CACHE=0",
+            ],
+        ),
+        lake_executable_sha256: request.lake_executable_sha256,
+    }
+}
+
+fn hash_package_build_field(domain: &[u8], values: &[&str]) -> Sha256 {
+    let mut hasher = Sha256Hasher::new();
+    hasher.update(domain);
+    for value in values {
+        hasher.update(&(value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    hasher.finalize()
 }
 
 fn seed_registered_derived_file(

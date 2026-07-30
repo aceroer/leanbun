@@ -1,0 +1,11 @@
+name = "leanbun_mathlib_shared_consumer"
+version = "0.1.0"
+defaultTargets = ["LeanBunMathlibSharedConsumer"]
+
+[[lean_lib]]
+name = "LeanBunMathlibSharedConsumer"
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "81a5d257c8e410db227a6665ed08f64fea08e997"

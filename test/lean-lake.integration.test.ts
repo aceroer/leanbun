@@ -16,6 +16,10 @@ const primeOlean = join(
   mathlibRoot,
   ".lake/build/lib/lean/Mathlib/Data/Nat/Prime/Basic.olean",
 );
+const gcdOlean = join(
+  mathlibRoot,
+  ".lake/build/lib/lean/Mathlib/Data/Nat/GCD/Basic.olean",
+);
 
 const temporaryWorkspaces: string[] = [];
 
@@ -117,6 +121,60 @@ test.serial(
 
     const installedOverride = await readFile(join(lakeDirectory, "package-overrides.json"), "utf8");
     expect(installedOverride).not.toContain("/Dependency libraries/");
+  },
+  120_000,
+);
+
+test.serial(
+  "two independent Lean projects consume one unchanged Mathlib provider cache",
+  async () => {
+    const first = await stageFixture("mathlib-project");
+    const second = await stageFixture("mathlib-shared-consumer");
+    const firstManifest = JSON.parse(
+      await readFile(join(first, "lake-manifest.json"), "utf8"),
+    );
+    const secondManifest = JSON.parse(
+      await readFile(join(second, "lake-manifest.json"), "utf8"),
+    );
+    expect(firstManifest.name).not.toBe(secondManifest.name);
+    expect(firstManifest.packages).toEqual(secondManifest.packages);
+    for (const workspace of [first, second]) {
+      const lakeDirectory = join(workspace, ".lake");
+      await mkdir(lakeDirectory, { recursive: true });
+      await cp(packageOverrides, join(lakeDirectory, "package-overrides.json"));
+    }
+
+    const primeBefore = await fileEvidence(primeOlean);
+    const gcdBefore = await fileEvidence(gcdOlean);
+    const firstBuild = await run(lake, ["build", "LeanBunMathlibFixture"], first);
+    expect(firstBuild.exitCode, `${firstBuild.stdout}\n${firstBuild.stderr}`).toBe(0);
+    const secondBuild = await run(
+      lake,
+      ["build", "LeanBunMathlibSharedConsumer"],
+      second,
+    );
+    expect(secondBuild.exitCode, `${secondBuild.stdout}\n${secondBuild.stderr}`).toBe(0);
+
+    expect(await fileEvidence(primeOlean)).toEqual(primeBefore);
+    expect(await fileEvidence(gcdOlean)).toEqual(gcdBefore);
+    expect(
+      (
+        await stat(
+          join(first, ".lake/build/lib/lean/LeanBunMathlibFixture/Prime.olean"),
+        )
+      ).isFile(),
+    ).toBeTrue();
+    expect(
+      (
+        await stat(
+          join(
+            second,
+            ".lake/build/lib/lean/LeanBunMathlibSharedConsumer/GCD.olean",
+          ),
+        )
+      ).isFile(),
+    ).toBeTrue();
+    expect(first).not.toBe(second);
   },
   120_000,
 );
