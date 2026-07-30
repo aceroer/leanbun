@@ -13,6 +13,109 @@ The current version is `0.20.0-m48-dev`. It is a repository-tested,
 registry client, and it does not authorize automatic takeover of arbitrary
 external projects.
 
+== Quickstart
+
+=== Verify the public source
+
+The shortest useful path verifies the public Rust workspace, historical crates,
+release boundary, and documentation without touching an existing Lean project:
+
+[source,shell]
+----
+git clone https://github.com/aceroer/leanbun.git
+cd leanbun
+./scripts/test-public.sh
+----
+
+This requires macOS and Rust `1.96.0`. It validates the source tree; it does not
+install a `leanbun` executable or modify a production Lean/Elan/Lake provider.
+
+To run the Bun/Lean integration suite as well, create the Git-ignored local
+provider configuration and initialize the copy-on-write development environment:
+
+[source,shell]
+----
+cp config/leanbun-local-provider.example.json \
+  config/leanbun-local-provider.json
+# Edit the seven local provider fields before continuing.
+
+./scripts/dev setup
+./scripts/dev check
+----
+
+All generated state remains below `.leanbun-dev/` or `.leanbun-dev-rust/`.
+Tests use only registered fixtures and do not run `lake update` in an active project.
+
+=== Build and try the M48 CLI
+
+The CLI is integrated into a pinned Bun source tree, so a clone of this repository
+alone does not contain a standalone `leanbun` Cargo binary. Follow
+xref:docs/operator/LEANBUN_SOURCE_INSTALL_M48.adoc[M48 source installation] to
+recreate the paired Bun fork and verify its tree identity. From that fork root:
+
+[source,shell]
+----
+cargo build --locked --release -p leanbun
+
+LEANBUN_REPOSITORY=/absolute/path/to/leanbun
+LEANBUN_BIN="$PWD/target/release/leanbun"
+
+"$LEANBUN_BIN" version
+"$LEANBUN_BIN" doctor "$LEANBUN_REPOSITORY"
+"$LEANBUN_BIN" inspect "$LEANBUN_REPOSITORY"
+"$LEANBUN_BIN" fixture-regress "$LEANBUN_REPOSITORY"
+----
+
+`version`, `doctor`, and `inspect` are read-only. `fixture-regress` is the first
+safe managed demonstration: it operates only on a registered repository fixture
+and writes ignored regression evidence below `.leanbun-dev-rust/`.
+
+== Brief usage guide
+
+[cols="2,3,2",options="header"]
+|===
+|Intent |Command |State and authorization boundary
+
+|Check binary compatibility
+|`leanbun version`
+|Read-only; reports versioned lock/binding/generation reader support.
+
+|Check a LeanBun source tree
+|`leanbun doctor <leanbun-repository>`
+|Read-only; verifies the source-lock hash and compiled Bun identity, reviewed Lake
+source compatibility, platform, and registered fixture toolchain.
+
+|Inspect without loading Lake configuration
+|`leanbun inspect <leanbun-repository>`
+|Filesystem-only inspection; does not execute `lakefile.lean`, `lake env`, or `lake query`.
+
+|Export release evidence
+|`leanbun export-evidence <leanbun-repository>`
+|Read-only; reports binary/source provenance and signing state.
+
+|Exercise the managed lifecycle
+|`leanbun fixture-regress <leanbun-repository> [--fixture=<registered-name>]`
+|Writes only isolated regression records and fixture copies. Registered names
+include `lake-basic`, `lake-managed-dependency`, `mathlib-project`,
+`negative-matrix`, and `concurrent-history`.
+
+|Exercise network fetch
+|`leanbun fixture-network-update <leanbun-repository>`
+|Uses an in-process loopback server only; it does not enable public registry discovery.
+
+|Evaluate adoption without mutation
+|`leanbun adopt-dry-run <leanbun-repository> <registered-fixture> <target> --explicit-dry-run`
+|Only registered fixtures are eligible; success remains `eligible-not-adopted`.
+
+|Run managed mutation commands
+|`leanbun adopt`, `update`, `build`, `recover`, or `rollback`
+|Development/acceptance scope only. M48 does not authorize these commands for an
+arbitrary external project, even when its Lake files appear compatible.
+|===
+
+For exact arguments, record locations, recovery rules, and fixture restrictions,
+see the xref:docs/operator/LEANBUN_OPERATOR_MANUAL_V1.adoc[operator manual].
+
 == Why LeanBun
 
 Lake is very good at its intended job: interpreting a Lean project's package and
